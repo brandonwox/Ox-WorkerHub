@@ -1,56 +1,35 @@
-# Welcome to your Expo app 👋
+# Ox WorkerHub
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile-first operational hub for tradespeople and field workers: view the day's schedule, clock in and out of jobs, and manage timesheets.
 
-## Get started
+Built with **React Native + Expo + TypeScript** (expo-router, Zustand). Runs on web today and is architected for native iOS/Android deployment — all components use cross-platform primitives.
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting started
 
 ```bash
-npm run reset-project
+npm install
+npm run web        # run in the browser
+npm run ios        # iOS simulator (macOS)
+npm run android    # Android emulator
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Features
 
-### Other setup steps
+- **Calendar (default tab)** — swipeable week ribbon with a full-month drop-down, job cards for the selected day ordered by office-set priority, and a job details modal (contractor/manager info, status changes, image upload placeholder).
+- **Clock in / out** — sticky bottom bar; clock into a scheduled job or a custom-named project from a bottom sheet. While clocked in the bar shows a live running timer; clocking out instantly writes a finished timesheet log.
+- **Timesheets** — totals for hours worked and estimated earnings (Today / This Week Mon–Fri / Last 30 Days), scrolling log feed, and inline editing of start/end times and notes with immediate saves.
+- **Settings** — profile card and a form to edit name, phone, email, and password, saved straight to local state.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Project structure
 
-## Learn more
+```
+src/
+  app/            expo-router routes (tabs + job details modal)
+  components/     reusable UI (cards, ribbon, clock bar, modals)
+  store/          Zustand store (user, jobs, logs, active shift)
+  data/           mock data (generated relative to today)
+  utils/          time parsing/formatting helpers
+  theme.ts        color palette, Inter font weights, spacing, radii
+```
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+All data is mock/local for now — the store in `src/store/useAppStore.ts` is the single integration point for a future backend.
