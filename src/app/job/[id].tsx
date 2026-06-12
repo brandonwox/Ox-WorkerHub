@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { JobStatus } from '@/types';
-import { formatTimeWindow } from '@/utils/time';
+import { formatJobWindow } from '@/utils/time';
 
 const STATUSES: JobStatus[] = ['Upcoming', 'In Progress', 'Finished'];
 
@@ -101,12 +101,15 @@ export default function JobDetailsScreen() {
         <InfoRow
           icon="calendar"
           label="Date"
-          value={format(new Date(job.startTime), 'EEEE, MMMM d, yyyy')}
+          value={format(
+            parse(job.date, 'yyyy-MM-dd', new Date()),
+            'EEEE, MMMM d, yyyy'
+          )}
         />
         <InfoRow
           icon="clock"
           label="Time Window"
-          value={formatTimeWindow(job.startTime, job.endTime)}
+          value={formatJobWindow(job.startTime, job.endTime) ?? 'Not set'}
         />
       </View>
 

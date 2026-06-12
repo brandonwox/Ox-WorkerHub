@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import { Play, Search } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
@@ -15,7 +14,7 @@ import {
 
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { formatTimeWindow } from '@/utils/time';
+import { formatJobWindow, formatLogDate } from '@/utils/time';
 
 export type ClockEntryMode = 'custom' | 'search' | null;
 
@@ -128,8 +127,10 @@ export function ClockEntrySheet({ mode, onClose }: Props) {
                         {job.title}
                       </Text>
                       <Text style={styles.resultSubtitle}>
-                        {format(new Date(job.startTime), 'EEE, MMM d')} ·{' '}
-                        {formatTimeWindow(job.startTime, job.endTime)}
+                        {formatLogDate(job.date)}
+                        {formatJobWindow(job.startTime, job.endTime)
+                          ? ` · ${formatJobWindow(job.startTime, job.endTime)}`
+                          : ''}
                       </Text>
                     </View>
                     <Play size={18} color={colors.primary} />

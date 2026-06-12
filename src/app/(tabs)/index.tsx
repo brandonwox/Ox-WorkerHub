@@ -1,10 +1,17 @@
 import { Feather } from '@expo/vector-icons';
-import { format, isSameDay, isToday } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+  ViewToken,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AddTimecardSheet } from '@/components/AddTimecardSheet';
 import { ClockControls } from '@/components/ClockControls';
 import { ClockEntrySheet, ClockEntryMode } from '@/components/ClockEntrySheet';
 import { JobCard } from '@/components/JobCard';
@@ -19,22 +26,37 @@ export default function CalendarScreen() {
   const router = useRouter();
   const jobs = useAppStore((s) => s.jobs);
   const clockIn = useAppStore((s) => s.clockIn);
+  const activeShift = useAppStore((s) => s.activeShift);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [selectMode, setSelectMode] = useState(false);
   const [entryMode, setEntryMode] = useState<ClockEntryMode>(null);
+  const [addTimecardOpen, setAddTimecardOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [visibleJobIds, setVisibleJobIds] = useState<Set<string>>(new Set());
 
-  const markedDates = useMemo(
-    () => new Set(jobs.map((j) => format(new Date(j.startTime), 'yyyy-MM-dd'))),
-    [jobs]
-  );
+  const markedDates = useMemo(() => new Set(jobs.map((j) => j.date)), [jobs]);
 
   const dayJobs = useMemo(
     () =>
       jobs
-        .filter((j) => isSameDay(new Date(j.startTime), selectedDate))
+        .filter((j) => j.date === format(selectedDate, 'yyyy-MM-dd'))
         .sort((a, b) => a.priorityOrder - b.priorityOrder),
     [jobs, selectedDate]
+  );
+
+  // Track which job cards are on screen so we can tell when the active job's
+  // card has scrolled out of view (or isn't in the current day at all).
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 55 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      setVisibleJobIds(
+        new Set(viewableItems.map((v) => (v.item as Job).id))
+      );
+    }
+  ).current;
+
+  const activeJobVisible = !!(
+    activeShift?.jobId && visibleJobIds.has(activeShift.jobId)
   );
 
   const handleJobPress = (job: Job) => {
@@ -78,10 +100,13 @@ export default function CalendarScreen() {
         data={dayJobs}
         keyExtractor={(job) => job.id}
         contentContainerStyle={styles.listContent}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (
           <JobCard
             job={item}
             selectable={selectMode}
+            active={activeShift?.jobId === item.id}
             onPress={() => handleJobPress(item)}
           />
         )}
@@ -100,9 +125,11 @@ export default function CalendarScreen() {
 
       <ClockControls
         selectMode={selectMode}
+        showProjectPill={!!activeShift && !activeJobVisible}
         onToggleSelectMode={() => setSelectMode((on) => !on)}
         onCustomPress={() => setEntryMode('custom')}
         onSearchPress={() => setEntryMode('search')}
+        onAddTimecardPress={() => setAddTimecardOpen(true)}
         onClockedOut={handleClockedOut}
       />
 
@@ -112,6 +139,11 @@ export default function CalendarScreen() {
           setEntryMode(null);
           setSelectMode(false);
         }}
+      />
+
+      <AddTimecardSheet
+        visible={addTimecardOpen}
+        onClose={() => setAddTimecardOpen(false)}
       />
     </SafeAreaView>
   );

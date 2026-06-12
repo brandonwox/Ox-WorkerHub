@@ -25,11 +25,6 @@ export function TimesheetCard({ log, projectName, onEdit }: Props) {
             {formatTime(log.startTime)} – {formatTime(log.endTime)}
           </Text>
         </View>
-        {log.notes ? (
-          <Text style={styles.notes} numberOfLines={2}>
-            {log.notes}
-          </Text>
-        ) : null}
       </View>
       <View style={styles.side}>
         <Pressable
@@ -76,12 +71,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 13,
-  },
-  notes: {
-    color: colors.textTertiary,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    marginTop: 2,
   },
   side: {
     alignItems: 'flex-end',

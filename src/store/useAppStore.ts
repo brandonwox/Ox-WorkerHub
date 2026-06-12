@@ -16,10 +16,23 @@ interface AppState {
   clockIn: (ref: { jobId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
   clockOut: () => TimesheetLog | null;
+  /** Adjusts the start time of the in-progress shift. */
+  updateShiftStart: (startTime: string) => void;
   updateLog: (
     logId: string,
-    changes: Pick<Partial<TimesheetLog>, 'startTime' | 'endTime' | 'notes'>
+    changes: Pick<
+      Partial<TimesheetLog>,
+      'date' | 'jobId' | 'customProjectName' | 'startTime' | 'endTime'
+    >
   ) => void;
+  deleteLog: (logId: string) => void;
+  /** Creates a manual timecard from explicit start/end times. */
+  addLog: (entry: {
+    jobId?: string;
+    customProjectName?: string;
+    startTime: string;
+    endTime: string;
+  }) => TimesheetLog;
 }
 
 let nextLogId = 100;
@@ -67,6 +80,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     return log;
   },
 
+  updateShiftStart: (startTime) =>
+    set((state) =>
+      state.activeShift
+        ? { activeShift: { ...state.activeShift, startTime } }
+        : {}
+    ),
+
   updateLog: (logId, changes) =>
     set((state) => ({
       logs: state.logs.map((log) => {
@@ -78,4 +98,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     })),
+
+  deleteLog: (logId) =>
+    set((state) => ({ logs: state.logs.filter((log) => log.id !== logId) })),
+
+  addLog: (entry) => {
+    const state = get();
+    const totalHours = hoursBetween(entry.startTime, entry.endTime);
+    const log: TimesheetLog = {
+      id: `t-${nextLogId++}`,
+      date: format(new Date(entry.startTime), 'yyyy-MM-dd'),
+      jobId: entry.jobId,
+      customProjectName: entry.customProjectName,
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      totalHours,
+      earnedAmount: Math.round(totalHours * state.user.hourlyRate * 100) / 100,
+    };
+    set({ logs: [log, ...state.logs] });
+    return log;
+  },
 }));

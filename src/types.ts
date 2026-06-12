@@ -13,10 +13,16 @@ export interface Job {
   id: string;
   title: string;
   address: string;
-  /** ISO datetime string */
-  startTime: string;
-  /** ISO datetime string */
-  endTime: string;
+  /** Scheduled calendar day (yyyy-MM-dd). Always set. */
+  date: string;
+  /**
+   * Optional time window the worker is expected on site. Most jobs won't have
+   * one assigned — the office side can set it when a window matters.
+   * ISO datetime string.
+   */
+  startTime?: string;
+  /** ISO datetime string. Set together with startTime. */
+  endTime?: string;
   status: JobStatus;
   priorityOrder: number;
   details: {
@@ -38,7 +44,6 @@ export interface TimesheetLog {
   endTime: string;
   totalHours: number;
   earnedAmount: number;
-  notes?: string;
 }
 
 export interface ActiveShift {

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Ox WorkerHub
 
 Mobile-first operational hub for tradespeople and field workers: view the day's schedule, clock in and out of jobs, and manage timesheets.
@@ -33,3 +34,7 @@ src/
 ```
 
 All data is mock/local for now — the store in `src/store/useAppStore.ts` is the single integration point for a future backend.
+=======
+# Ox-WorkerHub
+Ox WorkerHub
+>>>>>>> 1f02c4d5af23dff5fe2a342740b4eceac76b73c5

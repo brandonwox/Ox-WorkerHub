@@ -10,6 +10,18 @@ export function formatTimeWindow(startIso: string, endIso: string): string {
   return `${formatTime(startIso)} – ${formatTime(endIso)}`;
 }
 
+/**
+ * Time window label for a job, which may not have one assigned. Returns null
+ * when no window is set so callers can render their own "not set" treatment.
+ */
+export function formatJobWindow(
+  startIso?: string,
+  endIso?: string
+): string | null {
+  if (!startIso || !endIso) return null;
+  return formatTimeWindow(startIso, endIso);
+}
+
 /** "Mon, Jun 8" style label from a yyyy-MM-dd date string. */
 export function formatLogDate(dateStr: string): string {
   return format(parse(dateStr, 'yyyy-MM-dd', new Date()), 'EEE, MMM d');

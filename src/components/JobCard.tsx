@@ -1,19 +1,25 @@
 import { Feather } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
-import { formatTimeWindow } from '@/utils/time';
+import { formatJobWindow } from '@/utils/time';
+import { usePulse } from '@/utils/usePulse';
 
 interface Props {
   job: Job;
   onPress: () => void;
   /** Shows a highlight border indicating the card can be tapped to clock in. */
   selectable?: boolean;
+  /** The worker is currently clocked in on this job — pulses the border. */
+  active?: boolean;
 }
 
-export function JobCard({ job, onPress, selectable }: Props) {
+export function JobCard({ job, onPress, selectable, active }: Props) {
+  const pulse = usePulse(active);
+  const timeWindow = formatJobWindow(job.startTime, job.endTime);
+
   return (
     <Pressable
       onPress={onPress}
@@ -23,6 +29,20 @@ export function JobCard({ job, onPress, selectable }: Props) {
         pressed && styles.pressed,
       ]}
     >
+      {active && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.activeBorder,
+            {
+              borderColor: pulse.interpolate({
+                inputRange: [0, 1],
+                outputRange: [colors.primary, 'rgba(62, 150, 244, 0.3)'],
+              }),
+            },
+          ]}
+        />
+      )}
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={1}>
           {job.title}
@@ -37,9 +57,13 @@ export function JobCard({ job, onPress, selectable }: Props) {
       </View>
       <View style={styles.metaRow}>
         <Feather name="clock" size={14} color={colors.textSecondary} />
-        <Text style={styles.metaText}>
-          {formatTimeWindow(job.startTime, job.endTime)}
-        </Text>
+        {timeWindow ? (
+          <Text style={styles.metaText}>{timeWindow}</Text>
+        ) : (
+          <Text style={[styles.metaText, styles.metaMuted]}>
+            No time window
+          </Text>
+        )}
       </View>
     </Pressable>
   );
@@ -47,6 +71,7 @@ export function JobCard({ job, onPress, selectable }: Props) {
 
 const styles = StyleSheet.create({
   card: {
+    position: 'relative',
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
@@ -56,6 +81,15 @@ const styles = StyleSheet.create({
   },
   selectable: {
     borderColor: colors.primary,
+  },
+  activeBorder: {
+    position: 'absolute',
+    top: -1.5,
+    left: -1.5,
+    right: -1.5,
+    bottom: -1.5,
+    borderRadius: radii.lg + 1.5,
+    borderWidth: 2,
   },
   pressed: {
     backgroundColor: colors.surfaceLight,
@@ -82,5 +116,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 13,
+  },
+  metaMuted: {
+    color: colors.textTertiary,
+    fontStyle: 'italic',
   },
 });

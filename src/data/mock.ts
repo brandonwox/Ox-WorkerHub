@@ -20,12 +20,18 @@ function at(daysFromToday: number, hours: number, minutes = 0): string {
   }).toISOString();
 }
 
+/** yyyy-MM-dd for a day relative to today. */
+function day(daysFromToday: number): string {
+  return format(addDays(new Date(), daysFromToday), 'yyyy-MM-dd');
+}
+
 export const mockJobs: Job[] = [
   // Today
   {
     id: 'j-1',
     title: 'Storefront Glass Install',
     address: '1420 W Fulton Market, Chicago, IL',
+    date: day(0),
     startTime: at(0, 7),
     endTime: at(0, 11, 30),
     status: 'In Progress',
@@ -40,6 +46,7 @@ export const mockJobs: Job[] = [
     id: 'j-2',
     title: 'Curtain Wall Repair — Tower B',
     address: '233 S Wacker Dr, Chicago, IL',
+    date: day(0),
     startTime: at(0, 12, 30),
     endTime: at(0, 16),
     status: 'Upcoming',
@@ -54,8 +61,8 @@ export const mockJobs: Job[] = [
     id: 'j-3',
     title: 'Shower Door Measure',
     address: '88 Oakdale Ave, Evanston, IL',
-    startTime: at(0, 16, 30),
-    endTime: at(0, 17, 30),
+    date: day(0),
+    // No time window assigned — worker fits this in around their other jobs.
     status: 'Upcoming',
     priorityOrder: 3,
     details: {
@@ -69,6 +76,7 @@ export const mockJobs: Job[] = [
     id: 'j-4',
     title: 'Office Partition Glazing',
     address: '500 N Michigan Ave, Chicago, IL',
+    date: day(-1),
     startTime: at(-1, 8),
     endTime: at(-1, 15),
     status: 'Finished',
@@ -84,6 +92,7 @@ export const mockJobs: Job[] = [
     id: 'j-5',
     title: 'Lobby Mirror Wall Install',
     address: '740 N Rush St, Chicago, IL',
+    date: day(1),
     startTime: at(1, 7, 30),
     endTime: at(1, 13),
     status: 'Upcoming',
@@ -98,8 +107,8 @@ export const mockJobs: Job[] = [
     id: 'j-6',
     title: 'Window Reglaze — Unit 12F',
     address: '1255 S Prairie Ave, Chicago, IL',
-    startTime: at(1, 14),
-    endTime: at(1, 17),
+    date: day(1),
+    // No time window assigned.
     status: 'Upcoming',
     priorityOrder: 2,
     details: {
@@ -113,6 +122,7 @@ export const mockJobs: Job[] = [
     id: 'j-7',
     title: 'Storefront Punch List',
     address: '1420 W Fulton Market, Chicago, IL',
+    date: day(2),
     startTime: at(2, 8),
     endTime: at(2, 12),
     status: 'Upcoming',

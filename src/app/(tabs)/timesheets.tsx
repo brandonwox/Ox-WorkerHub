@@ -113,7 +113,11 @@ export default function TimesheetsScreen() {
         }
       />
 
-      <EditLogModal log={editingLog} onClose={() => setEditingLog(null)} />
+      <EditLogModal
+        log={editingLog}
+        projectName={editingLog ? projectNameFor(editingLog) : ''}
+        onClose={() => setEditingLog(null)}
+      />
     </SafeAreaView>
   );
 }

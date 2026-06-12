@@ -1,5 +1,5 @@
 import { format, isValid, parse } from 'date-fns';
-import { Check, Search, Trash2, X } from 'lucide-react-native';
+import { Check, Search, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -16,40 +16,38 @@ import {
 import { FormInput } from '@/components/FormInput';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { TimesheetLog } from '@/types';
-import { formatLogDate, formatTime, parseTimeInput } from '@/utils/time';
+import { formatLogDate, parseTimeInput } from '@/utils/time';
 
 interface Props {
-  log: TimesheetLog | null;
-  /** Current project title for the timecard, used to seed the project field. */
-  projectName: string;
+  visible: boolean;
   onClose: () => void;
 }
 
-export function EditLogModal({ log, projectName, onClose }: Props) {
+/**
+ * Bottom sheet for adding a timecard by hand: pick a project (by search, or
+ * type a custom name) and enter the date plus start and end times.
+ */
+export function AddTimecardSheet({ visible, onClose }: Props) {
   const jobs = useAppStore((s) => s.jobs);
-  const updateLog = useAppStore((s) => s.updateLog);
-  const deleteLog = useAppStore((s) => s.deleteLog);
+  const addLog = useAppStore((s) => s.addLog);
 
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [dateText, setDateText] = useState('');
+  const [startText, setStartText] = useState('');
+  const [endText, setEndText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (log) {
-      setQuery(projectName);
-      setSelectedJobId(log.jobId ?? null);
-      setStartDate(format(new Date(log.startTime), 'yyyy-MM-dd'));
-      setStartTime(formatTime(log.startTime));
-      setEndDate(format(new Date(log.endTime), 'yyyy-MM-dd'));
-      setEndTime(formatTime(log.endTime));
+    if (visible) {
+      setQuery('');
+      setSelectedJobId(null);
+      setDateText(format(new Date(), 'yyyy-MM-dd'));
+      setStartText('');
+      setEndText('');
       setError(null);
     }
-  }, [log, projectName]);
+  }, [visible]);
 
   const trimmed = query.trim();
   const matches =
@@ -63,29 +61,27 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
   };
 
   const save = () => {
-    if (!log) return;
     if (!trimmed) {
       setError('Choose a project or type a name.');
       return;
     }
-    const sDate = parse(startDate.trim(), 'yyyy-MM-dd', new Date());
-    const eDate = parse(endDate.trim(), 'yyyy-MM-dd', new Date());
-    if (!isValid(sDate) || !isValid(eDate)) {
-      setError('Enter dates as YYYY-MM-DD.');
+    const date = parse(dateText.trim(), 'yyyy-MM-dd', new Date());
+    if (!isValid(date)) {
+      setError('Enter the date as YYYY-MM-DD.');
       return;
     }
-    const start = parseTimeInput(startTime, format(sDate, 'yyyy-MM-dd'));
-    const end = parseTimeInput(endTime, format(eDate, 'yyyy-MM-dd'));
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const start = parseTimeInput(startText, dateStr);
+    const end = parseTimeInput(endText, dateStr);
     if (!start || !end) {
       setError('Enter times like "7:30 AM" or "15:45".');
       return;
     }
     if (end.getTime() <= start.getTime()) {
-      setError('End must be after start.');
+      setError('End time must be after start time.');
       return;
     }
-    updateLog(log.id, {
-      date: format(sDate, 'yyyy-MM-dd'),
+    addLog({
       jobId: selectedJobId ?? undefined,
       customProjectName: selectedJobId ? undefined : trimmed,
       startTime: start.toISOString(),
@@ -94,15 +90,9 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
     onClose();
   };
 
-  const remove = () => {
-    if (!log) return;
-    deleteLog(log.id);
-    onClose();
-  };
-
   return (
     <Modal
-      visible={log !== null}
+      visible={visible}
       transparent
       animationType="slide"
       onRequestClose={onClose}
@@ -114,22 +104,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
       >
         <View style={styles.sheet}>
           <View style={styles.handle} />
-
-          <View style={styles.header}>
-            <Text style={styles.title} numberOfLines={1}>
-              {trimmed || 'Timecard'}
-            </Text>
-            <Pressable
-              onPress={remove}
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                pressed && styles.deletePressed,
-              ]}
-            >
-              <Trash2 size={18} color={colors.danger} />
-            </Pressable>
-          </View>
+          <Text style={styles.title}>Add Timecard</Text>
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -151,7 +126,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
               />
               {selectedJobId ? (
                 <Check size={18} color={colors.success} />
-              ) : trimmed.length > 0 ? (
+              ) : trimmed ? (
                 <Pressable onPress={() => setQuery('')} hitSlop={8}>
                   <X size={16} color={colors.textTertiary} />
                 </Pressable>
@@ -186,42 +161,29 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
               </Text>
             )}
 
-            <View style={styles.timeRow}>
-              <View style={styles.timeField}>
-                <FormInput
-                  label="Start date"
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="YYYY-MM-DD"
-                  autoCapitalize="none"
-                />
-              </View>
-              <View style={styles.timeField}>
-                <FormInput
-                  label="Start time"
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  placeholder="7:00 AM"
-                  autoCapitalize="characters"
-                />
-              </View>
-            </View>
+            <FormInput
+              label="Date"
+              value={dateText}
+              onChangeText={setDateText}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+            />
 
             <View style={styles.timeRow}>
               <View style={styles.timeField}>
                 <FormInput
-                  label="End date"
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="YYYY-MM-DD"
-                  autoCapitalize="none"
+                  label="Start time"
+                  value={startText}
+                  onChangeText={setStartText}
+                  placeholder="7:00 AM"
+                  autoCapitalize="characters"
                 />
               </View>
               <View style={styles.timeField}>
                 <FormInput
                   label="End time"
-                  value={endTime}
-                  onChangeText={setEndTime}
+                  value={endText}
+                  onChangeText={setEndText}
                   placeholder="3:30 PM"
                   autoCapitalize="characters"
                 />
@@ -236,7 +198,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
             <Pressable style={styles.saveButton} onPress={save}>
-              <Text style={styles.saveText}>Save</Text>
+              <Text style={styles.saveText}>Add Timecard</Text>
             </Pressable>
           </View>
         </View>
@@ -275,27 +237,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.border,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
   title: {
-    flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 20,
-  },
-  deleteButton: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.dangerDim,
-  },
-  deletePressed: {
-    opacity: 0.7,
   },
   body: {
     flexGrow: 0,
@@ -387,7 +332,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   saveButton: {
-    flex: 1,
+    flex: 2,
     alignItems: 'center',
     paddingVertical: spacing.lg - 2,
     borderRadius: radii.pill,
