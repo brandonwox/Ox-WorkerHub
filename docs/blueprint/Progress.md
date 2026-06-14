@@ -18,8 +18,8 @@
 | 2 | Crews & Scheduling Data Model | ✅ Done |
 | 3 | Project Manager Dashboard | ✅ Done |
 | 4 | Scheduler Dashboard | ✅ Done |
-| 5 | Installer Crew Agenda | ⬜ Not started (next) |
-| 6 | Operator Gap-Closure & Financial Sync | ⬜ Not started |
+| 5 | Installer Crew Agenda | ✅ Done |
+| 6 | Operator Gap-Closure & Financial Sync | ⬜ Not started (next) |
 | 7 | Backend Persistence & Scheduled Sync | ⛔ Blocked (needs Supabase keys) |
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 reference
@@ -104,13 +104,22 @@ required click-to-assign baseline; baseline implemented, DnD not added.)
 
 ---
 
-## Step 5 — Installer Crew Agenda ⬜ (next)
+## Step 5 — Installer Crew Agenda ✅
 
-Crew-based daily agenda; show flashing/materials; shared field notes. Depends on
-Steps 1 + 2; swaps the installer agenda read over to the Step 2 selectors. See
-`Step-5-Installer-Crew-Agenda.md`.
+**Done**
+- `src/app/(installer)/index.tsx` — agenda now driven by **crew resolution**
+  (`jobcardsForInstallerOnDate`) instead of the temporary `assignedInstallerId`;
+  week-ribbon dots driven by a new `assignedDatesForInstaller` selector (Daily
+  Crew overrides Permanent per date). Clock-in/out and timesheets untouched.
+- `src/store/useAppStore.ts` — added `assignedDatesForInstaller` selector.
+- `src/components/JobCard.tsx` — compact priority pill + flashing hint line.
+- `src/app/job/[id].tsx` — new "Work details" card (priority badge, site-wide
+  flashing, materials, scope) + editable **Field notes** committed via
+  `updateJobcardNotes` on blur, captioned "Shared with every crew on this
+  jobcard." Status menu unchanged.
 
-**To do** — entire step.
+**To do** — none. (`assignedInstallerId` left in the type but no longer read by
+the agenda; safe to delete in a later cleanup.)
 
 ---
 

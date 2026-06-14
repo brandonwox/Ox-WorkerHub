@@ -2,11 +2,18 @@ import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { JobcardStatus } from '@/types';
+import { JobcardPriority, JobcardStatus } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 
 const STATUSES: JobcardStatus[] = ['Upcoming', 'In Progress', 'Finished'];
@@ -17,11 +24,19 @@ const statusColors: Record<JobcardStatus, { bg: string; fg: string }> = {
   Finished: { bg: colors.successDim, fg: colors.success },
 };
 
+const priorityColors: Record<JobcardPriority, { bg: string; fg: string }> = {
+  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
+  Medium: { bg: colors.primaryDim, fg: colors.primary },
+  High: { bg: colors.dangerDim, fg: colors.danger },
+};
+
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const job = useAppStore((s) => s.jobcards.find((j) => j.id === id));
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
+  const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [notes, setNotes] = useState(job?.fieldNotes ?? '');
 
   if (!job) {
     return (
@@ -32,6 +47,7 @@ export default function JobDetailsScreen() {
   }
 
   const palette = statusColors[job.status];
+  const pr = priorityColors[job.priority];
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -114,6 +130,33 @@ export default function JobDetailsScreen() {
       </View>
 
       <View style={styles.card}>
+        <View style={styles.infoRow}>
+          <View style={styles.infoIcon}>
+            <Feather name="flag" size={16} color={colors.textSecondary} />
+          </View>
+          <View style={styles.infoText}>
+            <Text style={styles.infoLabel}>Priority</Text>
+            <View style={[styles.priorityBadge, { backgroundColor: pr.bg }]}>
+              <Text style={[styles.priorityBadgeText, { color: pr.fg }]}>
+                {job.priority}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <InfoRow
+          icon="layers"
+          label="Flashing Material (site-wide)"
+          value={job.flashingMaterial ?? 'Not specified'}
+        />
+        {job.materials ? (
+          <InfoRow icon="package" label="Materials Needed" value={job.materials} />
+        ) : null}
+        {job.scopeOfWork ? (
+          <InfoRow icon="clipboard" label="Scope of Work" value={job.scopeOfWork} />
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
         <InfoRow
           icon="briefcase"
           label="General Contractor"
@@ -128,6 +171,29 @@ export default function JobDetailsScreen() {
           icon="phone"
           label="Manager Phone"
           value={job.details.managerPhone}
+        />
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.infoRow}>
+          <View style={styles.infoIcon}>
+            <Feather name="edit-3" size={16} color={colors.textSecondary} />
+          </View>
+          <View style={styles.infoText}>
+            <Text style={styles.infoLabel}>Field Notes</Text>
+            <Text style={styles.notesCaption}>
+              Shared with every crew on this jobcard.
+            </Text>
+          </View>
+        </View>
+        <TextInput
+          style={styles.notesInput}
+          value={notes}
+          onChangeText={setNotes}
+          onBlur={() => updateJobcardNotes(job.id, notes)}
+          placeholder="Add notes from the field…"
+          placeholderTextColor={colors.textTertiary}
+          multiline
         />
       </View>
 
@@ -282,6 +348,34 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 15,
+  },
+  priorityBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  priorityBadgeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  notesCaption: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  notesInput: {
+    minHeight: 84,
+    backgroundColor: colors.background,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    color: colors.textPrimary,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    textAlignVertical: 'top',
   },
   uploadButton: {
     flexDirection: 'row',

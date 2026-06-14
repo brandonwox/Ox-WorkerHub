@@ -632,6 +632,29 @@ export function jobcardsForInstallerOnDate(
   return state.jobcards.filter((card) => ids.includes(card.id));
 }
 
+/**
+ * All dates (yyyy-MM-dd) on which an installer's ACTIVE crew has an assignment —
+ * used to mark days on the week ribbon. Respects the Daily-overrides-Permanent
+ * rule per date: an assignment counts only if its crew is the installer's active
+ * crew for that assignment's own date.
+ */
+export function assignedDatesForInstaller(
+  state: {
+    crews: Crew[];
+    dailyCrews: DailyCrew[];
+    assignments: ScheduleAssignment[];
+  },
+  installerId: string
+): Set<string> {
+  const dates = new Set<string>();
+  for (const a of state.assignments) {
+    if (activeCrewIdFor(state, installerId, a.date) === a.crewId) {
+      dates.add(a.date);
+    }
+  }
+  return dates;
+}
+
 /** Hook: the worker for the active session. Re-renders on switch or edit. */
 export function useCurrentWorker(): Worker {
   return useAppStore((s) => currentWorkerOf(s));

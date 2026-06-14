@@ -3,9 +3,15 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Jobcard } from '@/types';
+import { Jobcard, JobcardPriority } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
+
+const PRIORITY_META: Record<JobcardPriority, { bg: string; fg: string }> = {
+  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
+  Medium: { bg: colors.primaryDim, fg: colors.primary },
+  High: { bg: colors.dangerDim, fg: colors.danger },
+};
 
 interface Props {
   jobcard: Jobcard;
@@ -19,6 +25,7 @@ interface Props {
 export function JobCard({ jobcard, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
+  const priority = PRIORITY_META[jobcard.priority];
 
   return (
     <Pressable
@@ -47,6 +54,11 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
         <Text style={styles.title} numberOfLines={1}>
           {jobcard.title}
         </Text>
+        <View style={[styles.priorityPill, { backgroundColor: priority.bg }]}>
+          <Text style={[styles.priorityText, { color: priority.fg }]}>
+            {jobcard.priority}
+          </Text>
+        </View>
         <StatusPill status={jobcard.status} />
       </View>
       <View style={styles.metaRow}>
@@ -61,6 +73,14 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
           <Text style={styles.metaText}>{timeWindow}</Text>
         </View>
       )}
+      {jobcard.flashingMaterial ? (
+        <View style={styles.metaRow}>
+          <Feather name="layers" size={14} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>
+            {jobcard.flashingMaterial}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -101,6 +121,15 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 16,
+  },
+  priorityPill: {
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  priorityText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
   },
   metaRow: {
     flexDirection: 'row',

@@ -11,7 +11,11 @@ import { ClockEntrySheet, ClockEntryMode } from '@/components/ClockEntrySheet';
 import { JobCard } from '@/components/JobCard';
 import { Toast } from '@/components/Toast';
 import { WeekRibbon } from '@/components/WeekRibbon';
-import { useAppStore } from '@/store/useAppStore';
+import {
+  assignedDatesForInstaller,
+  jobcardsForInstallerOnDate,
+  useAppStore,
+} from '@/store/useAppStore';
 import { colors, fonts, spacing } from '@/theme';
 import { Jobcard, TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
@@ -19,6 +23,9 @@ import { formatHours } from '@/utils/time';
 export default function CalendarScreen() {
   const router = useRouter();
   const allJobcards = useAppStore((s) => s.jobcards);
+  const crews = useAppStore((s) => s.crews);
+  const dailyCrews = useAppStore((s) => s.dailyCrews);
+  const assignments = useAppStore((s) => s.assignments);
   const currentUserId = useAppStore((s) => s.currentUserId);
   const clockIn = useAppStore((s) => s.clockIn);
   const updateShiftProject = useAppStore((s) => s.updateShiftProject);
@@ -30,24 +37,25 @@ export default function CalendarScreen() {
   const [addTimecardOpen, setAddTimecardOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // An installer only sees jobcards assigned to them. (Crew-based assignment
-  // will replace this per-installer field later.)
-  const jobcards = useMemo(
-    () => allJobcards.filter((j) => j.assignedInstallerId === currentUserId),
-    [allJobcards, currentUserId]
-  );
-
+  // The agenda is driven by crew assignments (Step 2 resolution): on any date, a
+  // Daily Crew the installer is in that day overrides their Permanent Crew.
   const markedDates = useMemo(
-    () => new Set(jobcards.map((j) => j.date)),
-    [jobcards]
+    () =>
+      assignedDatesForInstaller(
+        { crews, dailyCrews, assignments },
+        currentUserId
+      ),
+    [crews, dailyCrews, assignments, currentUserId]
   );
 
   const dayJobcards = useMemo(
     () =>
-      jobcards
-        .filter((j) => j.date === format(selectedDate, 'yyyy-MM-dd'))
-        .sort((a, b) => a.priorityOrder - b.priorityOrder),
-    [jobcards, selectedDate]
+      jobcardsForInstallerOnDate(
+        { crews, dailyCrews, assignments, jobcards: allJobcards },
+        currentUserId,
+        format(selectedDate, 'yyyy-MM-dd')
+      ).sort((a, b) => a.priorityOrder - b.priorityOrder),
+    [crews, dailyCrews, assignments, allJobcards, currentUserId, selectedDate]
   );
 
   const handleJobcardPress = (jobcard: Jobcard) => {
