@@ -4,9 +4,13 @@ This file is used by the developer of Ox WorkerHub. It should not be edited by a
 
 # Awaiting
 
+Installer -> Settings tab: underneath the installers name is the word "Glazier". There should be a few types of installers: "Window Installer", "Storefront Installer", "ShowerGlassDoor Installer", "Remodel Installer". These installer types should also be set by the operator role for each installer. (these types do not affect anything, they are a title.)
+
 Project Manager: add new "Jobs" tab.
 
 Project Manager -> Jobs tab: create a jobs view to show all the jobs. the project manager should be able to click inside each job to review and edit the job details. (Project manager does not see the QBT info)
+
+Project Manager -> Jobcards tab: there should be a simple dashboard of all their jobcards. Each jobcard should be clickable so the project manager can view and edit the jobcard details. there should be a create jobcard button so the project manager can create new jobcards. Each jobcard should have a schedule status (e.g. "On the Schedule", "completed", "cancelled").
 
 operator role -> people tab: 
 - fix ui ux (attached screenshot)

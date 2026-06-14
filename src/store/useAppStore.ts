@@ -18,6 +18,7 @@ import {
   defaultJobcodeMap,
   defaultQbtConfig,
 } from '@/integrations/quickbooksTime/config';
+import { fetchAllData } from '@/integrations/supabase/data';
 import {
   ActiveShift,
   AppRole,
@@ -127,6 +128,12 @@ interface AppState {
   setAuthWorker: (worker: Worker | null) => void;
   /** Edit the current (effective) worker's own profile. */
   updateUser: (changes: Partial<Worker>) => void;
+
+  // --- Backend hydration (Supabase store swap, Step 7d) ---
+  /** Replace every collection with live Supabase data (on real sign-in). */
+  loadBackendData: () => Promise<void>;
+  /** Restore the in-memory mock data (on sign-out / dev mode). */
+  resetToMockData: () => void;
 
   // --- Worker management (Operator) ---
   /** Add a worker to the roster. Returns the created record. */
@@ -247,6 +254,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   setViewAs: (userId) => set({ viewAsUserId: userId }),
 
   setAuthWorker: (worker) => set({ authWorker: worker }),
+
+  loadBackendData: async () => {
+    const data = await fetchAllData();
+    set({
+      workers: data.workers,
+      jobs: data.jobs,
+      jobcards: data.jobcards,
+      crews: data.crews,
+      dailyCrews: data.dailyCrews,
+      assignments: data.assignments,
+      logs: data.logs,
+    });
+  },
+
+  resetToMockData: () =>
+    set({
+      workers: mockWorkers,
+      jobs: mockJobs,
+      jobcards: mockJobcards,
+      crews: mockCrews,
+      dailyCrews: mockDailyCrews,
+      assignments: mockAssignments,
+      logs: mockLogs,
+    }),
 
   updateUser: (changes) =>
     set((state) => {

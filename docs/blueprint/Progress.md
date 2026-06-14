@@ -213,9 +213,20 @@ runs all live deploy commands (`supabase db push`, `functions deploy`,
 - **Awaiting user:** `supabase functions deploy invite-worker` (and confirm Auth
   email/redirect settings). Only callable once signed in as a real operator.
 
+**7d — Store swap (split into reads → writes):**
+- **7d-1 reads / hydration ✅ (done):** `integrations/supabase/data.ts` maps every
+  snake_case row → domain type and `fetchAllData()` loads all collections in
+  parallel (crew/daily-crew members joined). Store gained `loadBackendData()` +
+  `resetToMockData()`. `session.ts` now hydrates from Supabase on real sign-in and
+  reverts to mock on sign-out. **Signed-in users see real DB data; dev mode (the
+  Developer) stays on mock.** Writes still update local state only (not persisted)
+  except worker invites (7c persists via the function). The same mappers will be
+  reused in reverse for writes.
+- **7d-2 write-through (not started):** route each mutating action to Supabase
+  (insert/update/delete) so changes persist; keep action signatures stable
+  (sync return + fire-and-forget async write, client-generated UUIDs).
+
 **To do — later stages (not started):**
-- **7d** — Store swap: back each Zustand slice with Supabase (reads then writes),
-  keeping action signatures stable. **Biggest/riskiest stage.**
 - **7e** — `push-timesheets-to-qbt` Edge Function on pg_cron (Mon 07:30) +
   `QBT_ACCESS_TOKEN` / service-role secrets; client `markTimesheetsSent` becomes
   the reflection of the sweep.
