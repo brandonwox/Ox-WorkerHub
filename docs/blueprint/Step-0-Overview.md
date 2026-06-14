@@ -35,7 +35,7 @@ self-contained work order: read it, implement it, confirm it type-checks, move o
 | **Jobcard** | A task/ticket on a Job. Inherits flashing from its parent Job. | Project Manager | `jobcards[]` |
 | **Worker** | A person, defined by `role`. Installers have an `hourlyRate`. | Operator | `workers[]` |
 | **Crew** | The scheduling container. **Installers only.** Permanent + dated Daily overrides. | Scheduler | `crews[]` / `dailyCrews[]` *(new)* |
-| **Timesheet** (`TimesheetLog`) | Hours logged by an installer. **Auto-approved** on creation and **auto-synced** to QBT by the weekly sweep; the payroll manager reviews/approves them **inside QuickBooks Time**, not in this app. | Installer | `logs[]` |
+| **Timesheet** (`TimesheetLog`) | Hours logged by an installer. **No in-app approval or status** — auto-sent to QBT by the weekly sweep, which stamps each one **"Sent to QBT"** or **"Failed to send"**; the payroll manager reviews/approves them **inside QuickBooks Time**. | Installer | `logs[]` |
 
 **Job ≠ Jobcard.** A *Job* is the site. A *Jobcard* is one piece of work to do on
 that site. Work is assigned to **Crews**, never to individual installers.
@@ -50,12 +50,13 @@ Scheduler assigns it to a **Crew** on a **date** → Installer on that crew sees
 that day and does the work.
 
 **Financial lifecycle:**
-Installer clocks in/out → generates a **Timesheet** (auto-approved) linked
+Installer clocks in/out → generates a **Timesheet** (no status yet) linked
 (through its Jobcard) to the parent **Job** → the weekly server-side sweep
-auto-bundles the hours + the Job's `qbtJobcodeId` and pushes them to QuickBooks
-Time → the **payroll manager reviews and approves them inside QuickBooks Time**
-(not in this app). There is **no in-app approval step**; the Operator gets a
-read-only view of logged hours and their sync state.
+auto-bundles the hours + the Job's `qbtJobcodeId`, pushes them to QuickBooks Time,
+and stamps each timesheet **"Sent to QBT"** (or **"Failed to send"**) → the
+**payroll manager reviews and approves them inside QuickBooks Time** (not in this
+app). There is **no in-app approval step**; the Operator gets a read-only view of
+hours and their send result.
 
 ---
 
@@ -74,7 +75,7 @@ read-only view of logged hours and their sync state.
 | See own crew's daily agenda | — | — | — | ✅ |
 | Clock in/out, submit hours | — | — | — | ✅ |
 | Edit Jobcard field notes / status | — | — | — | ✅ |
-| View **Timesheets** (read-only — auto-approved, no in-app approval) | ✅ | — | — | — |
+| View **Timesheets** (read-only — no in-app approval; shows QBT send result) | ✅ | — | — | — |
 
 Every desktop screen must gate on role and render `<AccessDenied />` for the
 wrong role — same pattern already used in `jobs.tsx`, `people.tsx`, `review.tsx`.
@@ -96,8 +97,8 @@ wrong role — same pattern already used in `jobs.tsx`, `people.tsx`, `review.ts
   Add-worker invite (`(desktop)/people.tsx`); Timesheet screen
   (`(desktop)/review.tsx`) — *currently* a `pending → approved → synced` review
   pipeline with a manual "Send to QuickBooks". **Step 6 simplifies this to a
-  read-only visibility screen** now that timesheets are auto-approved and
-  auto-pushed (approval happens in QuickBooks Time).
+  read-only screen** with no in-app approval — each timesheet just shows its QBT
+  send result ("Sent to QBT" / "Failed to send"); approval happens in QBT.
 - **Installer role (complete):** mobile calendar/agenda (`(installer)/index.tsx`),
   jobcard detail (`src/app/job/[id].tsx`), clock in/out + timecards, timesheets.
 - **QuickBooks Time integration:** built in `src/integrations/quickbooksTime/`;

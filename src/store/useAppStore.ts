@@ -30,9 +30,9 @@ import {
   QbtConnection,
   QbtJobcode,
   QbtSyncRecord,
-  ReviewStatus,
   ScheduleAssignment,
   TimesheetLog,
+  TimesheetSendStatus,
   Worker,
 } from '@/types';
 import { hoursBetween } from '@/utils/time';
@@ -177,11 +177,13 @@ interface AppState {
     endTime: string;
   }) => TimesheetLog;
 
-  // --- Timesheet review pipeline (Operator) ---
-  /** Move a single timesheet through pending → approved → synced. */
-  setLogReviewStatus: (logId: string, status: ReviewStatus) => void;
-  /** Flag all currently-approved timesheets as synced to QuickBooks Time. */
-  sendApprovedToQbt: () => void;
+  // --- Timesheets → QuickBooks Time (Operator visibility) ---
+  /**
+   * Reflect a successful weekly sweep by flagging every un-sent/failed timesheet
+   * as 'sent'. There is no in-app approval — approval happens inside QBT. Called
+   * by the server-side sweep (Step 7); no user-facing button.
+   */
+  markTimesheetsSent: () => void;
 
   // --- QuickBooks Time ---
   setQbtConfig: (changes: Partial<QbtConfig>) => void;
@@ -425,7 +427,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         Math.round(
           totalHours * rateForWorker(state.workers, state.currentUserId) * 100
         ) / 100,
-      reviewStatus: 'pending',
+      sendStatus: 'unsent',
     };
     set({ activeShift: null, logs: [log, ...state.logs] });
     return log;
@@ -480,8 +482,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                 rateForWorker(state.workers, updated.workerId) *
                 100
             ) / 100;
-          // An edit invalidates any prior approval — back to the review queue.
-          updated.reviewStatus = 'pending';
+          // An edit invalidates any prior delivery — re-send on the next sweep.
+          updated.sendStatus = 'unsent';
           return updated;
         }),
       };
@@ -513,25 +515,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         Math.round(
           totalHours * rateForWorker(state.workers, state.currentUserId) * 100
         ) / 100,
-      reviewStatus: 'pending',
+      sendStatus: 'unsent',
     };
     set({ logs: [log, ...state.logs] });
     return log;
   },
 
-  setLogReviewStatus: (logId, status) =>
+  markTimesheetsSent: () =>
     set((state) => ({
+      // The weekly server sweep delivered these to QuickBooks Time. (A real
+      // per-log failure path sets 'failed'; that happens server-side in Step 7.)
       logs: state.logs.map((log) =>
-        log.id === logId ? { ...log, reviewStatus: status } : log
-      ),
-    })),
-
-  sendApprovedToQbt: () =>
-    set((state) => ({
-      // UI hook for now: flag approved hours as synced. The actual QBT payload
-      // is sent by the weekly server-side push once the backend is wired.
-      logs: state.logs.map((log) =>
-        log.reviewStatus === 'approved' ? { ...log, reviewStatus: 'synced' } : log
+        log.sendStatus === 'sent' ? log : { ...log, sendStatus: 'sent' }
       ),
     })),
 

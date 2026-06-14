@@ -5,9 +5,9 @@ import {
   DailyCrew,
   Job,
   Jobcard,
-  ReviewStatus,
   ScheduleAssignment,
   TimesheetLog,
+  TimesheetSendStatus,
   Worker,
 } from '@/types';
 
@@ -347,7 +347,7 @@ function makeLog(
   endHour: number,
   endMinutes: number,
   ref: { jobcardId?: string; customProjectName?: string },
-  reviewStatus: ReviewStatus = 'synced'
+  sendStatus: TimesheetSendStatus = 'sent'
 ): TimesheetLog {
   const day = subDays(new Date(), daysAgo);
   const start = set(day, { hours: startHour, minutes: 0, seconds: 0, milliseconds: 0 });
@@ -362,7 +362,7 @@ function makeLog(
     endTime: end.toISOString(),
     totalHours,
     earnedAmount: Math.round(totalHours * rateOf(workerId) * 100) / 100,
-    reviewStatus,
+    sendStatus,
   };
 }
 
@@ -370,14 +370,15 @@ const M = PRIMARY_INSTALLER_ID; // Marcus Lee
 const S = 'w-i2'; // Sofia Ramirez — gives the Operator review a second installer
 
 export const mockLogs: TimesheetLog[] = [
-  // Marcus — current week (pending review) + history (already synced)
-  makeLog('t-1', M, 0, 7, 11, 30, { jobcardId: 'j-1' }, 'pending'),
-  makeLog('t-2', M, 1, 8, 12, 0, { jobcardId: 'j-4' }, 'pending'),
-  makeLog('t-3', M, 1, 12, 15, 0, { jobcardId: 'j-4' }, 'approved'),
+  // Marcus — current week (not yet swept) + history (already sent to QBT)
+  makeLog('t-1', M, 0, 7, 11, 30, { jobcardId: 'j-1' }, 'unsent'),
+  makeLog('t-2', M, 1, 8, 12, 0, { jobcardId: 'j-4' }, 'unsent'),
+  makeLog('t-3', M, 1, 12, 15, 0, { jobcardId: 'j-4' }, 'unsent'),
   // Sofia — current week, so the Operator sees more than one installer
-  makeLog('t-s1', S, 0, 8, 16, 0, { customProjectName: 'Lobby Glazing — North Loop' }, 'pending'),
-  makeLog('t-s2', S, 1, 7, 15, 30, { customProjectName: 'Lobby Glazing — North Loop' }, 'approved'),
-  makeLog('t-4', M, 2, 7, 15, 30, { customProjectName: 'Shop Fabrication' }),
+  makeLog('t-s1', S, 0, 8, 16, 0, { customProjectName: 'Lobby Glazing — North Loop' }, 'unsent'),
+  makeLog('t-s2', S, 1, 7, 15, 30, { customProjectName: 'Lobby Glazing — North Loop' }, 'unsent'),
+  // One older log failed to send — exercises the "Failed to send to QBT" badge.
+  makeLog('t-4', M, 2, 7, 15, 30, { customProjectName: 'Shop Fabrication' }, 'failed'),
   makeLog('t-5', M, 3, 8, 16, 0, { customProjectName: 'Warehouse Inventory' }),
   makeLog('t-6', M, 6, 7, 14, 30, { customProjectName: 'Glass Tempering Run' }),
   makeLog('t-7', M, 8, 8, 16, 30, { customProjectName: 'Retail Buildout — Oak Park' }),

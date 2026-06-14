@@ -6,13 +6,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { EditLogModal } from '@/components/EditLogModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
-import { Toast } from '@/components/Toast';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { ReviewStatus, TimesheetLog } from '@/types';
+import { TimesheetLog, TimesheetSendStatus } from '@/types';
 import { formatHours, formatMoney, formatTime } from '@/utils/time';
 
-const FILTERS = ['Pending', 'Approved', 'Synced', 'All'] as const;
+const FILTERS = ['All', 'Unsent', 'Sent', 'Failed'] as const;
 type Filter = (typeof FILTERS)[number];
 
 interface WorkerGroup {
@@ -22,10 +21,17 @@ interface WorkerGroup {
   totalHours: number;
 }
 
-const STATUS_META: Record<ReviewStatus, { label: string; bg: string; fg: string }> = {
-  pending: { label: 'Pending', bg: colors.warningDim, fg: colors.warning },
-  approved: { label: 'Approved', bg: colors.primaryDim, fg: colors.primary },
-  synced: { label: 'Synced', bg: colors.successDim, fg: colors.success },
+/** Badge per delivery result. 'unsent' shows no badge (nothing has happened yet). */
+const SEND_META: Record<
+  Exclude<TimesheetSendStatus, 'unsent'>,
+  { label: string; icon: keyof typeof Feather.glyphMap; color: string }
+> = {
+  sent: { label: 'Sent to QBT', icon: 'check-circle', color: colors.success },
+  failed: {
+    label: 'Failed to send to QBT',
+    icon: 'alert-triangle',
+    color: colors.danger,
+  },
 };
 
 export default function ReviewScreen() {
@@ -33,12 +39,9 @@ export default function ReviewScreen() {
   const logs = useAppStore((s) => s.logs);
   const jobcards = useAppStore((s) => s.jobcards);
   const workers = useAppStore((s) => s.workers);
-  const setLogReviewStatus = useAppStore((s) => s.setLogReviewStatus);
-  const sendApprovedToQbt = useAppStore((s) => s.sendApprovedToQbt);
 
-  const [filter, setFilter] = useState<Filter>('Pending');
+  const [filter, setFilter] = useState<Filter>('All');
   const [editingLog, setEditingLog] = useState<TimesheetLog | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
   const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -49,24 +52,29 @@ export default function ReviewScreen() {
       ? jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard'
       : log.customProjectName ?? 'Custom Project';
 
-  // Current-week logs (the review window), with status tallies for the header.
-  const weekLogs = useMemo(
-    () => logs.filter((l) => l.date >= weekStart && l.date <= weekEnd),
+  // Show this week's hours, plus anything not yet delivered (unsent/failed) from
+  // earlier so delivery problems stay visible until they clear.
+  const visibleLogs = useMemo(
+    () =>
+      logs.filter(
+        (l) =>
+          (l.date >= weekStart && l.date <= weekEnd) || l.sendStatus !== 'sent'
+      ),
     [logs, weekStart, weekEnd]
   );
 
   const counts = useMemo(
     () => ({
-      pending: weekLogs.filter((l) => l.reviewStatus === 'pending').length,
-      approved: weekLogs.filter((l) => l.reviewStatus === 'approved').length,
-      synced: weekLogs.filter((l) => l.reviewStatus === 'synced').length,
+      unsent: visibleLogs.filter((l) => l.sendStatus === 'unsent').length,
+      sent: visibleLogs.filter((l) => l.sendStatus === 'sent').length,
+      failed: visibleLogs.filter((l) => l.sendStatus === 'failed').length,
     }),
-    [weekLogs]
+    [visibleLogs]
   );
 
   const groups = useMemo<WorkerGroup[]>(() => {
-    const visible = weekLogs
-      .filter((l) => filter === 'All' || l.reviewStatus === filter.toLowerCase())
+    const visible = visibleLogs
+      .filter((l) => filter === 'All' || l.sendStatus === filter.toLowerCase())
       .sort(
         (a, b) =>
           new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
@@ -85,15 +93,9 @@ export default function ReviewScreen() {
         totalHours: list.reduce((sum, l) => sum + l.totalHours, 0),
       }))
       .sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [weekLogs, workers, filter]);
+  }, [visibleLogs, workers, filter]);
 
   if (role !== 'operator') return <AccessDenied />;
-
-  const sendToQbt = () => {
-    if (counts.approved === 0) return;
-    sendApprovedToQbt();
-    setToast(`${counts.approved} approved timesheet(s) queued for QuickBooks Time`);
-  };
 
   return (
     <View style={styles.screen}>
@@ -101,11 +103,12 @@ export default function ReviewScreen() {
         <View style={styles.banner}>
           <Feather name="upload-cloud" size={18} color={colors.primary} />
           <Text style={styles.bannerText}>
-            Approved hours sweep to QuickBooks Time automatically{' '}
+            Hours sync to QuickBooks Time automatically{' '}
             <Text style={styles.bannerStrong}>
               next on {format(nextPush, 'EEEE, MMM d')} at 7:30 AM
             </Text>
-            . Review and approve below before then.
+            . Your payroll manager reviews and approves them in QuickBooks Time —
+            there&apos;s nothing to approve here.
           </Text>
         </View>
 
@@ -113,26 +116,12 @@ export default function ReviewScreen() {
           <View style={styles.filterWrap}>
             <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
           </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.sendButton,
-              counts.approved === 0 && styles.sendButtonDisabled,
-              pressed && counts.approved > 0 && styles.pressed,
-            ]}
-            onPress={sendToQbt}
-            disabled={counts.approved === 0}
-          >
-            <Feather name="send" size={15} color={colors.textPrimary} />
-            <Text style={styles.sendText}>
-              Send to QuickBooks{counts.approved > 0 ? ` (${counts.approved})` : ''}
-            </Text>
-          </Pressable>
         </View>
 
         <View style={styles.tallies}>
-          <Tally label="Pending" value={counts.pending} color={colors.warning} />
-          <Tally label="Approved" value={counts.approved} color={colors.primary} />
-          <Tally label="Synced" value={counts.synced} color={colors.success} />
+          <Tally label="Unsent" value={counts.unsent} color={colors.textSecondary} />
+          <Tally label="Sent" value={counts.sent} color={colors.success} />
+          <Tally label="Failed" value={counts.failed} color={colors.danger} />
         </View>
 
         {groups.length === 0 ? (
@@ -140,9 +129,7 @@ export default function ReviewScreen() {
             <Feather name="inbox" size={28} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>Nothing {filter.toLowerCase()}</Text>
             <Text style={styles.emptySubtitle}>
-              {filter === 'Pending'
-                ? "You're all caught up on this week's review."
-                : 'No timesheets match this filter for the current week.'}
+              No timesheets match this filter.
             </Text>
           </View>
         ) : (
@@ -160,7 +147,6 @@ export default function ReviewScreen() {
                     key={log.id}
                     log={log}
                     projectName={projectNameFor(log)}
-                    onApprove={() => setLogReviewStatus(log.id, 'approved')}
                     onEdit={() => setEditingLog(log)}
                   />
                 ))}
@@ -169,8 +155,6 @@ export default function ReviewScreen() {
           ))
         )}
       </ScrollView>
-
-      <Toast message={toast} onDone={() => setToast(null)} />
 
       <EditLogModal
         log={editingLog}
@@ -201,16 +185,13 @@ function Tally({
 function ReviewRow({
   log,
   projectName,
-  onApprove,
   onEdit,
 }: {
   log: TimesheetLog;
   projectName: string;
-  onApprove: () => void;
   onEdit: () => void;
 }) {
-  const meta = STATUS_META[log.reviewStatus];
-  const locked = log.reviewStatus === 'synced';
+  const meta = log.sendStatus === 'unsent' ? null : SEND_META[log.sendStatus];
 
   return (
     <View style={styles.row}>
@@ -227,30 +208,24 @@ function ReviewRow({
       <Text style={styles.rowHours}>{formatHours(log.totalHours)}</Text>
       <Text style={styles.rowEarned}>{formatMoney(log.earnedAmount)}</Text>
 
-      <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-        <Text style={[styles.statusText, { color: meta.fg }]}>{meta.label}</Text>
+      <View style={styles.statusArea}>
+        {meta && (
+          <>
+            <Feather name={meta.icon} size={14} color={meta.color} />
+            <Text style={[styles.statusText, { color: meta.color }]} numberOfLines={1}>
+              {meta.label}
+            </Text>
+          </>
+        )}
       </View>
 
-      <View style={styles.rowActions}>
-        {log.reviewStatus === 'pending' && (
-          <Pressable
-            style={({ pressed }) => [styles.approveBtn, pressed && styles.pressed]}
-            onPress={onApprove}
-          >
-            <Feather name="check" size={14} color={colors.success} />
-            <Text style={styles.approveText}>Approve</Text>
-          </Pressable>
-        )}
-        {!locked && (
-          <Pressable
-            onPress={onEdit}
-            hitSlop={8}
-            style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
-          >
-            <Feather name="edit-2" size={15} color={colors.primary} />
-          </Pressable>
-        )}
-      </View>
+      <Pressable
+        onPress={onEdit}
+        hitSlop={8}
+        style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
+      >
+        <Feather name="edit-2" size={15} color={colors.primary} />
+      </Pressable>
     </View>
   );
 }
@@ -292,28 +267,7 @@ const styles = StyleSheet.create({
   },
   filterWrap: {
     flex: 1,
-    maxWidth: 360,
-  },
-  sendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-  },
-  sendButtonDisabled: {
-    backgroundColor: colors.surfaceLight,
-    opacity: 0.6,
-  },
-  sendText: {
-    color: colors.textPrimary,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-  },
-  pressed: {
-    opacity: 0.85,
+    maxWidth: 420,
   },
   tallies: {
     flexDirection: 'row',
@@ -401,41 +355,24 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
   },
-  statusPill: {
-    width: 86,
+  statusArea: {
+    width: 180,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radii.pill,
-    paddingVertical: 4,
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
   },
   statusText: {
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
-  rowActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    width: 140,
-    justifyContent: 'flex-end',
-  },
-  approveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.successDim,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-  },
-  approveText: {
-    color: colors.success,
-    fontFamily: fonts.semiBold,
-    fontSize: 13,
-  },
   editBtn: {
     padding: spacing.xs + 1,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceLight,
+  },
+  pressed: {
+    opacity: 0.85,
   },
   empty: {
     alignItems: 'center',

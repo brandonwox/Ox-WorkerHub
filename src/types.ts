@@ -144,8 +144,15 @@ export interface ScheduleAssignment {
   date: string;
 }
 
-/** Where a timesheet sits in the Operator's review → export pipeline. */
-export type ReviewStatus = 'pending' | 'approved' | 'synced';
+/**
+ * QBT delivery state of a timesheet. Timesheets are auto-approved (there is no
+ * in-app approval), so the only status worth surfacing is whether the weekly
+ * sweep has delivered the hours to QuickBooks Time.
+ *  - 'unsent': logged, not yet pushed (no badge shown).
+ *  - 'sent':   delivered to QuickBooks Time.
+ *  - 'failed': the last push attempt failed.
+ */
+export type TimesheetSendStatus = 'unsent' | 'sent' | 'failed';
 
 export interface TimesheetLog {
   id: string;
@@ -161,8 +168,8 @@ export interface TimesheetLog {
   endTime: string;
   totalHours: number;
   earnedAmount: number;
-  /** Operator review state. Defaults to 'pending' when a log is created. */
-  reviewStatus: ReviewStatus;
+  /** QBT delivery state. 'unsent' when first logged; the weekly sweep sets the rest. */
+  sendStatus: TimesheetSendStatus;
 }
 
 export interface ActiveShift {

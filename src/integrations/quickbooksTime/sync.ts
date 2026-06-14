@@ -18,9 +18,28 @@ function errorMessage(e: unknown): string {
   return 'Unexpected error talking to QuickBooks Time.';
 }
 
-/** Resolve the QBT jobcode a log should book to (specific mapping, else default). */
+/**
+ * Resolve the QBT jobcode a log should book to. Precedence per the blueprint
+ * financial lifecycle:
+ *   1. log → jobcard → parent Job's `qbtJobcodeId` (the intended path),
+ *   2. else the explicit `qbt.jobcodeMap` entry for this project key,
+ *   3. else `qbt.defaultJobcodeId`.
+ * Custom-named logs (no jobcard) skip step 1 and use the map/default.
+ */
 export function resolveJobcodeId(log: TimesheetLog): number | undefined {
-  const { qbt } = store();
+  const { qbt, jobcards, jobs } = store();
+
+  // 1. Climb to the parent Job and use its mapped jobcode if set.
+  if (log.jobcardId) {
+    const card = jobcards.find((j) => j.id === log.jobcardId);
+    const job = card?.jobId ? jobs.find((j) => j.id === card.jobId) : undefined;
+    if (job?.qbtJobcodeId) {
+      const id = Number(job.qbtJobcodeId);
+      if (Number.isFinite(id)) return id;
+    }
+  }
+
+  // 2. Explicit per-project mapping. 3. Default fallback.
   const key = jobcodeKeyFor(log);
   if (key && qbt.jobcodeMap[key] !== undefined) return qbt.jobcodeMap[key];
   return qbt.defaultJobcodeId;

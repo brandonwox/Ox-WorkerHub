@@ -19,7 +19,7 @@
 | 3 | Project Manager Dashboard | ✅ Done |
 | 4 | Scheduler Dashboard | ✅ Done |
 | 5 | Installer Crew Agenda | ✅ Done |
-| 6 | Operator Gap-Closure & Financial Sync | ⬜ Not started (next) |
+| 6 | Operator Gap-Closure & Financial Sync | ✅ Done |
 | 7 | Backend Persistence & Scheduled Sync | ⛔ Blocked (needs Supabase keys) |
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 reference
@@ -123,16 +123,28 @@ the agenda; safe to delete in a later cleanup.)
 
 ---
 
-## Step 6 — Operator Gap-Closure & Financial Sync ⬜
+## Step 6 — Operator Gap-Closure & Financial Sync ✅
 
-Depends on Step 1. Three changes (see `Step-6-Operator-And-Financial-Sync.md`):
-1. Expose Job `flashingMaterial` to the Operator (create + table).
-2. `resolveJobcodeId` — climb log → jobcard → parent Job's `qbtJobcodeId`.
-3. **Auto-approve timesheets / read-only Operator screen** (see Decisions below):
-   create logs as `'approved'`, collapse `ReviewStatus` to `'approved' | 'synced'`,
-   drop `setLogReviewStatus`, remove Approve/"Send to QuickBooks" controls.
+**Done**
+- **Change 1 — Job flashing for the Operator:** `CreateJobModal` gained a
+  "Flashing material (site-wide)" field (+ `NewJobInput.flashingMaterial`);
+  `(desktop)/jobs.tsx` gained an inline-editable **Flashing** column
+  (commit-on-blur → `updateJob`).
+- **Change 2 — jobcode resolution:** `resolveJobcodeId` (in
+  `integrations/quickbooksTime/sync.ts`) now climbs **log → jobcard → parent
+  Job's `qbtJobcodeId`** first, then the explicit map, then the default;
+  custom-named logs still resolve. `submitLog` already uses it.
+- **Change 3 — send-result status (no approval):** replaced `ReviewStatus` with
+  `TimesheetSendStatus` (`'unsent' | 'sent' | 'failed'`); renamed the log field
+  `reviewStatus → sendStatus`; `clockOut`/`addLog` create `'unsent'`; `updateLog`
+  re-arms to `'unsent'`; dropped `setLogReviewStatus`; `sendApprovedToQbt →
+  markTimesheetsSent`. `(desktop)/review.tsx` is now **read-only**: no
+  approve/Send buttons; badges only **"Sent to QBT"** / **"Failed to send to
+  QBT"** (unsent = no badge); filters/tallies are All/Unsent/Sent/Failed; editing
+  times still allowed. Seeds: current week `'unsent'`, history `'sent'`, one
+  `'failed'` for preview.
 
-**To do** — entire step.
+**To do** — none.
 
 ---
 
@@ -148,8 +160,11 @@ Function. See `Step-7-Backend-Persistence-And-Scheduled-Sync.md`.
 
 ## Decisions & deviations from the original blueprint
 
-- **2026-06-14 — Timesheets are auto-approved; no in-app approval.** The Operator
-  no longer reviews/approves timesheets. They are auto-approved on creation and
-  auto-pushed by the weekly server sweep; the **payroll manager approves them
-  inside QuickBooks Time**. The Operator's timesheet screen becomes **read-only
-  visibility**. Reflected in Steps 0, 6, 7. (Implementation lands in Step 6.)
+- **2026-06-14 — No in-app approval or status; show only the QBT send result.**
+  The Operator no longer reviews/approves timesheets. A fresh log has **no
+  status**; the weekly server sweep pushes it and stamps **"Sent to QBT"** or
+  **"Failed to send to QBT"**. The **payroll manager approves inside QuickBooks
+  Time**. Step 6 replaces `ReviewStatus` with `TimesheetSendStatus`
+  (`'unsent' | 'sent' | 'failed'`), renames `reviewStatus → sendStatus`, drops
+  `setLogReviewStatus`, and replaces `sendApprovedToQbt → markTimesheetsSent`. The
+  Operator timesheet screen becomes **read-only**. Reflected in Steps 0, 6, 7.

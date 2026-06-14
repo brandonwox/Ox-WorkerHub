@@ -64,6 +64,9 @@ export default function JobsScreen() {
             <Text style={[styles.cell, styles.colCode, styles.headText]}>
               QBT Jobcode
             </Text>
+            <Text style={[styles.cell, styles.colFlashing, styles.headText]}>
+              Flashing
+            </Text>
             <Text style={[styles.cell, styles.colStatus, styles.headText]}>
               Status
             </Text>
@@ -85,6 +88,14 @@ export default function JobsScreen() {
                 <JobcodeCell
                   job={job}
                   onCommit={(qbtJobcodeId) => updateJob(job.id, { qbtJobcodeId })}
+                />
+              </View>
+              <View style={[styles.cell, styles.colFlashing]}>
+                <FlashingCell
+                  job={job}
+                  onCommit={(flashingMaterial) =>
+                    updateJob(job.id, { flashingMaterial })
+                  }
                 />
               </View>
               <View style={[styles.cell, styles.colStatus]}>
@@ -139,6 +150,36 @@ function JobcodeCell({
         placeholder="unmapped"
         placeholderTextColor={colors.warning}
         autoCapitalize="none"
+      />
+    </View>
+  );
+}
+
+/** Inline editable site-wide flashing material; commits on blur. */
+function FlashingCell({
+  job,
+  onCommit,
+}: {
+  job: Job;
+  onCommit: (value: string | undefined) => void;
+}) {
+  const [text, setText] = useState(job.flashingMaterial ?? '');
+
+  const commit = () => {
+    const trimmed = text.trim();
+    onCommit(trimmed || undefined);
+  };
+
+  return (
+    <View style={styles.codeWrap}>
+      <TextInput
+        style={styles.flashInput}
+        value={text}
+        onChangeText={setText}
+        onBlur={commit}
+        onEndEditing={commit}
+        placeholder="not set"
+        placeholderTextColor={colors.textTertiary}
       />
     </View>
   );
@@ -213,16 +254,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   colName: {
-    flex: 3,
+    flex: 2.4,
   },
   colLocation: {
-    flex: 3,
+    flex: 2.6,
   },
   colCode: {
-    flex: 2,
+    flex: 1.6,
+  },
+  colFlashing: {
+    flex: 2.4,
   },
   colStatus: {
-    flex: 1.6,
+    flex: 1.5,
   },
   name: {
     color: colors.textPrimary,
@@ -247,6 +291,13 @@ const styles = StyleSheet.create({
   },
   codeInput: {
     minWidth: 90,
+    paddingVertical: spacing.sm,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  flashInput: {
+    minWidth: 120,
     paddingVertical: spacing.sm,
     color: colors.textPrimary,
     fontFamily: fonts.medium,

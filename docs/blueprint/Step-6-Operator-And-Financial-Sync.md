@@ -88,47 +88,65 @@ straight to `jobcodeKeyFor` → map. Keep `jobcodeKeyFor` for the custom-name pa
 > **Note on timing:** per project memory, per-clock-out auto-push was removed; the
 > real push is a **weekly server-side sweep (Mondays 07:30)** that will live in a
 > Supabase Edge Function (Step 7). There is **no manual "Send to QBT"** anymore
-> (see Change 3) — the sweep auto-pushes every un-synced (auto-approved)
-> timesheet. This step makes the **jobcode that payload will use** correct; the
+> (see Change 3) — the sweep auto-pushes every `'unsent'` timesheet and stamps the
+> result. This step makes the **jobcode that payload will use** correct; the
 > actual network push stays idle until Step 7 moves it server-side.
 
 ---
 
-## Change 3 — Auto-approve timesheets; make the Operator screen read-only
+## Change 3 — Drop the approval/status pipeline; show only the QBT send result
 
-Approval moves entirely to QuickBooks Time. The payroll manager reviews and
-approves incoming timesheets **inside QBT**. In this app, a logged timesheet is
-**approved the moment it's created** and waits only to be pushed by the weekly
-sweep. The Operator no longer approves anything — they just *see* the hours.
+A fresh timesheet has **no status**. Timesheets are implicitly auto-approved, so a
+logged timesheet carries **no badge** until the weekly sweep delivers it to
+QuickBooks Time. The only status worth showing is the **send outcome** —
+**"Sent to QBT"** or **"Failed to send to QBT"**. Approval itself happens inside
+QuickBooks Time (payroll manager), never in this app.
 
-**Store / types (`src/store/useAppStore.ts`, `src/types.ts`):**
+**Types (`src/types.ts`):**
 
-- A timesheet is created **already approved**. In `clockOut` and `addLog`, set
-  `reviewStatus: 'approved'` (was `'pending'`).
-- Editing a log (`updateLog`) must **not** drop it back to `'pending'`; keep it
-  `'approved'` (an edit just re-arms the QBT sync — the existing `qbt.sync`
-  flip-to-`unsynced` already handles re-push).
-- Collapse `ReviewStatus` to **`'approved' | 'synced'`** (drop `'pending'`).
-  `'approved'` = logged, not yet pushed. `'synced'` = the weekly sweep has pushed
-  it to QBT. (Per-log QBT-side state — submitted/approved-in-QBT — already lives
-  in `qbt.sync`, untouched.)
-- **Remove `setLogReviewStatus`** (the manual approve action) — nothing should
-  set `'pending'` anymore. Keep `sendApprovedToQbt`, but it is no longer wired to
-  a button; it is the function the weekly sweep (Step 7) calls to flip
-  `approved → synced`. (Optionally rename it to reflect "the sweep ran", but a
-  rename is not required.)
+- Replace `ReviewStatus` with a send-status type:
+  ```ts
+  /** QBT delivery state of a timesheet. Timesheets are auto-approved (no in-app
+   *  approval), so the only status worth surfacing is whether the weekly sweep
+   *  delivered the hours.
+   *   - 'unsent': logged, not yet pushed (no badge shown).
+   *   - 'sent':   delivered to QuickBooks Time.
+   *   - 'failed': the last push attempt failed. */
+  export type TimesheetSendStatus = 'unsent' | 'sent' | 'failed';
+  ```
+- Rename the field on `TimesheetLog`: `reviewStatus: ReviewStatus` →
+  `sendStatus: TimesheetSendStatus`.
 
-**Screen (`src/app/(desktop)/review.tsx`):**
+**Store (`src/store/useAppStore.ts`):**
+
+- `clockOut` / `addLog`: create with `sendStatus: 'unsent'` (was
+  `reviewStatus: 'pending'`).
+- `updateLog`: an edit makes any prior delivery stale → set `sendStatus: 'unsent'`
+  so the next sweep re-sends (keep the existing `qbt.sync` flip-to-`unsynced`).
+- **Remove `setLogReviewStatus`** (no approval action exists anymore).
+- Replace `sendApprovedToQbt` with `markTimesheetsSent()` — flips every
+  `'unsent' | 'failed'` log to `'sent'`. It is **not** wired to a button; it is the
+  reflection the weekly sweep (Step 7) calls after a successful push. (The real
+  per-log failure path that sets `'failed'` is server-side in Step 7.)
+- Per-log QBT push detail (timesheet id, error text) still lives in the existing
+  `qbt.sync` record — untouched; `sendStatus` is the operator-facing summary.
+
+**Seeds (`src/data/mock.ts`):**
+
+- `makeLog` default `sendStatus: 'sent'` (history is delivered). Current-week logs
+  → `'unsent'`; seed **one** `'failed'` so that badge is previewable.
+
+**Screen (`src/app/(desktop)/review.tsx`) — read-only:**
 
 - Remove the **"Send to QuickBooks"** button and the per-row **Approve** button.
-- Remove the `Pending` filter/tally; the remaining states are `Approved` and
-  `Synced` (plus `All`).
-- Reword the banner to make clear the push is automatic and **approval happens in
-  QuickBooks Time** (e.g. *"Hours sync to QuickBooks Time automatically — next on
-  {date}. Your payroll manager reviews and approves them in QuickBooks Time."*).
-- Keep the read-only grouping by worker, hours, and earned totals. **Editing
-  times stays allowed** (the Operator can correct an obvious error before the
-  sweep); it is not an approval action.
+- Badge per row by `sendStatus`: `'sent'` → green **"Sent to QBT"**, `'failed'` →
+  red **"Failed to send to QBT"**, `'unsent'` → **no badge** (nothing shown).
+- Filters/tallies become `All / Unsent / Sent / Failed` (drop Pending/Approved).
+- Reword the banner: the push is automatic and **approval happens in QuickBooks
+  Time** (e.g. *"Hours sync to QuickBooks Time automatically — next on {date}.
+  Your payroll manager reviews and approves them in QuickBooks Time."*).
+- Keep grouping by worker + hours/earned totals. **Editing times stays allowed**
+  (re-arms the row to `'unsent'`); it is not an approval action.
 
 ## Constraints
 
@@ -136,8 +154,9 @@ sweep. The Operator no longer approves anything — they just *see* the hours.
 - `hourlyRate` must remain **installer-only and hidden** from other roles
   (already true — don't regress it).
 - Don't push hours per clock-out; keep the weekly-sweep model.
-- **No in-app approval.** Nothing in the app sets `'pending'` or asks the Operator
-  to approve; approval is QuickBooks Time's job.
+- **No in-app approval or status.** Nothing in the app approves a timesheet; a
+  fresh log shows no badge. Status appears only after the sweep, as the send
+  result. Approval is QuickBooks Time's job.
 - Operator may edit `qbtJobcodeId`; PM may not (keep that field off the PM screen).
 
 ## Files touched
@@ -146,11 +165,13 @@ sweep. The Operator no longer approves anything — they just *see* the hours.
 - `src/app/(desktop)/jobs.tsx` — inline flashing cell (or read-only display).
 - `src/integrations/quickbooksTime/sync.ts` and/or `src/store/useAppStore.ts` —
   `resolveJobcodeId` (log → jobcard → Job → jobcode) + wiring.
-- `src/types.ts` — `ReviewStatus` collapses to `'approved' | 'synced'`.
-- `src/store/useAppStore.ts` — auto-approve in `clockOut`/`addLog`; drop
-  `setLogReviewStatus`; `updateLog` keeps `'approved'`.
-- `src/app/(desktop)/review.tsx` — remove approve/Send controls → read-only.
-- `src/data/mock.ts` — seed logs use only `'approved' | 'synced'` (no `'pending'`).
+- `src/types.ts` — `ReviewStatus` → `TimesheetSendStatus`
+  (`'unsent' | 'sent' | 'failed'`); `TimesheetLog.sendStatus`.
+- `src/store/useAppStore.ts` — `sendStatus: 'unsent'` in `clockOut`/`addLog`; drop
+  `setLogReviewStatus`; `sendApprovedToQbt` → `markTimesheetsSent`.
+- `src/app/(desktop)/review.tsx` — remove approve/Send controls → read-only; badge
+  by send result.
+- `src/data/mock.ts` — seed logs use `sendStatus` (mix of unsent/sent + one failed).
 
 ## Definition of Done
 
@@ -158,7 +179,8 @@ sweep. The Operator no longer approves anything — they just *see* the hours.
 - [ ] `resolveJobcodeId` climbs log → jobcard → parent Job's `qbtJobcodeId`, with
       map and default fallbacks; custom-named logs still resolve.
 - [ ] The QBT push path uses the resolver.
-- [ ] Timesheets are created `'approved'`; `ReviewStatus` has no `'pending'`; no
-      in-app approve/Send controls remain. The screen is read-only visibility.
+- [ ] Timesheets are created `'unsent'`; `TimesheetSendStatus` replaces
+      `ReviewStatus`; no in-app approve/Send controls remain. The screen is
+      read-only and badges only the send result (Sent / Failed; unsent = no badge).
 - [ ] `hourlyRate` still hidden from non-installers.
 - [ ] `npx tsc --noEmit` clean; no new lint errors.

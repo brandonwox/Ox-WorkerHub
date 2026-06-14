@@ -11,6 +11,7 @@ export interface NewJobInput {
   name: string;
   location: string;
   qbtJobcodeId?: string;
+  flashingMaterial?: string;
   status: JobStatus;
 }
 
@@ -29,6 +30,7 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
+  const [flashingMaterial, setFlashingMaterial] = useState('');
   const [status, setStatus] = useState<JobStatus>('Active');
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +38,7 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
     setName('');
     setLocation('');
     setQbtJobcodeId('');
+    setFlashingMaterial('');
     setStatus('Active');
     setError(null);
   };
@@ -58,6 +61,7 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
       name: name.trim(),
       location: location.trim(),
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
+      flashingMaterial: flashingMaterial.trim() || undefined,
       status,
     });
     close();
@@ -94,6 +98,12 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
             onChangeText={setQbtJobcodeId}
             placeholder="e.g. 90112 — maps hours to QBT"
             autoCapitalize="none"
+          />
+          <FormInput
+            label="Flashing material (site-wide)"
+            value={flashingMaterial}
+            onChangeText={setFlashingMaterial}
+            placeholder="e.g. Clear Anodized Aluminum — optional"
           />
 
           <View style={styles.field}>

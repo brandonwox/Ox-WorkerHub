@@ -49,7 +49,7 @@ to QuickBooks Time. Wiring was parked at the user's request pending keys.
 | crew membership | `crew_members` | crew_id, installer_id | Scheduler write; **CHECK/trigger: installer_id must reference a worker with role='installer'.** |
 | `dailyCrews[]` | `daily_crews` (+ `daily_crew_members`) | id, date, name (+ members) | Scheduler write. Installers only. |
 | `assignments[]` | `schedule_assignments` | id, jobcard_id, crew_id, date | Scheduler write; unique `(jobcard_id, crew_id, date)`. |
-| `logs[]` | `timesheets` | id, worker_id, date, jobcard_id, custom_project_name, start_time, end_time, total_hours, earned_amount, review_status (`'approved' \| 'synced'`) | Installer inserts own (rows are **auto-approved** — no in-app approval gate); operator reads all + may correct times; installer reads own. The weekly sweep flips `approved → synced`. |
+| `logs[]` | `timesheets` | id, worker_id, date, jobcard_id, custom_project_name, start_time, end_time, total_hours, earned_amount, send_status (`'unsent' \| 'sent' \| 'failed'`) | Installer inserts own (**no in-app approval gate** — rows start `'unsent'`); operator reads all + may correct times; installer reads own. The weekly sweep stamps each row `'sent'` or `'failed'`; approval happens in QBT. |
 
 Enforce the **installer-only crew** rule in the DB (trigger or FK to a filtered
 view), mirroring the store-level filter from Step 2 — defense in depth.
@@ -70,14 +70,13 @@ view), mirroring the store-level filter from Step 2 — defense in depth.
    action signatures from Steps 1–2 so the UI is untouched). Replace `mock.ts`
    seeds with real reads; keep mock as a dev fallback if convenient.
 5. **Scheduled QBT push:** an Edge Function on **pg_cron, Mondays 07:30**, that
-   bundles every un-synced (`review_status='approved'`) timesheet — timesheets are
-   auto-approved on creation, so the sweep sends them all — resolves each jobcode
-   via the parent Job's `qbt_jobcode_id` (the same precedence as Step 6's
-   `resolveJobcodeId`), POSTs to QBT with the `QBT_ACCESS_TOKEN` secret, and flips
-   `approved → synced`. **The payroll manager then reviews and approves the pushed
-   hours inside QuickBooks Time** — there is no approval step in this app. The
-   client `sendApprovedToQbt()` becomes a reflection of what the server did, not a
-   user-triggered pusher.
+   bundles every `send_status='unsent'` timesheet, resolves each jobcode via the
+   parent Job's `qbt_jobcode_id` (the same precedence as Step 6's
+   `resolveJobcodeId`), POSTs to QBT with the `QBT_ACCESS_TOKEN` secret, and stamps
+   each row `'sent'` on success or `'failed'` on error. **The payroll manager then
+   reviews and approves the pushed hours inside QuickBooks Time** — there is no
+   approval step in this app. The client `markTimesheetsSent()` is the in-app
+   reflection of a successful sweep, not a user-triggered pusher.
 
 ---
 
@@ -92,6 +91,6 @@ view), mirroring the store-level filter from Step 2 — defense in depth.
 - [ ] Tables + RLS + role helper migrated; installer-only crew enforced in DB.
 - [ ] Auth/invite flow works end to end.
 - [ ] Store slices read/write Supabase; UI unchanged.
-- [ ] Weekly Edge Function pushes all un-synced (auto-approved) hours under the
-      parent Job's jobcode; no in-app approval gate.
+- [ ] Weekly Edge Function pushes all `'unsent'` hours under the parent Job's
+      jobcode and stamps `'sent'`/`'failed'`; no in-app approval gate.
 - [ ] `service_role` and `QBT_ACCESS_TOKEN` exist only as server secrets.
