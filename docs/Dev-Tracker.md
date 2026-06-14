@@ -1,5 +1,5 @@
-
-
+# Dev Tracker
+This file is used by the developer of Ox WorkerHub. It should not be edited by any agents.
 
 
 # Awaiting

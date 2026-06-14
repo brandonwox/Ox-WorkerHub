@@ -20,7 +20,7 @@
 | 4 | Scheduler Dashboard | ✅ Done |
 | 5 | Installer Crew Agenda | ✅ Done |
 | 6 | Operator Gap-Closure & Financial Sync | ✅ Done |
-| 7 | Backend Persistence & Scheduled Sync | ⛔ Blocked (needs Supabase keys) |
+| 7 | Backend Persistence & Scheduled Sync | 🟡 In progress (7a foundation done) |
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 reference
 
@@ -148,13 +148,50 @@ the agenda; safe to delete in a later cleanup.)
 
 ---
 
-## Step 7 — Backend Persistence & Scheduled Sync ⛔ Blocked
+## Step 7 — Backend Persistence & Scheduled Sync 🟡 In progress
 
-Deferred until the user supplies a Supabase **Project URL + anon key** and
-unblocks the backend. Maps the in-memory store onto Supabase + a weekly QBT Edge
-Function. See `Step-7-Backend-Persistence-And-Scheduled-Sync.md`.
+Unblocked 2026-06-14 (keys supplied; project `ovelhjqoeofjqzvsxoar` linked).
+Being delivered in **stages** so the app keeps working between them. The user
+runs all live deploy commands (`supabase db push`, `functions deploy`,
+`secrets set`); the agent authors the files.
 
-**To do** — entire step (blocked).
+**7a — Foundation ✅ (done)**
+- `app.json → expo.extra.supabase` filled with the project URL + anon key.
+- Deps installed: `@supabase/supabase-js`, `@react-native-async-storage/async-storage`,
+  `react-native-url-polyfill` (Expo-56 compatible).
+- `supabase init` (config.toml) + migration
+  `supabase/migrations/20260614201808_initial_schema.sql`: all tables (`workers`,
+  `jobs`, `jobcards`, `crews`+`crew_members`, `daily_crews`+`daily_crew_members`,
+  `schedule_assignments`, `timesheets`), `app_role` enum, a `private`
+  `current_app_role()` SECURITY-DEFINER helper, installer-only crew triggers,
+  PM-flashing-only / installer-status-notes-only / operator-role-rate guards,
+  explicit GRANTs (new tables aren't auto-exposed since 2026-04-28), and RLS on
+  every table.
+- Client library: `src/integrations/supabase/{config,client,auth,index}.ts`
+  (supabase-js + AsyncStorage session, role/session helpers). **Not yet wired into
+  the running app** — the app still runs on the in-memory store.
+
+**⏳ Awaiting the user (live, run yourself):**
+1. `supabase db push --linked` (apply the migration; enter DB password if asked).
+2. `supabase db advisors --linked --type security` (fix anything flagged).
+3. Create the first operator: Dashboard → Authentication → Add user
+   (`brandonw@ox-glass.com`, auto-confirm), then in the SQL editor:
+   `insert into public.workers (id, name, email, role, status) values
+   ('<that-user-uuid>', 'Brandon Wallace', 'brandonw@ox-glass.com', 'operator',
+   'active');`
+
+**To do — later stages (not started):**
+- **7b** — Auth UI + wire session → active worker/role (replaces DevRoleSwitcher).
+- **7c** — `invite-worker` Edge Function + wire Operator "Add worker".
+- **7d** — Store swap: back each Zustand slice with Supabase (reads then writes),
+  keeping action signatures stable. **Biggest/riskiest stage.**
+- **7e** — `push-timesheets-to-qbt` Edge Function on pg_cron (Mon 07:30) +
+  `QBT_ACCESS_TOKEN` / service-role secrets; client `markTimesheetsSent` becomes
+  the reflection of the sweep.
+
+**Open refinement:** `workers.hourly_rate` is column-readable by all authenticated
+(UI hides it); move pay behind a view / column privilege for true column secrecy
+during 7d.
 
 ---
 

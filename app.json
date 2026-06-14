@@ -50,8 +50,8 @@
         "jobcodeMap": {}
       },
       "supabase": {
-        "url": "",
-        "anonKey": ""
+        "url": "https://ovelhjqoeofjqzvsxoar.supabase.co",
+        "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92ZWxoanFvZW9manF6dnN4b2FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NDE4MDEsImV4cCI6MjA5NzAxNzgwMX0.j786pKYgvYVjJW-NuevD5VlmjLE7i9TeFXoDu0TwMcc"
       }
     }
   }
