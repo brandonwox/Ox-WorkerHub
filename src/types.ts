@@ -1,5 +1,14 @@
-/** Which interface and permissions a person gets in the app. */
-export type AppRole = 'installer' | 'scheduler' | 'operator' | 'project_manager';
+/**
+ * Which interface and permissions a person gets in the app. `developer` is a
+ * special role: it has no UI of its own, but it is the ONLY role allowed to use
+ * the "View as" dev switcher to impersonate the other roles.
+ */
+export type AppRole =
+  | 'installer'
+  | 'scheduler'
+  | 'operator'
+  | 'project_manager'
+  | 'developer';
 
 /** Account lifecycle. `invited` until the person accepts their email invite. */
 export type WorkerStatus = 'invited' | 'active';

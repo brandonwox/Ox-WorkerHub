@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { useSupabaseSession } from '@/integrations/supabase/session';
 import { colors, fonts } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -38,8 +39,9 @@ export default function RootLayout() {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
 
-  // TODO(supabase): bootstrap the auth session here and drive the active
-  // worker/role from it once the backend is wired.
+  // Drive the active worker/role from the Supabase session (falls back to the
+  // Developer dev base when not signed in).
+  useSupabaseSession();
 
   if (!fontsLoaded) return null;
 
@@ -49,6 +51,20 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(installer)" />
         <Stack.Screen name="(desktop)" />
+        <Stack.Screen
+          name="sign-in"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            headerTitle: 'Sign in',
+            headerTitleStyle: {
+              fontFamily: fonts.bold,
+              color: colors.textPrimary,
+            },
+            headerStyle: { backgroundColor: colors.surface },
+            headerTintColor: colors.primary,
+          }}
+        />
         <Stack.Screen
           name="job/[id]"
           options={{

@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EditLogModal } from '@/components/EditLogModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { TimesheetCard } from '@/components/TimesheetCard';
-import { useAppStore } from '@/store/useAppStore';
+import { currentWorkerOf, useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { TimesheetLog } from '@/types';
 import { formatHours, formatMoney } from '@/utils/time';
@@ -33,7 +33,7 @@ function timeframeRange(timeframe: Timeframe): { from: string; to: string } {
 export default function TimesheetsScreen() {
   const logs = useAppStore((s) => s.logs);
   const jobcards = useAppStore((s) => s.jobcards);
-  const currentUserId = useAppStore((s) => s.currentUserId);
+  const currentUserId = useAppStore((s) => currentWorkerOf(s).id);
   const [timeframe, setTimeframe] = useState<Timeframe>('This Week');
   const [editingLog, setEditingLog] = useState<TimesheetLog | null>(null);
 

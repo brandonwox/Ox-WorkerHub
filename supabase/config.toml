@@ -385,6 +385,12 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# invite-worker is called from the browser (web build). With verify_jwt the
+# platform 401s the CORS preflight; we disable it here and verify the caller's
+# JWT + Operator role inside the function instead.
+[functions.invite-worker]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

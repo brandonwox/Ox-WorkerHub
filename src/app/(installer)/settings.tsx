@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AuthControl } from '@/components/AuthControl';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { FormInput } from '@/components/FormInput';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
@@ -136,6 +137,7 @@ export default function SettingsScreen() {
           </View>
 
           <DevRoleSwitcher variant="card" />
+          <AuthControl variant="card" />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

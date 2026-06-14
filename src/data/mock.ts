@@ -14,12 +14,25 @@ import {
 /** The installer who owns the seeded jobs/logs (the default native session). */
 export const PRIMARY_INSTALLER_ID = 'w-i1';
 
+/** The Developer — the only identity allowed to use the "View as" switcher. */
+export const DEVELOPER_ID = 'w-dev';
+
 /**
  * Seed roster covering all three roles so every interface is previewable via
  * the dev "View as" switcher. Replaced by the Supabase `workers` table once
  * the backend is wired.
  */
 export const mockWorkers: Worker[] = [
+  {
+    id: DEVELOPER_ID,
+    name: 'Developer',
+    email: 'dev@ox-glass.com',
+    phone: '',
+    role: 'developer',
+    tradeRole: 'Developer',
+    hourlyRate: 0,
+    status: 'active',
+  },
   {
     id: 'w-op',
     name: 'Brandon Wallace',

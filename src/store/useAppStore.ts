@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import {
+  DEVELOPER_ID,
   mockAssignments,
   mockCrews,
   mockDailyCrews,
@@ -53,10 +54,11 @@ function onlyInstallerIds(workers: Worker[], ids: string[]): string[] {
 }
 
 /**
- * Default session until real auth lands: desktop roles (Scheduler/Operator) are
- * used on web, so open web to the Operator; native is the Installer app.
+ * Which real role the Developer views as by default: web opens to a desktop role
+ * (Operator), native to the Installer app. (The base identity is the Developer;
+ * this is just the initial impersonation target.)
  */
-const defaultCurrentUserId = Platform.OS === 'web' ? 'w-op' : PRIMARY_INSTALLER_ID;
+const defaultViewAsId = Platform.OS === 'web' ? 'w-op' : PRIMARY_INSTALLER_ID;
 
 /**
  * Mapping key for a timecard's project: jobcards map by id, custom projects by
@@ -90,8 +92,21 @@ interface QbtState {
 interface AppState {
   /** Full roster across all roles (seeded now, Supabase-backed later). */
   workers: Worker[];
-  /** Who is "logged in" — drives which interface renders. */
-  currentUserId: string;
+  /**
+   * Dev-mode base identity (a mock worker id) — the Developer. Used only when
+   * not signed in via Supabase (`authWorker` is null).
+   */
+  devBaseUserId: string;
+  /**
+   * The real signed-in worker, resolved from the Supabase session. When set it
+   * IS the base identity, overriding `devBaseUserId`.
+   */
+  authWorker: Worker | null;
+  /**
+   * Developer-only "View as" impersonation target (a mock worker id). Ignored
+   * unless the base identity's role is `developer`.
+   */
+  viewAsUserId: string | null;
   /** Jobsites/projects (Operator-owned, mapped to QBT). */
   jobs: Job[];
   /** Field work items (children of jobs). Formerly `jobs`. */
@@ -106,9 +121,11 @@ interface AppState {
   activeShift: ActiveShift | null;
   qbt: QbtState;
 
-  /** Switch the active session (dev "View as" switcher; later: real auth). */
-  setCurrentUser: (id: string) => void;
-  /** Edit the current worker's own profile. */
+  /** Developer-only "View as": impersonate a role for the UI (or null for none). */
+  setViewAs: (userId: string | null) => void;
+  /** Set/clear the real signed-in worker (Supabase auth bootstrap). */
+  setAuthWorker: (worker: Worker | null) => void;
+  /** Edit the current (effective) worker's own profile. */
   updateUser: (changes: Partial<Worker>) => void;
 
   // --- Worker management (Operator) ---
@@ -208,7 +225,9 @@ let nextAssignmentId = 100;
 
 export const useAppStore = create<AppState>((set, get) => ({
   workers: mockWorkers,
-  currentUserId: defaultCurrentUserId,
+  devBaseUserId: DEVELOPER_ID,
+  authWorker: null,
+  viewAsUserId: defaultViewAsId,
   jobs: mockJobs,
   jobcards: mockJobcards,
   crews: mockCrews,
@@ -225,14 +244,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     sync: {},
   },
 
-  setCurrentUser: (id) => set({ currentUserId: id }),
+  setViewAs: (userId) => set({ viewAsUserId: userId }),
+
+  setAuthWorker: (worker) => set({ authWorker: worker }),
 
   updateUser: (changes) =>
-    set((state) => ({
-      workers: state.workers.map((w) =>
-        w.id === state.currentUserId ? { ...w, ...changes } : w
-      ),
-    })),
+    set((state) => {
+      const me = currentWorkerOf(state);
+      // Edit the effective identity: the real signed-in worker if that's who's
+      // active, otherwise the matching mock roster row.
+      if (state.authWorker && me.id === state.authWorker.id) {
+        return { authWorker: { ...state.authWorker, ...changes } };
+      }
+      return {
+        workers: state.workers.map((w) =>
+          w.id === me.id ? { ...w, ...changes } : w
+        ),
+      };
+    }),
 
   addWorker: (worker) => {
     const created: Worker = {
@@ -409,6 +438,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clockOut: () => {
     const state = get();
     if (!state.activeShift) return null;
+    const me = currentWorkerOf(state);
     const end = new Date();
     const totalHours = hoursBetween(
       state.activeShift.startTime,
@@ -416,17 +446,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     const log: TimesheetLog = {
       id: `t-${nextLogId++}`,
-      workerId: state.currentUserId,
+      workerId: me.id,
       date: format(new Date(state.activeShift.startTime), 'yyyy-MM-dd'),
       jobcardId: state.activeShift.jobcardId,
       customProjectName: state.activeShift.customProjectName,
       startTime: state.activeShift.startTime,
       endTime: end.toISOString(),
       totalHours,
-      earnedAmount:
-        Math.round(
-          totalHours * rateForWorker(state.workers, state.currentUserId) * 100
-        ) / 100,
+      earnedAmount: Math.round(totalHours * me.hourlyRate * 100) / 100,
       sendStatus: 'unsent',
     };
     set({ activeShift: null, logs: [log, ...state.logs] });
@@ -501,20 +528,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addLog: (entry) => {
     const state = get();
+    const me = currentWorkerOf(state);
     const totalHours = hoursBetween(entry.startTime, entry.endTime);
     const log: TimesheetLog = {
       id: `t-${nextLogId++}`,
-      workerId: state.currentUserId,
+      workerId: me.id,
       date: format(new Date(entry.startTime), 'yyyy-MM-dd'),
       jobcardId: entry.jobcardId,
       customProjectName: entry.customProjectName,
       startTime: entry.startTime,
       endTime: entry.endTime,
       totalHours,
-      earnedAmount:
-        Math.round(
-          totalHours * rateForWorker(state.workers, state.currentUserId) * 100
-        ) / 100,
+      earnedAmount: Math.round(totalHours * me.hourlyRate * 100) / 100,
       sendStatus: 'unsent',
     };
     set({ logs: [log, ...state.logs] });
@@ -563,14 +588,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 }));
 
-/** Resolve the active session's worker record (falls back to the first worker). */
-export function currentWorkerOf(state: {
+/** The identity-resolving slice of state (shared by the selectors below). */
+type IdentityState = {
   workers: Worker[];
-  currentUserId: string;
-}): Worker {
+  devBaseUserId: string;
+  authWorker: Worker | null;
+  viewAsUserId: string | null;
+};
+
+/**
+ * The real signed-in identity: the Supabase auth worker if present, otherwise
+ * the dev base (the Developer). This is what gates the "View as" switcher.
+ */
+export function baseWorkerOf(state: IdentityState): Worker {
   return (
-    state.workers.find((w) => w.id === state.currentUserId) ?? state.workers[0]
+    state.authWorker ??
+    state.workers.find((w) => w.id === state.devBaseUserId) ??
+    state.workers[0]
   );
+}
+
+/**
+ * The identity the UI renders as. Only the Developer can impersonate: when the
+ * base role is `developer` and a `viewAsUserId` is set, that worker is returned;
+ * for everyone else the effective identity is simply themselves.
+ */
+export function currentWorkerOf(state: IdentityState): Worker {
+  const base = baseWorkerOf(state);
+  if (base.role === 'developer' && state.viewAsUserId) {
+    return state.workers.find((w) => w.id === state.viewAsUserId) ?? base;
+  }
+  return base;
 }
 
 /**
@@ -650,12 +698,17 @@ export function assignedDatesForInstaller(
   return dates;
 }
 
-/** Hook: the worker for the active session. Re-renders on switch or edit. */
+/** Hook: the effective worker (impersonated for the Developer, else self). */
 export function useCurrentWorker(): Worker {
   return useAppStore((s) => currentWorkerOf(s));
 }
 
-/** Hook: just the active session's role — handy for routing/gating. */
+/** Hook: the effective role — handy for routing/gating. */
 export function useCurrentRole(): AppRole {
   return useAppStore((s) => currentWorkerOf(s).role);
+}
+
+/** Hook: true when the real (base) identity is the Developer — gates the switcher. */
+export function useIsDeveloper(): boolean {
+  return useAppStore((s) => baseWorkerOf(s).role === 'developer');
 }

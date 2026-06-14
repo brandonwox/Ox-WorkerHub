@@ -2,7 +2,7 @@ import { Session } from '@supabase/supabase-js';
 
 import { AppRole, Worker, WorkerStatus } from '@/types';
 
-import { supabase } from './client';
+import { getSupabase } from './client';
 
 /**
  * Session + identity helpers for the Supabase auth flow. These are the building
@@ -12,16 +12,16 @@ import { supabase } from './client';
  */
 
 export async function signIn(email: string, password: string) {
-  return supabase.auth.signInWithPassword({ email, password });
+  return getSupabase().auth.signInWithPassword({ email, password });
 }
 
 export async function signOut() {
-  return supabase.auth.signOut();
+  return getSupabase().auth.signOut();
 }
 
 /** Current session (or null), read from persisted storage. */
 export async function getSession(): Promise<Session | null> {
-  const { data } = await supabase.auth.getSession();
+  const { data } = await getSupabase().auth.getSession();
   return data.session;
 }
 
@@ -29,7 +29,7 @@ export async function getSession(): Promise<Session | null> {
 export function onAuthChange(
   callback: (session: Session | null) => void
 ): () => void {
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+  const { data } = getSupabase().auth.onAuthStateChange((_event, session) => {
     callback(session);
   });
   return () => data.subscription.unsubscribe();
@@ -66,6 +66,7 @@ export function rowToWorker(row: WorkerRow): Worker {
  * signed in or no matching workers row exists yet.
  */
 export async function fetchCurrentWorker(): Promise<Worker | null> {
+  const supabase = getSupabase();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return null;
   const { data, error } = await supabase

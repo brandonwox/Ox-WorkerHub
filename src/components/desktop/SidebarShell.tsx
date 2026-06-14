@@ -3,6 +3,7 @@ import { Link, usePathname } from 'expo-router';
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AuthControl } from '@/components/AuthControl';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { DesktopNavItem } from '@/roles';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -57,7 +58,10 @@ export function SidebarShell({ navItems, children }: Props) {
       <View style={styles.main}>
         <View style={styles.topbar}>
           <Text style={styles.pageTitle}>{active?.label ?? ''}</Text>
-          <DevRoleSwitcher variant="bar" />
+          <View style={styles.topbarRight}>
+            <DevRoleSwitcher variant="bar" />
+            <AuthControl variant="bar" />
+          </View>
         </View>
         <View style={styles.content}>{children}</View>
       </View>
@@ -145,6 +149,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
     zIndex: 10,
+  },
+  topbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   pageTitle: {
     color: colors.textPrimary,

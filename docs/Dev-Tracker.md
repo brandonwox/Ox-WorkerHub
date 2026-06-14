@@ -4,6 +4,16 @@ This file is used by the developer of Ox WorkerHub. It should not be edited by a
 
 # Awaiting
 
+Project Manager: add new "Jobs" tab.
+
+Project Manager -> Jobs tab: create a jobs view to show all the jobs. the project manager should be able to click inside each job to review and edit the job details. (Project manager does not see the QBT info)
+
+operator role -> people tab: 
+- fix ui ux (attached screenshot)
+- allow removal of workers
+- allow editing of worker name and email.
+- remove the status (e.g. "active", "Invited")
+
 the Ox WorkerHub needs to be built for different roles. "Installer" is the current app we have right now. anyone assigned the role "Installer" should see the app we've made. We now need to make so people will different roles see a different interface and be able to perform different actions. Here's the next few roles we need to implement: 
 - "Scheduler": The scheduler sees a schedule tab that allows the scheduler to manage installer schedules by assigning jobcards to the installers schedules.
 - "Operator": The operator sees a people tab that allows the operator to manage workers and their roles. and can assign hourly rates to workers with installer roles. The operator is also able to view and manage the incoming timesheets for review and change before they are sent to intuit quickbooks time.

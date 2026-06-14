@@ -13,6 +13,7 @@ import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { AddWorkerModal, NewWorkerInput } from '@/components/desktop/AddWorkerModal';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { Toast } from '@/components/Toast';
+import { inviteWorker } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -26,6 +27,7 @@ const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
 export default function PeopleScreen() {
   const role = useCurrentRole();
   const workers = useAppStore((s) => s.workers);
+  const authWorker = useAppStore((s) => s.authWorker);
   const addWorker = useAppStore((s) => s.addWorker);
   const setWorkerRole = useAppStore((s) => s.setWorkerRole);
   const setWorkerRate = useAppStore((s) => s.setWorkerRate);
@@ -35,18 +37,38 @@ export default function PeopleScreen() {
 
   if (role !== 'operator') return <AccessDenied />;
 
-  const handleAdd = (input: NewWorkerInput) => {
-    // TODO(supabase): route through the `invite-worker` Edge Function so the
-    // email invite is actually sent. For now this seeds the roster locally.
+  const handleAdd = async (input: NewWorkerInput) => {
+    const tradeRole =
+      input.role === 'installer' ? 'Glazier' : ROLE_LABELS[input.role];
+
+    // Signed-in operator: send the real email invite via the Edge Function.
+    if (authWorker) {
+      try {
+        const worker = await inviteWorker({
+          email: input.email,
+          name: input.name,
+          role: input.role,
+          hourlyRate: input.hourlyRate,
+          tradeRole,
+        });
+        addWorker(worker); // reflect in the roster (until 7d reads from the DB)
+        setToast(`Invite sent to ${input.email}`);
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : 'Could not send invite.');
+      }
+      return;
+    }
+
+    // Dev mode (no real session): seed the roster locally.
     addWorker({
       name: input.name,
       email: input.email,
       phone: '',
       role: input.role,
       hourlyRate: input.hourlyRate,
-      tradeRole: input.role === 'installer' ? 'Glazier' : ROLE_LABELS[input.role],
+      tradeRole,
     });
-    setToast(`Invite sent to ${input.email}`);
+    setToast(`Invite sent to ${input.email} (local)`);
   };
 
   return (

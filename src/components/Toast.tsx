@@ -1,8 +1,12 @@
 import { CircleCheck } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
+import { Animated, Platform, StyleSheet, Text } from 'react-native';
 
 import { colors, fonts, radii, spacing } from '@/theme';
+
+// react-native-web has no native animation module; opt out there to avoid the
+// "useNativeDriver is not supported" warning (animation still runs on the JS side).
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 
 interface Props {
   message: string | null;
@@ -18,13 +22,13 @@ export function Toast({ message, onDone }: Props) {
     Animated.timing(opacity, {
       toValue: 1,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
     const timer = setTimeout(() => {
       Animated.timing(opacity, {
         toValue: 0,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start(() => onDone());
     }, 3200);
     return () => clearTimeout(timer);

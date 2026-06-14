@@ -8,6 +8,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   scheduler: 'Scheduler',
   operator: 'Operator',
   project_manager: 'Project Manager',
+  developer: 'Developer',
 };
 
 /** Roles that get the wide desktop sidebar console (everyone except installers). */
@@ -32,6 +33,9 @@ export const DESKTOP_NAV: Record<DesktopRole, DesktopNavItem[]> = {
   ],
   scheduler: [{ href: '/schedule', label: 'Schedule', icon: 'calendar' }],
   project_manager: [{ href: '/pm', label: 'Jobcards', icon: 'clipboard' }],
+  // Developer has no console of its own — it always views the app *as* another
+  // role via the switcher, so this nav is only a type-required fallback.
+  developer: [{ href: '/jobs', label: 'Jobs', icon: 'briefcase' }],
 };
 
 /** Landing route for a role — used by the role gate to redirect on sign-in/switch. */
@@ -45,6 +49,8 @@ export function roleHomeHref(
       return '/schedule';
     case 'project_manager':
       return '/pm';
+    case 'developer':
+      return '/jobs';
     default:
       return '/';
   }

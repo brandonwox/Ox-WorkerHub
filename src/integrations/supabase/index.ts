@@ -1,4 +1,4 @@
-export { supabase } from './client';
+export { getSupabase } from './client';
 export { supabaseConfig, isSupabaseConfigured } from './config';
 export {
   signIn,
@@ -8,3 +8,5 @@ export {
   fetchCurrentWorker,
   rowToWorker,
 } from './auth';
+export { inviteWorker } from './invites';
+export type { InviteWorkerInput } from './invites';

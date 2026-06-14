@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ROLE_LABELS } from '@/roles';
-import { currentWorkerOf, useAppStore } from '@/store/useAppStore';
+import { currentWorkerOf, useAppStore, useIsDeveloper } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 
 interface Props {
@@ -12,17 +12,20 @@ interface Props {
 }
 
 /**
- * Dev-only "View as" switcher. Lets us preview every role before real auth
- * lands. Renders nothing in production builds.
+ * "View as" switcher. Available ONLY to the Developer role (the base identity) —
+ * it impersonates the other roles for the UI. Renders nothing for everyone else.
  */
 export function DevRoleSwitcher({ variant = 'card' }: Props) {
   const workers = useAppStore((s) => s.workers);
-  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  const setViewAs = useAppStore((s) => s.setViewAs);
   const current = useAppStore(currentWorkerOf);
+  const isDeveloper = useIsDeveloper();
   const [open, setOpen] = useState(false);
 
-  if (!__DEV__) return null;
+  if (!isDeveloper) return null;
 
+  // You impersonate real roles — never the Developer itself.
+  const viewTargets = workers.filter((w) => w.role !== 'developer');
   const isBar = variant === 'bar';
 
   return (
@@ -54,7 +57,7 @@ export function DevRoleSwitcher({ variant = 'card' }: Props) {
 
       {open && (
         <View style={[styles.menu, isBar && styles.menuBar]}>
-          {workers.map((w) => {
+          {viewTargets.map((w) => {
             const active = w.id === current.id;
             return (
               <Pressable
@@ -64,7 +67,7 @@ export function DevRoleSwitcher({ variant = 'card' }: Props) {
                   pressed && styles.menuItemPressed,
                 ]}
                 onPress={() => {
-                  setCurrentUser(w.id);
+                  setViewAs(w.id);
                   setOpen(false);
                 }}
               >

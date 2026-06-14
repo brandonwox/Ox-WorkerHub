@@ -180,9 +180,40 @@ runs all live deploy commands (`supabase db push`, `functions deploy`,
    ('<that-user-uuid>', 'Brandon Wallace', 'brandonw@ox-glass.com', 'operator',
    'active');`
 
+**7b — Auth session + Developer role ✅ (done)**
+- New **`developer`** role: the only role allowed to use the "View as" switcher.
+  Store now separates **base identity** (`authWorker` ?? dev base `w-dev`) from the
+  **effective identity** (`currentWorkerOf` = the Developer's `viewAsUserId`
+  impersonation, else self). `baseWorkerOf` + `useIsDeveloper` gate the switcher.
+- `DevRoleSwitcher` gated to `useIsDeveloper()` (was `__DEV__`); sets `viewAsUserId`
+  via `setViewAs`; lists only non-developer workers. Seeded a `developer` worker
+  (`w-dev`), the default dev-mode base; default impersonation = operator (web) /
+  installer (native).
+- Supabase auth wired: `integrations/supabase/session.ts` (`useSupabaseSession`,
+  mounted in root `_layout`) syncs the session → `authWorker`; a `/sign-in` screen
+  + `AuthControl` (sign in / sign out) in the desktop top bar and installer
+  Settings. Signing in as a real worker makes them the base (no switcher); signing
+  out reverts to the Developer (switcher returns).
+- `clockOut`/`addLog`/`updateUser` and the installer screens now use the
+  **effective** worker id (removed `currentUserId`/`setCurrentUser`).
+
+**7c — invite-worker Edge Function ✅ (done)**
+- `supabase/functions/invite-worker/index.ts` — operator-gated (verifies the
+  caller's JWT via `getUser`, checks `workers.role = 'operator'`), then
+  `auth.admin.inviteUserByEmail` + inserts the `workers` row (status `'invited'`),
+  rolling back the auth user if the insert fails. Service role auto-provided; never
+  shipped. `config.toml` sets `[functions.invite-worker] verify_jwt = false` (so the
+  browser CORS preflight isn't 401'd; auth is enforced in-function).
+- Client: `integrations/supabase/invites.ts` (`inviteWorker`) invokes the function.
+  `(desktop)/people.tsx` "Add worker" now calls it when signed in as a real
+  operator (and reflects the returned worker in the roster); in dev mode (no
+  session) it still seeds the roster locally.
+- `tsconfig.json` excludes `supabase/` so the Deno function isn't type-checked by
+  the app.
+- **Awaiting user:** `supabase functions deploy invite-worker` (and confirm Auth
+  email/redirect settings). Only callable once signed in as a real operator.
+
 **To do — later stages (not started):**
-- **7b** — Auth UI + wire session → active worker/role (replaces DevRoleSwitcher).
-- **7c** — `invite-worker` Edge Function + wire Operator "Add worker".
 - **7d** — Store swap: back each Zustand slice with Supabase (reads then writes),
   keeping action signatures stable. **Biggest/riskiest stage.**
 - **7e** — `push-timesheets-to-qbt` Edge Function on pg_cron (Mon 07:30) +
@@ -197,6 +228,12 @@ during 7d.
 
 ## Decisions & deviations from the original blueprint
 
+- **2026-06-14 — New `developer` role; dev switcher is developer-only.** The "View
+  as" switcher is no longer `__DEV__`-gated — it's tied to a new `developer` role
+  and works ONLY when the real (base) identity is a developer. Identity now splits
+  into **base** (the real signed-in worker, or the dev base `w-dev`) and
+  **effective** (`currentWorkerOf` — the developer's impersonation, else self).
+  Non-developer users never see the switcher. (Step 7b.)
 - **2026-06-14 — No in-app approval or status; show only the QBT send result.**
   The Operator no longer reviews/approves timesheets. A fresh log has **no
   status**; the weekly server sweep pushes it and stamps **"Sent to QBT"** or
