@@ -138,6 +138,10 @@ Step 7 maps them onto Supabase for when it's unblocked.
 Dependency order: **1 → 2** are foundational data-model steps. **3** needs 1.
 **4** and **5** need 1 + 2. **6** needs 1. **7** is last and currently blocked.
 
+> **Progress is tracked in [`Progress.md`](./Progress.md)** — a living status doc
+> (done / to-do per step) updated whenever a step is worked on. Check it first to
+> see where things stand.
+
 ---
 
 ## Conventions (apply to every step)
