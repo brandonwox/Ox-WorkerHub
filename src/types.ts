@@ -39,10 +39,19 @@ export interface Job {
    * timesheet hours sync under this code. Optional until mapped.
    */
   qbtJobcodeId?: string;
+  /**
+   * Site-wide flashing material spec. Set by the Operator on create and editable
+   * by the Project Manager (their one writable Job field). Jobcards snapshot this
+   * value at creation time. Optional until specified.
+   */
+  flashingMaterial?: string;
 }
 
 /** Status of a unit of work (a Jobcard) as it moves through the field. */
 export type JobcardStatus = 'Upcoming' | 'In Progress' | 'Finished';
+
+/** PM-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort). */
+export type JobcardPriority = 'Low' | 'Medium' | 'High';
 
 /**
  * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
@@ -68,6 +77,23 @@ export interface Jobcard {
   endTime?: string;
   status: JobcardStatus;
   priorityOrder: number;
+  /** PM-assigned priority. Defaults to 'Medium'. */
+  priority: JobcardPriority;
+  /**
+   * Flashing material inherited from the parent Job AT CREATION TIME (a snapshot,
+   * not a live link — so later Job edits don't silently mutate existing cards).
+   */
+  flashingMaterial?: string;
+  /** Task-specific / additional materials needed (free text). PM-authored. */
+  materials?: string;
+  /** Scope of work / what's required on this card (free text). PM-authored. */
+  scopeOfWork?: string;
+  /**
+   * Shared field notes updated by installers on site. Because a Jobcard is a
+   * single shared record, a note added by one crew is visible to every crew the
+   * card is assigned to.
+   */
+  fieldNotes?: string;
   /**
    * TEMPORARY: which installer sees this card. The real model assigns work to
    * crews on dates (Permanent/Daily Crews), not to individuals — this field is
@@ -79,6 +105,43 @@ export interface Jobcard {
     managerName: string;
     managerPhone: string;
   };
+}
+
+/** A permanent crew of installers. The default scheduling container. */
+export interface Crew {
+  id: string;
+  /** e.g. "Crew Alpha". */
+  name: string;
+  /** Members — MUST all be workers with role 'installer'. */
+  installerIds: string[];
+}
+
+/**
+ * A temporary, date-specific crew that overrides permanent crews for ONE day.
+ * Installers listed here are treated as working under this crew on `date`
+ * instead of their permanent crew (prevents double-booking).
+ */
+export interface DailyCrew {
+  id: string;
+  /** The single day this override applies to (yyyy-MM-dd). */
+  date: string;
+  name: string;
+  /** Members — installers only. */
+  installerIds: string[];
+}
+
+/**
+ * Single-source-of-truth link: a Jobcard placed on a crew for a date. The
+ * Jobcard itself is never duplicated; multiple assignments fan it out to
+ * multiple crews/dates.
+ */
+export interface ScheduleAssignment {
+  id: string;
+  jobcardId: string;
+  /** References a Crew.id OR a DailyCrew.id. */
+  crewId: string;
+  /** yyyy-MM-dd the work is scheduled for. */
+  date: string;
 }
 
 /** Where a timesheet sits in the Operator's review → export pipeline. */

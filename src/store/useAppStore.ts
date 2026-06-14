@@ -3,6 +3,9 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import {
+  mockAssignments,
+  mockCrews,
+  mockDailyCrews,
   mockJobcards,
   mockJobs,
   mockLogs,
@@ -17,6 +20,8 @@ import {
 import {
   ActiveShift,
   AppRole,
+  Crew,
+  DailyCrew,
   Job,
   Jobcard,
   JobcardStatus,
@@ -26,6 +31,7 @@ import {
   QbtJobcode,
   QbtSyncRecord,
   ReviewStatus,
+  ScheduleAssignment,
   TimesheetLog,
   Worker,
 } from '@/types';
@@ -34,6 +40,16 @@ import { hoursBetween } from '@/utils/time';
 /** Pay rate for a worker, or 0 if unknown. */
 function rateForWorker(workers: Worker[], workerId: string): number {
   return workers.find((w) => w.id === workerId)?.hourlyRate ?? 0;
+}
+
+/**
+ * Crews contain installers only. Filter an id list down to ids that resolve to a
+ * worker whose role is 'installer' — the store-level backstop for that rule.
+ */
+function onlyInstallerIds(workers: Worker[], ids: string[]): string[] {
+  return ids.filter(
+    (id) => workers.find((w) => w.id === id)?.role === 'installer'
+  );
 }
 
 /**
@@ -80,6 +96,12 @@ interface AppState {
   jobs: Job[];
   /** Field work items (children of jobs). Formerly `jobs`. */
   jobcards: Jobcard[];
+  /** Permanent crews (installers only) — the default scheduling containers. */
+  crews: Crew[];
+  /** Date-specific crew overrides that win over permanent crews for one day. */
+  dailyCrews: DailyCrew[];
+  /** Jobcard→crew→date links (single source of truth; never duplicates a card). */
+  assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
   activeShift: ActiveShift | null;
   qbt: QbtState;
@@ -102,7 +124,35 @@ interface AppState {
   updateJob: (id: string, changes: Partial<Job>) => void;
 
   // --- Jobcards (field work items) ---
+  /** Create a Jobcard. Inherits flashingMaterial from the parent Job. */
+  addJobcard: (
+    card: Omit<Jobcard, 'id' | 'status' | 'priorityOrder' | 'flashingMaterial'> & {
+      id?: string;
+      status?: JobcardStatus;
+      priorityOrder?: number;
+    }
+  ) => Jobcard;
+  updateJobcard: (id: string, changes: Partial<Jobcard>) => void;
+  /** Installer-facing: append/replace shared field notes on a Jobcard. */
+  updateJobcardNotes: (id: string, fieldNotes: string) => void;
   setJobcardStatus: (jobcardId: string, status: JobcardStatus) => void;
+
+  // --- Crews & scheduling (Scheduler) ---
+  /** Create a permanent crew. Non-installer ids are dropped. Returns the record. */
+  addCrew: (crew: Omit<Crew, 'id'> & { id?: string }) => Crew;
+  updateCrew: (id: string, changes: Partial<Crew>) => void;
+  removeCrew: (id: string) => void;
+  /** Create a date-specific crew override. Non-installer ids are dropped. */
+  addDailyCrew: (crew: Omit<DailyCrew, 'id'> & { id?: string }) => DailyCrew;
+  updateDailyCrew: (id: string, changes: Partial<DailyCrew>) => void;
+  removeDailyCrew: (id: string) => void;
+  /** Place a Jobcard on a crew for a date. Idempotent on (jobcard, crew, date). */
+  assignJobcard: (
+    jobcardId: string,
+    crewId: string,
+    date: string
+  ) => ScheduleAssignment;
+  unassignJobcard: (assignmentId: string) => void;
 
   clockIn: (ref: { jobcardId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
@@ -149,12 +199,19 @@ interface AppState {
 let nextLogId = 100;
 let nextWorkerId = 100;
 let nextJobId = 100;
+let nextJobcardId = 100;
+let nextCrewId = 100;
+let nextDailyCrewId = 100;
+let nextAssignmentId = 100;
 
 export const useAppStore = create<AppState>((set, get) => ({
   workers: mockWorkers,
   currentUserId: defaultCurrentUserId,
   jobs: mockJobs,
   jobcards: mockJobcards,
+  crews: mockCrews,
+  dailyCrews: mockDailyCrews,
+  assignments: mockAssignments,
   logs: mockLogs,
   activeShift: null,
   qbt: {
@@ -215,11 +272,131 @@ export const useAppStore = create<AppState>((set, get) => ({
       jobs: state.jobs.map((job) => (job.id === id ? { ...job, ...changes } : job)),
     })),
 
+  addJobcard: (card) => {
+    const state = get();
+    // Snapshot the parent Job's flashing material onto the card at creation
+    // time (auto-inheritance). A later Job edit must not mutate existing cards.
+    const parentJob = card.jobId
+      ? state.jobs.find((job) => job.id === card.jobId)
+      : undefined;
+    // Default the intra-day sort key to one past the busiest card on that date.
+    const maxOrderOnDate = state.jobcards
+      .filter((c) => c.date === card.date)
+      .reduce((max, c) => Math.max(max, c.priorityOrder), 0);
+    const created: Jobcard = {
+      ...card,
+      id: card.id ?? `jc-${nextJobcardId++}`,
+      status: card.status ?? 'Upcoming',
+      priority: card.priority ?? 'Medium',
+      priorityOrder: card.priorityOrder ?? maxOrderOnDate + 1,
+      flashingMaterial: parentJob?.flashingMaterial,
+    };
+    set({ jobcards: [created, ...state.jobcards] });
+    return created;
+  },
+
+  updateJobcard: (id, changes) =>
+    set((state) => ({
+      jobcards: state.jobcards.map((card) =>
+        card.id === id ? { ...card, ...changes } : card
+      ),
+    })),
+
+  updateJobcardNotes: (id, fieldNotes) =>
+    set((state) => ({
+      jobcards: state.jobcards.map((card) =>
+        card.id === id ? { ...card, fieldNotes } : card
+      ),
+    })),
+
   setJobcardStatus: (jobcardId, status) =>
     set((state) => ({
       jobcards: state.jobcards.map((card) =>
         card.id === jobcardId ? { ...card, status } : card
       ),
+    })),
+
+  addCrew: (crew) => {
+    const state = get();
+    const created: Crew = {
+      ...crew,
+      id: crew.id ?? `crew-${nextCrewId++}`,
+      installerIds: onlyInstallerIds(state.workers, crew.installerIds),
+    };
+    set({ crews: [...state.crews, created] });
+    return created;
+  },
+
+  updateCrew: (id, changes) =>
+    set((state) => ({
+      crews: state.crews.map((crew) =>
+        crew.id === id
+          ? {
+              ...crew,
+              ...changes,
+              installerIds: changes.installerIds
+                ? onlyInstallerIds(state.workers, changes.installerIds)
+                : crew.installerIds,
+            }
+          : crew
+      ),
+    })),
+
+  removeCrew: (id) =>
+    set((state) => ({ crews: state.crews.filter((crew) => crew.id !== id) })),
+
+  addDailyCrew: (crew) => {
+    const state = get();
+    const created: DailyCrew = {
+      ...crew,
+      id: crew.id ?? `dc-${nextDailyCrewId++}`,
+      installerIds: onlyInstallerIds(state.workers, crew.installerIds),
+    };
+    set({ dailyCrews: [...state.dailyCrews, created] });
+    return created;
+  },
+
+  updateDailyCrew: (id, changes) =>
+    set((state) => ({
+      dailyCrews: state.dailyCrews.map((crew) =>
+        crew.id === id
+          ? {
+              ...crew,
+              ...changes,
+              installerIds: changes.installerIds
+                ? onlyInstallerIds(state.workers, changes.installerIds)
+                : crew.installerIds,
+            }
+          : crew
+      ),
+    })),
+
+  removeDailyCrew: (id) =>
+    set((state) => ({
+      dailyCrews: state.dailyCrews.filter((crew) => crew.id !== id),
+    })),
+
+  assignJobcard: (jobcardId, crewId, date) => {
+    const state = get();
+    // Idempotent: a repeated drop of the same card onto the same crew/date must
+    // not create a duplicate — keep the source of truth single.
+    const existing = state.assignments.find(
+      (a) => a.jobcardId === jobcardId && a.crewId === crewId && a.date === date
+    );
+    if (existing) return existing;
+    const created: ScheduleAssignment = {
+      id: `asn-${nextAssignmentId++}`,
+      jobcardId,
+      crewId,
+      date,
+    };
+    set({ assignments: [...state.assignments, created] });
+    return created;
+  },
+
+  unassignJobcard: (assignmentId) =>
+    set((state) => ({
+      assignments: state.assignments.filter((a) => a.id !== assignmentId),
     })),
 
   clockIn: (ref) =>
@@ -399,6 +576,60 @@ export function currentWorkerOf(state: {
   return (
     state.workers.find((w) => w.id === state.currentUserId) ?? state.workers[0]
   );
+}
+
+/**
+ * The crew id an installer is working under on `date`: a Daily Crew they're in
+ * that day wins; otherwise their Permanent Crew. Returns null if they're on no
+ * crew that day.
+ *
+ * Edge case (intentional): if an installer is pulled into a Daily Crew on a date,
+ * they see that Daily Crew's assignments INSTEAD OF their Permanent Crew's that
+ * day. This is what prevents double-booking.
+ */
+export function activeCrewIdFor(
+  state: { crews: Crew[]; dailyCrews: DailyCrew[] },
+  installerId: string,
+  date: string
+): string | null {
+  const daily = state.dailyCrews.find(
+    (dc) => dc.date === date && dc.installerIds.includes(installerId)
+  );
+  if (daily) return daily.id;
+  const permanent = state.crews.find((c) => c.installerIds.includes(installerId));
+  if (permanent) return permanent.id;
+  return null;
+}
+
+/** Jobcard ids assigned to a given crew on a given date. */
+export function jobcardIdsForCrewOnDate(
+  state: { assignments: ScheduleAssignment[] },
+  crewId: string,
+  date: string
+): string[] {
+  return state.assignments
+    .filter((a) => a.crewId === crewId && a.date === date)
+    .map((a) => a.jobcardId);
+}
+
+/**
+ * Convenience: the Jobcards an installer should see on `date` = assignments to
+ * their active crew that day.
+ */
+export function jobcardsForInstallerOnDate(
+  state: {
+    crews: Crew[];
+    dailyCrews: DailyCrew[];
+    assignments: ScheduleAssignment[];
+    jobcards: Jobcard[];
+  },
+  installerId: string,
+  date: string
+): Jobcard[] {
+  const crewId = activeCrewIdFor(state, installerId, date);
+  if (!crewId) return [];
+  const ids = jobcardIdsForCrewOnDate(state, crewId, date);
+  return state.jobcards.filter((card) => ids.includes(card.id));
 }
 
 /** Hook: the worker for the active session. Re-renders on switch or edit. */

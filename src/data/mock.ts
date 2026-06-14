@@ -1,6 +1,15 @@
 import { addDays, format, set, subDays } from 'date-fns';
 
-import { Job, Jobcard, ReviewStatus, TimesheetLog, Worker } from '@/types';
+import {
+  Crew,
+  DailyCrew,
+  Job,
+  Jobcard,
+  ReviewStatus,
+  ScheduleAssignment,
+  TimesheetLog,
+  Worker,
+} from '@/types';
 
 /** The installer who owns the seeded jobs/logs (the default native session). */
 export const PRIMARY_INSTALLER_ID = 'w-i1';
@@ -93,6 +102,10 @@ const seededJobcards: Jobcard[] = [
     endTime: at(0, 11, 30),
     status: 'In Progress',
     priorityOrder: 1,
+    priority: 'High',
+    scopeOfWork:
+      'Set and seal three storefront glass panels at the main entry. Verify plumb before final caulk.',
+    materials: 'Structural silicone, setting blocks, backer rod',
     details: {
       generalContractor: 'Meridian Build Group',
       managerName: 'Carlos Reyes',
@@ -108,6 +121,9 @@ const seededJobcards: Jobcard[] = [
     endTime: at(0, 16),
     status: 'Upcoming',
     priorityOrder: 2,
+    priority: 'Medium',
+    scopeOfWork: 'Replace cracked curtain-wall units on Tower B, floors 4–6.',
+    materials: 'Replacement gaskets, weep covers',
     details: {
       generalContractor: 'Skyline Commercial',
       managerName: 'Dana Whitfield',
@@ -122,6 +138,7 @@ const seededJobcards: Jobcard[] = [
     // No time window assigned — worker fits this in around their other jobs.
     status: 'Upcoming',
     priorityOrder: 3,
+    priority: 'Low',
     details: {
       generalContractor: 'Homefront Remodeling',
       managerName: 'Priya Natarajan',
@@ -138,6 +155,7 @@ const seededJobcards: Jobcard[] = [
     endTime: at(-1, 15),
     status: 'Finished',
     priorityOrder: 1,
+    priority: 'Medium',
     details: {
       generalContractor: 'Meridian Build Group',
       managerName: 'Carlos Reyes',
@@ -154,6 +172,8 @@ const seededJobcards: Jobcard[] = [
     endTime: at(1, 13),
     status: 'Upcoming',
     priorityOrder: 1,
+    priority: 'High',
+    scopeOfWork: 'Mount lobby mirror wall; level and anchor to substrate.',
     details: {
       generalContractor: 'Lakeside Interiors',
       managerName: 'Mike Okafor',
@@ -168,6 +188,7 @@ const seededJobcards: Jobcard[] = [
     // No time window assigned.
     status: 'Upcoming',
     priorityOrder: 2,
+    priority: 'Low',
     details: {
       generalContractor: 'Skyline Commercial',
       managerName: 'Dana Whitfield',
@@ -184,6 +205,7 @@ const seededJobcards: Jobcard[] = [
     endTime: at(2, 12),
     status: 'Upcoming',
     priorityOrder: 1,
+    priority: 'Medium',
     details: {
       generalContractor: 'Meridian Build Group',
       managerName: 'Carlos Reyes',
@@ -200,6 +222,7 @@ export const mockJobs: Job[] = [
     location: '1420 W Fulton Market, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90112',
+    flashingMaterial: 'Clear Anodized Aluminum',
   },
   {
     id: 'job-2',
@@ -207,6 +230,7 @@ export const mockJobs: Job[] = [
     location: '233 S Wacker Dr, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90113',
+    flashingMaterial: 'Stainless Steel (Brushed)',
   },
   {
     id: 'job-3',
@@ -251,13 +275,69 @@ const JOBCARD_TO_JOB: Record<string, string> = {
 
 /**
  * Seeded jobcards, parented to jobs and (temporarily) all assigned to the
- * primary installer until crew-based scheduling exists.
+ * primary installer until crew-based scheduling exists. The parent Job's
+ * `flashingMaterial` is snapshotted onto each card here, mirroring the
+ * auto-inheritance rule in `addJobcard` so seed data stays consistent.
  */
-export const mockJobcards: Jobcard[] = seededJobcards.map((card) => ({
-  ...card,
-  jobId: JOBCARD_TO_JOB[card.id],
-  assignedInstallerId: PRIMARY_INSTALLER_ID,
-}));
+export const mockJobcards: Jobcard[] = seededJobcards.map((card) => {
+  const jobId = JOBCARD_TO_JOB[card.id];
+  const parentJob = mockJobs.find((job) => job.id === jobId);
+  return {
+    ...card,
+    jobId,
+    assignedInstallerId: PRIMARY_INSTALLER_ID,
+    flashingMaterial: parentJob?.flashingMaterial,
+  };
+});
+
+/**
+ * Permanent crews, installers only. Marcus (the primary installer) is in Crew
+ * Alpha, which is assigned every seeded jobcard below — so once Step 5 switches
+ * the installer agenda to crew resolution, Marcus keeps seeing exactly the cards
+ * he sees today.
+ */
+export const mockCrews: Crew[] = [
+  {
+    id: 'crew-alpha',
+    name: 'Crew Alpha',
+    installerIds: [PRIMARY_INSTALLER_ID, 'w-i3'], // Marcus Lee, Tyler Brooks
+  },
+  {
+    id: 'crew-bravo',
+    name: 'Crew Bravo',
+    installerIds: ['w-i2'], // Sofia Ramirez
+  },
+];
+
+/**
+ * One Daily Crew on day+2 regroups Marcus + Sofia for a punch-list push,
+ * overriding their permanent crews for that one day (exercises the override
+ * path). The day+2 card (`j-7`) is also assigned to this crew below, so Marcus
+ * still sees it that day despite being pulled out of Crew Alpha.
+ */
+export const mockDailyCrews: DailyCrew[] = [
+  {
+    id: 'dc-1',
+    date: day(2),
+    name: 'Punch List Crew',
+    installerIds: [PRIMARY_INSTALLER_ID, 'w-i2'], // Marcus Lee, Sofia Ramirez
+  },
+];
+
+/**
+ * Schedule assignments (the single-source-of-truth fan-out). Every seeded
+ * jobcard is placed on Crew Alpha for its existing date; `j-7` is additionally
+ * placed on the day+2 Daily Crew so the override resolves to the same card.
+ */
+export const mockAssignments: ScheduleAssignment[] = [
+  ...mockJobcards.map((card, i) => ({
+    id: `asn-${i + 1}`,
+    jobcardId: card.id,
+    crewId: 'crew-alpha',
+    date: card.date,
+  })),
+  { id: 'asn-dc-1', jobcardId: 'j-7', crewId: 'dc-1', date: day(2) },
+];
 
 function makeLog(
   id: string,
