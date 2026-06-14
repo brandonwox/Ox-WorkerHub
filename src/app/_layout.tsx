@@ -38,19 +38,23 @@ export default function RootLayout() {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
 
+  // TODO(supabase): bootstrap the auth session here and drive the active
+  // worker/role from it once the backend is wired.
+
   if (!fontsLoaded) return null;
 
   return (
     <ThemeProvider value={appTheme}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(installer)" />
+        <Stack.Screen name="(desktop)" />
         <Stack.Screen
           name="job/[id]"
           options={{
             presentation: 'modal',
             headerShown: true,
-            headerTitle: 'Job Details',
+            headerTitle: 'Jobcard Details',
             headerTitleStyle: {
               fontFamily: fonts.bold,
               color: colors.textPrimary,

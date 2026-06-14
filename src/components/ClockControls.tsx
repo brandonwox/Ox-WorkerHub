@@ -1,4 +1,12 @@
-import { ClockCheck, ClockPlus, Pencil, Plus, Search, X } from 'lucide-react-native';
+import {
+  Clock,
+  ClockCheck,
+  ClockPlus,
+  Pencil,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -13,11 +21,14 @@ interface Props {
   /** While true the job cards on screen are selectable to clock in. */
   selectMode: boolean;
   /**
-   * Show the floating pill naming the active project — used when the active
-   * job's card isn't visible (custom project, another day, or scrolled away).
+   * While true the worker is editing the in-progress shift: the merged pill and
+   * timer give way to project + start-time editors, and on-screen job cards
+   * become selectable to switch the active project.
    */
-  showProjectPill: boolean;
+  editShiftMode: boolean;
   onToggleSelectMode: () => void;
+  /** Enter/leave the edit-shift mode (only meaningful while clocked in). */
+  onToggleEditShift: () => void;
   onCustomPress: () => void;
   onSearchPress: () => void;
   onAddTimecardPress: () => void;
@@ -27,25 +38,26 @@ interface Props {
 /**
  * Floating clock controls. Clocked out: a "Clock in" FAB that expands Search /
  * Custom buttons and puts the on-screen job cards into select mode, plus a "+"
- * button to add a manual timecard. Clocked in: a red pill with a live timer —
- * tapping it clocks out — preceded by a start-time pill and, when the active
- * card isn't visible, a pill naming the project.
+ * button to add a manual timecard. Clocked in: a single pill naming the active
+ * project and its start time (tap to edit either) beside a red live timer —
+ * tapping the timer clocks out.
  */
 export function ClockControls({
   selectMode,
-  showProjectPill,
+  editShiftMode,
   onToggleSelectMode,
+  onToggleEditShift,
   onCustomPress,
   onSearchPress,
   onAddTimecardPress,
   onClockedOut,
 }: Props) {
   const activeShift = useAppStore((s) => s.activeShift);
-  const jobs = useAppStore((s) => s.jobs);
+  const jobcards = useAppStore((s) => s.jobcards);
   const clockOut = useAppStore((s) => s.clockOut);
   const [now, setNow] = useState(() => new Date());
   const [editStartOpen, setEditStartOpen] = useState(false);
-  const projectPulse = usePulse(!!activeShift && showProjectPill);
+  const projectPulse = usePulse(!!activeShift && !editShiftMode);
 
   useEffect(() => {
     if (!activeShift) return;
@@ -54,9 +66,70 @@ export function ClockControls({
   }, [activeShift]);
 
   if (activeShift) {
-    const projectName = activeShift.jobId
-      ? jobs.find((j) => j.id === activeShift.jobId)?.title ?? 'Job'
+    const projectName = activeShift.jobcardId
+      ? jobcards.find((j) => j.id === activeShift.jobcardId)?.title ?? 'Jobcard'
       : activeShift.customProjectName ?? 'Custom Project';
+
+    // Editing the shift: project + start-time editors replace the pill/timer,
+    // mirroring the clock-in flow (job cards selectable, Search, Custom).
+    if (editShiftMode) {
+      return (
+        <>
+          <View style={styles.row}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.editStartPill,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => setEditStartOpen(true)}
+            >
+              <Clock size={14} color={colors.textSecondary} />
+              <Text style={styles.editStartText} numberOfLines={1}>
+                {formatTime(activeShift.startTime)}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.editButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={onSearchPress}
+            >
+              <Search size={15} color={colors.textPrimary} />
+              <Text style={styles.extLabel}>Search</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.editButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={onCustomPress}
+            >
+              <Pencil size={15} color={colors.textPrimary} />
+              <Text style={styles.extLabel}>Custom</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.fab,
+                styles.cancel,
+                pressed && styles.pressed,
+              ]}
+              onPress={onToggleEditShift}
+            >
+              <X size={22} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+
+          <ShiftStartModal
+            visible={editStartOpen}
+            onClose={() => setEditStartOpen(false)}
+          />
+        </>
+      );
+    }
 
     const projectBorder = {
       borderColor: projectPulse.interpolate({
@@ -66,53 +139,44 @@ export function ClockControls({
     };
 
     return (
-      <>
-        <View style={styles.row}>
-          {showProjectPill && (
-            <Animated.View style={[styles.projectPill, projectBorder]}>
-              <View style={styles.projectDot} />
-              <Text style={styles.projectText} numberOfLines={1}>
-                {projectName}
-              </Text>
-            </Animated.View>
-          )}
-
+      <View style={styles.row}>
+        <Animated.View style={[styles.mergedPill, projectBorder]}>
+          <View style={styles.projectDot} />
+          <Text style={styles.projectText} numberOfLines={1}>
+            {projectName}
+          </Text>
+          <View style={styles.divider} />
+          <Text style={styles.timePillText}>
+            {formatTime(activeShift.startTime)}
+          </Text>
+          <Pencil size={13} color={colors.textSecondary} />
           <Pressable
             style={({ pressed }) => [
-              styles.timePill,
-              pressed && styles.pressed,
+              styles.mergedPillTap,
+              pressed && styles.mergedPillPressed,
             ]}
-            onPress={() => setEditStartOpen(true)}
-          >
-            <Pencil size={13} color={colors.textSecondary} />
-            <Text style={styles.timePillText}>
-              {formatTime(activeShift.startTime)}
-            </Text>
-          </Pressable>
+            onPress={onToggleEditShift}
+            accessibilityLabel="Edit project and start time"
+          />
+        </Animated.View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.fab,
-              styles.clockOut,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => {
-              const log = clockOut();
-              if (log) onClockedOut(log, projectName);
-            }}
-          >
-            <ClockCheck size={18} color={colors.textPrimary} />
-            <Text style={styles.timer}>
-              {formatElapsed(activeShift.startTime, now)}
-            </Text>
-          </Pressable>
-        </View>
-
-        <ShiftStartModal
-          visible={editStartOpen}
-          onClose={() => setEditStartOpen(false)}
-        />
-      </>
+        <Pressable
+          style={({ pressed }) => [
+            styles.fab,
+            styles.clockOut,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => {
+            const log = clockOut();
+            if (log) onClockedOut(log, projectName);
+          }}
+        >
+          <ClockCheck size={18} color={colors.textPrimary} />
+          <Text style={styles.timer}>
+            {formatElapsed(activeShift.startTime, now)}
+          </Text>
+        </Pressable>
+      </View>
     );
   }
 
@@ -250,7 +314,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontVariant: ['tabular-nums'],
   },
-  projectPill: {
+  mergedPill: {
+    position: 'relative',
     flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -261,7 +326,24 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
     minHeight: 44,
+    overflow: 'hidden',
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+  },
+  mergedPillTap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  mergedPillPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  divider: {
+    width: 1,
+    height: 18,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.xs - 2,
   },
   projectDot: {
     width: 7,
@@ -275,7 +357,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 13,
   },
-  timePill: {
+  timePillText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  editStartPill: {
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 2,
@@ -287,10 +376,22 @@ const styles = StyleSheet.create({
     minHeight: 44,
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
   },
-  timePillText: {
+  editStartText: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 14,
     fontVariant: ['tabular-nums'],
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    minHeight: 44,
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
   },
 });

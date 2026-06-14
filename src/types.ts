@@ -1,30 +1,79 @@
-export interface User {
+/** Which interface and permissions a person gets in the app. */
+export type AppRole = 'installer' | 'scheduler' | 'operator' | 'project_manager';
+
+/** Account lifecycle. `invited` until the person accepts their email invite. */
+export type WorkerStatus = 'invited' | 'active';
+
+export interface Worker {
   id: string;
   name: string;
   email: string;
   phone: string;
+  /** Drives which interface this person sees. */
+  role: AppRole;
+  /** Trade specialty, e.g. 'Glazier'. Only meaningful for installers. */
   tradeRole: string;
+  /** Pay rate in dollars/hour. Only meaningful for installers. */
   hourlyRate: number;
+  status: WorkerStatus;
 }
 
-export type JobStatus = 'Upcoming' | 'In Progress' | 'Finished';
+/** @deprecated kept as an alias while call sites migrate to {@link Worker}. */
+export type User = Worker;
+
+/**
+ * A Job is a jobsite / project the company works on (the parent entity the
+ * Operator creates and maps to QuickBooks Time). Jobcards hang off a Job.
+ */
+export type JobStatus = 'Active' | 'Archived';
 
 export interface Job {
   id: string;
+  /** e.g. "Snyderville Commercial Complex". */
+  name: string;
+  /** Jobsite address / location. */
+  location: string;
+  status: JobStatus;
+  /**
+   * QuickBooks Time jobcode this Job maps to. Set manually by the Operator;
+   * timesheet hours sync under this code. Optional until mapped.
+   */
+  qbtJobcodeId?: string;
+}
+
+/** Status of a unit of work (a Jobcard) as it moves through the field. */
+export type JobcardStatus = 'Upcoming' | 'In Progress' | 'Finished';
+
+/**
+ * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
+ * Project Manager creates them; the Scheduler assigns them to crews; installers
+ * perform the work. (Formerly the app's `Job` type — it has always been the
+ * field work item.)
+ */
+export interface Jobcard {
+  id: string;
+  /** Parent Job (jobsite). Optional only while legacy/seed data is migrated. */
+  jobId?: string;
   title: string;
   address: string;
   /** Scheduled calendar day (yyyy-MM-dd). Always set. */
   date: string;
   /**
-   * Optional time window the worker is expected on site. Most jobs won't have
+   * Optional time window the worker is expected on site. Most cards won't have
    * one assigned — the office side can set it when a window matters.
    * ISO datetime string.
    */
   startTime?: string;
   /** ISO datetime string. Set together with startTime. */
   endTime?: string;
-  status: JobStatus;
+  status: JobcardStatus;
   priorityOrder: number;
+  /**
+   * TEMPORARY: which installer sees this card. The real model assigns work to
+   * crews on dates (Permanent/Daily Crews), not to individuals — this field is
+   * a stand-in to keep the installer app working until crew scheduling lands.
+   */
+  assignedInstallerId?: string;
   details: {
     generalContractor: string;
     managerName: string;
@@ -32,11 +81,16 @@ export interface Job {
   };
 }
 
+/** Where a timesheet sits in the Operator's review → export pipeline. */
+export type ReviewStatus = 'pending' | 'approved' | 'synced';
+
 export interface TimesheetLog {
   id: string;
+  /** Worker who logged these hours. */
+  workerId: string;
   /** ISO date string (yyyy-MM-dd) */
   date: string;
-  jobId?: string;
+  jobcardId?: string;
   customProjectName?: string;
   /** ISO datetime string */
   startTime: string;
@@ -44,11 +98,67 @@ export interface TimesheetLog {
   endTime: string;
   totalHours: number;
   earnedAmount: number;
+  /** Operator review state. Defaults to 'pending' when a log is created. */
+  reviewStatus: ReviewStatus;
 }
 
 export interface ActiveShift {
-  jobId?: string;
+  jobcardId?: string;
   customProjectName?: string;
   /** ISO datetime string */
   startTime: string;
+}
+
+// --- QuickBooks Time integration ---
+
+/**
+ * Lifecycle of a single timecard with respect to QuickBooks Time.
+ *  - unsynced:  never pushed (or cleared after an edit).
+ *  - syncing:   a create/update request is in flight.
+ *  - submitted: created in QBT, sitting in the payroll manager's queue.
+ *  - approved:  payroll manager approved the date this log falls on.
+ *  - error:     last push failed; `error` holds the reason.
+ */
+export type QbtSyncStatus =
+  | 'unsynced'
+  | 'syncing'
+  | 'submitted'
+  | 'approved'
+  | 'error';
+
+export interface QbtSyncRecord {
+  status: QbtSyncStatus;
+  /** QBT timesheet id once the timecard has been created there. */
+  qbtTimesheetId?: number;
+  /** ISO datetime of the last successful push. */
+  lastSyncedAt?: string;
+  /** Human-readable reason for the last failed attempt. */
+  error?: string;
+}
+
+/** A QuickBooks Time jobcode (their term for a project/task hours book to). */
+export interface QbtJobcode {
+  id: number;
+  name: string;
+  active: boolean;
+  /** 'regular' | 'pto' | 'paid_break' | 'unpaid_break'. We map to 'regular'. */
+  type: string;
+  /** 0 for top-level jobcodes, otherwise the parent jobcode id. */
+  parentId: number;
+}
+
+/** Identity of the connected QuickBooks Time account. */
+export interface QbtConnection {
+  userId: number;
+  name: string;
+  companyName?: string;
+}
+
+export interface QbtConfig {
+  /** Personal API access token (sent as a Bearer token). '' = not configured. */
+  accessToken: string;
+  /** API base URL. Defaults to https://rest.tsheets.com/api/v1. */
+  baseUrl: string;
+  /** When true, a timecard is pushed to QBT as soon as it is logged. */
+  autoSync: boolean;
 }

@@ -1,14 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { format, isToday } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  FlatList,
-  StyleSheet,
-  Text,
-  View,
-  ViewToken,
-} from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AddTimecardSheet } from '@/components/AddTimecardSheet';
@@ -19,57 +13,59 @@ import { Toast } from '@/components/Toast';
 import { WeekRibbon } from '@/components/WeekRibbon';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing } from '@/theme';
-import { Job, TimesheetLog } from '@/types';
+import { Jobcard, TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const jobs = useAppStore((s) => s.jobs);
+  const allJobcards = useAppStore((s) => s.jobcards);
+  const currentUserId = useAppStore((s) => s.currentUserId);
   const clockIn = useAppStore((s) => s.clockIn);
+  const updateShiftProject = useAppStore((s) => s.updateShiftProject);
   const activeShift = useAppStore((s) => s.activeShift);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [selectMode, setSelectMode] = useState(false);
+  const [editShift, setEditShift] = useState(false);
   const [entryMode, setEntryMode] = useState<ClockEntryMode>(null);
   const [addTimecardOpen, setAddTimecardOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [visibleJobIds, setVisibleJobIds] = useState<Set<string>>(new Set());
 
-  const markedDates = useMemo(() => new Set(jobs.map((j) => j.date)), [jobs]);
+  // An installer only sees jobcards assigned to them. (Crew-based assignment
+  // will replace this per-installer field later.)
+  const jobcards = useMemo(
+    () => allJobcards.filter((j) => j.assignedInstallerId === currentUserId),
+    [allJobcards, currentUserId]
+  );
 
-  const dayJobs = useMemo(
+  const markedDates = useMemo(
+    () => new Set(jobcards.map((j) => j.date)),
+    [jobcards]
+  );
+
+  const dayJobcards = useMemo(
     () =>
-      jobs
+      jobcards
         .filter((j) => j.date === format(selectedDate, 'yyyy-MM-dd'))
         .sort((a, b) => a.priorityOrder - b.priorityOrder),
-    [jobs, selectedDate]
+    [jobcards, selectedDate]
   );
 
-  // Track which job cards are on screen so we can tell when the active job's
-  // card has scrolled out of view (or isn't in the current day at all).
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 55 }).current;
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      setVisibleJobIds(
-        new Set(viewableItems.map((v) => (v.item as Job).id))
-      );
-    }
-  ).current;
-
-  const activeJobVisible = !!(
-    activeShift?.jobId && visibleJobIds.has(activeShift.jobId)
-  );
-
-  const handleJobPress = (job: Job) => {
-    if (selectMode) {
-      clockIn({ jobId: job.id });
+  const handleJobcardPress = (jobcard: Jobcard) => {
+    if (editShift) {
+      updateShiftProject({ jobcardId: jobcard.id });
+      setEditShift(false);
+    } else if (selectMode) {
+      clockIn({ jobcardId: jobcard.id });
       setSelectMode(false);
     } else {
-      router.push(`/job/${job.id}`);
+      router.push(`/job/${jobcard.id}`);
     }
   };
 
   const handleClockedOut = (log: TimesheetLog, projectName: string) => {
     setToast(`${formatHours(log.totalHours)} logged for ${projectName}`);
+    // Hours are no longer pushed per clock-out — the Operator reviews them and
+    // they're swept to QuickBooks Time every Monday morning.
   };
 
   const clearToast = useCallback(() => setToast(null), []);
@@ -86,28 +82,27 @@ export default function CalendarScreen() {
         markedDates={markedDates}
       />
 
-      {selectMode ? (
+      {selectMode || editShift ? (
         <Text style={[styles.dayLabel, styles.selectHint]}>
-          Tap a job to clock in
+          {editShift ? 'Tap a job to switch project' : 'Tap a job to clock in'}
         </Text>
       ) : (
         <Text style={styles.dayLabel}>
-          {dayLabel} · {dayJobs.length} {dayJobs.length === 1 ? 'job' : 'jobs'}
+          {dayLabel} · {dayJobcards.length}{' '}
+          {dayJobcards.length === 1 ? 'jobcard' : 'jobcards'}
         </Text>
       )}
 
       <FlatList
-        data={dayJobs}
-        keyExtractor={(job) => job.id}
+        data={dayJobcards}
+        keyExtractor={(jobcard) => jobcard.id}
         contentContainerStyle={styles.listContent}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (
           <JobCard
-            job={item}
-            selectable={selectMode}
-            active={activeShift?.jobId === item.id}
-            onPress={() => handleJobPress(item)}
+            jobcard={item}
+            selectable={selectMode || editShift}
+            active={activeShift?.jobcardId === item.id}
+            onPress={() => handleJobcardPress(item)}
           />
         )}
         ListEmptyComponent={
@@ -125,8 +120,9 @@ export default function CalendarScreen() {
 
       <ClockControls
         selectMode={selectMode}
-        showProjectPill={!!activeShift && !activeJobVisible}
+        editShiftMode={editShift}
         onToggleSelectMode={() => setSelectMode((on) => !on)}
+        onToggleEditShift={() => setEditShift((on) => !on)}
         onCustomPress={() => setEntryMode('custom')}
         onSearchPress={() => setEntryMode('search')}
         onAddTimecardPress={() => setAddTimecardOpen(true)}
@@ -135,9 +131,11 @@ export default function CalendarScreen() {
 
       <ClockEntrySheet
         mode={entryMode}
+        editing={editShift}
         onClose={() => {
           setEntryMode(null);
           setSelectMode(false);
+          setEditShift(false);
         }}
       />
 

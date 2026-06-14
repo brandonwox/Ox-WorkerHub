@@ -28,7 +28,7 @@ interface Props {
  * type a custom name) and enter the date plus start and end times.
  */
 export function AddTimecardSheet({ visible, onClose }: Props) {
-  const jobs = useAppStore((s) => s.jobs);
+  const jobcards = useAppStore((s) => s.jobcards);
   const addLog = useAppStore((s) => s.addLog);
 
   const [query, setQuery] = useState('');
@@ -52,7 +52,9 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
   const trimmed = query.trim();
   const matches =
     trimmed && !selectedJobId
-      ? jobs.filter((j) => j.title.toLowerCase().includes(trimmed.toLowerCase()))
+      ? jobcards.filter((j) =>
+          j.title.toLowerCase().includes(trimmed.toLowerCase())
+        )
       : [];
 
   const pickJob = (jobId: string, title: string) => {
@@ -82,11 +84,13 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
       return;
     }
     addLog({
-      jobId: selectedJobId ?? undefined,
+      jobcardId: selectedJobId ?? undefined,
       customProjectName: selectedJobId ? undefined : trimmed,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
     });
+    // No per-entry push: the Operator reviews hours and they sweep to
+    // QuickBooks Time every Monday morning.
     onClose();
   };
 

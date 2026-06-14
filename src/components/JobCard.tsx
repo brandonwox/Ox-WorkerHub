@@ -3,22 +3,22 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job } from '@/types';
+import { Jobcard } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
 
 interface Props {
-  job: Job;
+  jobcard: Jobcard;
   onPress: () => void;
   /** Shows a highlight border indicating the card can be tapped to clock in. */
   selectable?: boolean;
-  /** The worker is currently clocked in on this job — pulses the border. */
+  /** The worker is currently clocked in on this jobcard — pulses the border. */
   active?: boolean;
 }
 
-export function JobCard({ job, onPress, selectable, active }: Props) {
+export function JobCard({ jobcard, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
-  const timeWindow = formatJobWindow(job.startTime, job.endTime);
+  const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
 
   return (
     <Pressable
@@ -45,26 +45,22 @@ export function JobCard({ job, onPress, selectable, active }: Props) {
       )}
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={1}>
-          {job.title}
+          {jobcard.title}
         </Text>
-        <StatusPill status={job.status} />
+        <StatusPill status={jobcard.status} />
       </View>
       <View style={styles.metaRow}>
         <Feather name="map-pin" size={14} color={colors.textSecondary} />
         <Text style={styles.metaText} numberOfLines={1}>
-          {job.address}
+          {jobcard.address}
         </Text>
       </View>
-      <View style={styles.metaRow}>
-        <Feather name="clock" size={14} color={colors.textSecondary} />
-        {timeWindow ? (
+      {timeWindow && (
+        <View style={styles.metaRow}>
+          <Feather name="clock" size={14} color={colors.textSecondary} />
           <Text style={styles.metaText}>{timeWindow}</Text>
-        ) : (
-          <Text style={[styles.metaText, styles.metaMuted]}>
-            No time window
-          </Text>
-        )}
-      </View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -116,9 +112,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 13,
-  },
-  metaMuted: {
-    color: colors.textTertiary,
-    fontStyle: 'italic',
   },
 });

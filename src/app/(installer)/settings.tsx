@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { FormInput } from '@/components/FormInput';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { formatMoney } from '@/utils/time';
 
@@ -25,7 +26,7 @@ function initialsOf(name: string): string {
 }
 
 export default function SettingsScreen() {
-  const user = useAppStore((s) => s.user);
+  const user = useCurrentWorker();
   const updateUser = useAppStore((s) => s.updateUser);
 
   const [name, setName] = useState(user.name);
@@ -133,6 +134,8 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <DevRoleSwitcher variant="card" />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

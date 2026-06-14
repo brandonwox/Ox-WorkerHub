@@ -6,12 +6,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { JobStatus } from '@/types';
+import { JobcardStatus } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 
-const STATUSES: JobStatus[] = ['Upcoming', 'In Progress', 'Finished'];
+const STATUSES: JobcardStatus[] = ['Upcoming', 'In Progress', 'Finished'];
 
-const statusColors: Record<JobStatus, { bg: string; fg: string }> = {
+const statusColors: Record<JobcardStatus, { bg: string; fg: string }> = {
   Upcoming: { bg: colors.primaryDim, fg: colors.primary },
   'In Progress': { bg: colors.warningDim, fg: colors.warning },
   Finished: { bg: colors.successDim, fg: colors.success },
@@ -19,14 +19,14 @@ const statusColors: Record<JobStatus, { bg: string; fg: string }> = {
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const job = useAppStore((s) => s.jobs.find((j) => j.id === id));
-  const setJobStatus = useAppStore((s) => s.setJobStatus);
+  const job = useAppStore((s) => s.jobcards.find((j) => j.id === id));
+  const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   if (!job) {
     return (
       <View style={[styles.screen, styles.center]}>
-        <Text style={styles.notFound}>Job not found.</Text>
+        <Text style={styles.notFound}>Jobcard not found.</Text>
       </View>
     );
   }
@@ -63,7 +63,7 @@ export default function JobDetailsScreen() {
                       pressed && styles.statusMenuItemPressed,
                     ]}
                     onPress={() => {
-                      setJobStatus(job.id, status);
+                      setJobcardStatus(job.id, status);
                       setStatusMenuOpen(false);
                     }}
                   >

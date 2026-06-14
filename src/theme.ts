@@ -1,20 +1,20 @@
 export const colors = {
-  background: '#1E282B',
-  surface: '#2A3539',
-  surfaceLight: '#344044',
-  border: '#3E4B50',
+  background: '#1C1C1C',
+  surface: '#262626',
+  surfaceLight: '#303030',
+  border: '#3A3A3A',
   primary: '#3E96F4',
   primaryDim: 'rgba(62, 150, 244, 0.16)',
-  danger: '#F4623E',
+  danger: '#f43e3e',
   dangerDim: 'rgba(244, 98, 62, 0.16)',
   success: '#4CC38A',
   successDim: 'rgba(76, 195, 138, 0.16)',
   warning: '#F2B33D',
   warningDim: 'rgba(242, 179, 61, 0.16)',
   textPrimary: '#FFFFFF',
-  textSecondary: '#A0AAB2',
-  textTertiary: '#76828A',
-  overlay: 'rgba(20, 25, 27, 0.7)',
+  textSecondary: '#A8A8A8',
+  textTertiary: '#777777',
+  overlay: 'rgba(0, 0, 0, 0.7)',
 };
 
 export const fonts = {

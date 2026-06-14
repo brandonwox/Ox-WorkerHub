@@ -1,9 +1,18 @@
 import { Feather } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 
+import { roleHomeHref } from '@/roles';
+import { useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts } from '@/theme';
 
 export default function TabsLayout() {
+  const role = useCurrentRole();
+
+  // Desktop roles don't belong in the mobile tabs — send them to their console.
+  if (role !== 'installer') {
+    return <Redirect href={roleHomeHref(role)} />;
+  }
+
   return (
     <Tabs
       initialRouteName="index"

@@ -32,19 +32,23 @@ function timeframeRange(timeframe: Timeframe): { from: string; to: string } {
 
 export default function TimesheetsScreen() {
   const logs = useAppStore((s) => s.logs);
-  const jobs = useAppStore((s) => s.jobs);
+  const jobcards = useAppStore((s) => s.jobcards);
+  const currentUserId = useAppStore((s) => s.currentUserId);
   const [timeframe, setTimeframe] = useState<Timeframe>('This Week');
   const [editingLog, setEditingLog] = useState<TimesheetLog | null>(null);
 
   const filteredLogs = useMemo(() => {
     const { from, to } = timeframeRange(timeframe);
     return logs
-      .filter((log) => log.date >= from && log.date <= to)
+      .filter(
+        (log) =>
+          log.workerId === currentUserId && log.date >= from && log.date <= to
+      )
       .sort(
         (a, b) =>
           new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
       );
-  }, [logs, timeframe]);
+  }, [logs, timeframe, currentUserId]);
 
   const totalHours = filteredLogs.reduce((sum, log) => sum + log.totalHours, 0);
   const totalEarned = filteredLogs.reduce(
@@ -53,8 +57,8 @@ export default function TimesheetsScreen() {
   );
 
   const projectNameFor = (log: TimesheetLog) =>
-    log.jobId
-      ? jobs.find((j) => j.id === log.jobId)?.title ?? 'Job'
+    log.jobcardId
+      ? jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard'
       : log.customProjectName ?? 'Custom Project';
 
   return (

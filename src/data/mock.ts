@@ -1,15 +1,72 @@
 import { addDays, format, set, subDays } from 'date-fns';
 
-import { Job, TimesheetLog, User } from '@/types';
+import { Job, Jobcard, ReviewStatus, TimesheetLog, Worker } from '@/types';
 
-export const mockUser: User = {
-  id: 'u-1',
-  name: 'Brandon Wallace',
-  email: 'brandonw@ox-glass.com',
-  phone: '(555) 214-8830',
-  tradeRole: 'Glazier',
-  hourlyRate: 42.5,
-};
+/** The installer who owns the seeded jobs/logs (the default native session). */
+export const PRIMARY_INSTALLER_ID = 'w-i1';
+
+/**
+ * Seed roster covering all three roles so every interface is previewable via
+ * the dev "View as" switcher. Replaced by the Supabase `workers` table once
+ * the backend is wired.
+ */
+export const mockWorkers: Worker[] = [
+  {
+    id: 'w-op',
+    name: 'Brandon Wallace',
+    email: 'brandonw@ox-glass.com',
+    phone: '(555) 214-8830',
+    role: 'operator',
+    tradeRole: 'Owner',
+    hourlyRate: 0,
+    status: 'active',
+  },
+  {
+    id: 'w-sch',
+    name: 'Janet Cole',
+    email: 'janet@ox-glass.com',
+    phone: '(555) 902-7741',
+    role: 'scheduler',
+    tradeRole: 'Scheduler',
+    hourlyRate: 0,
+    status: 'active',
+  },
+  {
+    id: PRIMARY_INSTALLER_ID,
+    name: 'Marcus Lee',
+    email: 'marcus@ox-glass.com',
+    phone: '(555) 332-1098',
+    role: 'installer',
+    tradeRole: 'Glazier',
+    hourlyRate: 42.5,
+    status: 'active',
+  },
+  {
+    id: 'w-i2',
+    name: 'Sofia Ramirez',
+    email: 'sofia@ox-glass.com',
+    phone: '(555) 887-4421',
+    role: 'installer',
+    tradeRole: 'Glazier',
+    hourlyRate: 38,
+    status: 'active',
+  },
+  {
+    id: 'w-i3',
+    name: 'Tyler Brooks',
+    email: 'tyler@ox-glass.com',
+    phone: '(555) 119-2273',
+    role: 'installer',
+    tradeRole: 'Apprentice',
+    hourlyRate: 26,
+    status: 'invited',
+  },
+];
+
+/** Convenience lookup for a worker's pay rate. */
+function rateOf(workerId: string): number {
+  return mockWorkers.find((w) => w.id === workerId)?.hourlyRate ?? 0;
+}
 
 function at(daysFromToday: number, hours: number, minutes = 0): string {
   return set(addDays(new Date(), daysFromToday), {
@@ -25,7 +82,7 @@ function day(daysFromToday: number): string {
   return format(addDays(new Date(), daysFromToday), 'yyyy-MM-dd');
 }
 
-export const mockJobs: Job[] = [
+const seededJobcards: Jobcard[] = [
   // Today
   {
     id: 'j-1',
@@ -135,14 +192,82 @@ export const mockJobs: Job[] = [
   },
 ];
 
+/** Jobsites/projects the Operator owns. Jobcards (below) hang off these. */
+export const mockJobs: Job[] = [
+  {
+    id: 'job-1',
+    name: 'Fulton Market Storefront',
+    location: '1420 W Fulton Market, Chicago, IL',
+    status: 'Active',
+    qbtJobcodeId: '90112',
+  },
+  {
+    id: 'job-2',
+    name: 'Wacker Tower B Curtain Wall',
+    location: '233 S Wacker Dr, Chicago, IL',
+    status: 'Active',
+    qbtJobcodeId: '90113',
+  },
+  {
+    id: 'job-3',
+    name: 'Oakdale Residence',
+    location: '88 Oakdale Ave, Evanston, IL',
+    status: 'Active',
+    // Not yet mapped to a QBT jobcode — shows the unmapped state in the table.
+  },
+  {
+    id: 'job-4',
+    name: 'Michigan Ave Office Build-out',
+    location: '500 N Michigan Ave, Chicago, IL',
+    status: 'Active',
+    qbtJobcodeId: '90120',
+  },
+  {
+    id: 'job-5',
+    name: 'Rush Street Lobby',
+    location: '740 N Rush St, Chicago, IL',
+    status: 'Active',
+    qbtJobcodeId: '90131',
+  },
+  {
+    id: 'job-6',
+    name: 'Prairie Ave Condos',
+    location: '1255 S Prairie Ave, Chicago, IL',
+    status: 'Archived',
+    qbtJobcodeId: '88004',
+  },
+];
+
+/** Which jobsite each seeded jobcard belongs to. */
+const JOBCARD_TO_JOB: Record<string, string> = {
+  'j-1': 'job-1',
+  'j-2': 'job-2',
+  'j-3': 'job-3',
+  'j-4': 'job-4',
+  'j-5': 'job-5',
+  'j-6': 'job-6',
+  'j-7': 'job-1',
+};
+
+/**
+ * Seeded jobcards, parented to jobs and (temporarily) all assigned to the
+ * primary installer until crew-based scheduling exists.
+ */
+export const mockJobcards: Jobcard[] = seededJobcards.map((card) => ({
+  ...card,
+  jobId: JOBCARD_TO_JOB[card.id],
+  assignedInstallerId: PRIMARY_INSTALLER_ID,
+}));
+
 function makeLog(
   id: string,
+  workerId: string,
   daysAgo: number,
   startHour: number,
   endHour: number,
   endMinutes: number,
-  ref: { jobId?: string; customProjectName?: string },
-  hourlyRate: number
+  ref: { jobcardId?: string; customProjectName?: string },
+  reviewStatus: ReviewStatus = 'synced'
 ): TimesheetLog {
   const day = subDays(new Date(), daysAgo);
   const start = set(day, { hours: startHour, minutes: 0, seconds: 0, milliseconds: 0 });
@@ -150,30 +275,37 @@ function makeLog(
   const totalHours = Math.round(((end.getTime() - start.getTime()) / 3_600_000) * 100) / 100;
   return {
     id,
+    workerId,
     date: format(day, 'yyyy-MM-dd'),
     ...ref,
     startTime: start.toISOString(),
     endTime: end.toISOString(),
     totalHours,
-    earnedAmount: Math.round(totalHours * hourlyRate * 100) / 100,
+    earnedAmount: Math.round(totalHours * rateOf(workerId) * 100) / 100,
+    reviewStatus,
   };
 }
 
-const rate = mockUser.hourlyRate;
+const M = PRIMARY_INSTALLER_ID; // Marcus Lee
+const S = 'w-i2'; // Sofia Ramirez — gives the Operator review a second installer
 
 export const mockLogs: TimesheetLog[] = [
-  makeLog('t-1', 0, 7, 11, 30, { jobId: 'j-1' }, rate),
-  makeLog('t-2', 1, 8, 12, 0, { jobId: 'j-4' }, rate),
-  makeLog('t-3', 1, 12, 15, 0, { jobId: 'j-4' }, rate),
-  makeLog('t-4', 2, 7, 15, 30, { customProjectName: 'Shop Fabrication' }, rate),
-  makeLog('t-5', 3, 8, 16, 0, { customProjectName: 'Warehouse Inventory' }, rate),
-  makeLog('t-6', 6, 7, 14, 30, { customProjectName: 'Glass Tempering Run' }, rate),
-  makeLog('t-7', 8, 8, 16, 30, { customProjectName: 'Retail Buildout — Oak Park' }, rate),
-  makeLog('t-8', 10, 7, 15, 0, { customProjectName: 'Retail Buildout — Oak Park' }, rate),
-  makeLog('t-9', 13, 8, 12, 0, { customProjectName: 'Service Calls' }, rate),
-  makeLog('t-10', 15, 7, 15, 30, { customProjectName: 'Hotel Atrium Skylight' }, rate),
-  makeLog('t-11', 17, 7, 16, 0, { customProjectName: 'Hotel Atrium Skylight' }, rate),
-  makeLog('t-12', 21, 8, 14, 0, { customProjectName: 'Shop Fabrication' }, rate),
-  makeLog('t-13', 24, 7, 15, 0, { customProjectName: 'Condo Balcony Rails' }, rate),
-  makeLog('t-14', 28, 8, 16, 30, { customProjectName: 'Condo Balcony Rails' }, rate),
+  // Marcus — current week (pending review) + history (already synced)
+  makeLog('t-1', M, 0, 7, 11, 30, { jobcardId: 'j-1' }, 'pending'),
+  makeLog('t-2', M, 1, 8, 12, 0, { jobcardId: 'j-4' }, 'pending'),
+  makeLog('t-3', M, 1, 12, 15, 0, { jobcardId: 'j-4' }, 'approved'),
+  // Sofia — current week, so the Operator sees more than one installer
+  makeLog('t-s1', S, 0, 8, 16, 0, { customProjectName: 'Lobby Glazing — North Loop' }, 'pending'),
+  makeLog('t-s2', S, 1, 7, 15, 30, { customProjectName: 'Lobby Glazing — North Loop' }, 'approved'),
+  makeLog('t-4', M, 2, 7, 15, 30, { customProjectName: 'Shop Fabrication' }),
+  makeLog('t-5', M, 3, 8, 16, 0, { customProjectName: 'Warehouse Inventory' }),
+  makeLog('t-6', M, 6, 7, 14, 30, { customProjectName: 'Glass Tempering Run' }),
+  makeLog('t-7', M, 8, 8, 16, 30, { customProjectName: 'Retail Buildout — Oak Park' }),
+  makeLog('t-8', M, 10, 7, 15, 0, { customProjectName: 'Retail Buildout — Oak Park' }),
+  makeLog('t-9', M, 13, 8, 12, 0, { customProjectName: 'Service Calls' }),
+  makeLog('t-10', M, 15, 7, 15, 30, { customProjectName: 'Hotel Atrium Skylight' }),
+  makeLog('t-11', M, 17, 7, 16, 0, { customProjectName: 'Hotel Atrium Skylight' }),
+  makeLog('t-12', M, 21, 8, 14, 0, { customProjectName: 'Shop Fabrication' }),
+  makeLog('t-13', M, 24, 7, 15, 0, { customProjectName: 'Condo Balcony Rails' }),
+  makeLog('t-14', M, 28, 8, 16, 30, { customProjectName: 'Condo Balcony Rails' }),
 ];

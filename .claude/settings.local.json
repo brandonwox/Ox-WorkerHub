@@ -5,7 +5,15 @@
       "PowerShell(npm --version)",
       "PowerShell(\\(Get-Content package.json -Raw\\) -replace '\"name\": \"scaffold\"', '\"name\": \"ox-workerhub\"' | Set-Content package.json -NoNewline; npx tsc --noEmit 2>&1 | Select-Object -First 30)",
       "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 30; \"exit: $LASTEXITCODE\")",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(git mv *)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"name='node.exe'\" | Select-Object ProcessId, @{n='CommandLine';e={$_.CommandLine.Substring\\(0, [Math]::Min\\(160, $_.CommandLine.Length\\)\\)}} | Format-List)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.tscheck.json 2>&1)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.tscheck.json; Write-Output \"EXIT=$LASTEXITCODE\")",
+      "Bash(printf '{\\\\n  \"extends\": \"./tsconfig.json\",\\\\n  \"include\": [\"**/*.ts\", \"**/*.tsx\", \"expo-env.d.ts\"],\\\\n  \"exclude\": [\"node_modules\", \".expo\", \"dist\"]\\\\n}\\\\n')",
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(rm -f tsconfig.tscheck.json)"
     ]
   }
 }

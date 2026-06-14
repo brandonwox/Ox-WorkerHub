@@ -1,15 +1,15 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii } from '@/theme';
-import { JobStatus } from '@/types';
+import { JobcardStatus } from '@/types';
 
-const statusStyles: Record<JobStatus, { bg: string; fg: string }> = {
+const statusStyles: Record<JobcardStatus, { bg: string; fg: string }> = {
   Upcoming: { bg: colors.primaryDim, fg: colors.primary },
   'In Progress': { bg: colors.warningDim, fg: colors.warning },
   Finished: { bg: colors.successDim, fg: colors.success },
 };
 
-export function StatusPill({ status }: { status: JobStatus }) {
+export function StatusPill({ status }: { status: JobcardStatus }) {
   const palette = statusStyles[status];
   return (
     <View style={[styles.pill, { backgroundColor: palette.bg }]}>

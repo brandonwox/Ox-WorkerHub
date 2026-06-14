@@ -20,17 +20,26 @@ export type ClockEntryMode = 'custom' | 'search' | null;
 
 interface Props {
   mode: ClockEntryMode;
+  /**
+   * When true, choosing a project reassigns the in-progress shift instead of
+   * starting a new one (used by the clocked-in "edit shift" flow).
+   */
+  editing?: boolean;
   onClose: () => void;
 }
 
 /**
- * Bottom sheet for the two expanded clock-in options: "Custom" (type a
- * project name) and "Search" (find any job by name and clock into it).
+ * Bottom sheet for the two expanded project options: "Custom" (type a project
+ * name) and "Search" (find any job by name). Used both to clock in and — when
+ * `editing` is set — to switch the project of the in-progress shift.
  */
-export function ClockEntrySheet({ mode, onClose }: Props) {
-  const jobs = useAppStore((s) => s.jobs);
+export function ClockEntrySheet({ mode, editing, onClose }: Props) {
+  const jobcards = useAppStore((s) => s.jobcards);
   const clockIn = useAppStore((s) => s.clockIn);
+  const updateShiftProject = useAppStore((s) => s.updateShiftProject);
   const [text, setText] = useState('');
+
+  const applyProject = editing ? updateShiftProject : clockIn;
 
   useEffect(() => {
     if (mode) setText('');
@@ -39,19 +48,19 @@ export function ClockEntrySheet({ mode, onClose }: Props) {
   const startCustom = () => {
     const name = text.trim();
     if (!name) return;
-    clockIn({ customProjectName: name });
+    applyProject({ customProjectName: name });
     onClose();
   };
 
-  const startJob = (jobId: string) => {
-    clockIn({ jobId });
+  const startJobcard = (jobcardId: string) => {
+    applyProject({ jobcardId });
     onClose();
   };
 
   const query = text.trim().toLowerCase();
   const matches =
     mode === 'search' && query
-      ? jobs.filter((j) => j.title.toLowerCase().includes(query))
+      ? jobcards.filter((j) => j.title.toLowerCase().includes(query))
       : [];
 
   return (
@@ -69,7 +78,11 @@ export function ClockEntrySheet({ mode, onClose }: Props) {
         <View style={styles.sheet}>
           <View style={styles.handle} />
           <Text style={styles.title}>
-            {mode === 'search' ? 'Search Jobs' : 'Custom Project'}
+            {mode === 'search'
+              ? editing
+                ? 'Switch Job'
+                : 'Search Jobs'
+              : 'Custom Project'}
           </Text>
 
           <View style={styles.inputRow}>
@@ -101,7 +114,9 @@ export function ClockEntrySheet({ mode, onClose }: Props) {
               onPress={startCustom}
               disabled={!text.trim()}
             >
-              <Text style={styles.startButtonText}>Start Shift</Text>
+              <Text style={styles.startButtonText}>
+                {editing ? 'Switch Project' : 'Start Shift'}
+              </Text>
             </Pressable>
           ) : (
             <ScrollView
@@ -120,7 +135,7 @@ export function ClockEntrySheet({ mode, onClose }: Props) {
                       styles.result,
                       pressed && styles.resultPressed,
                     ]}
-                    onPress={() => startJob(job.id)}
+                    onPress={() => startJobcard(job.id)}
                   >
                     <View style={styles.resultInfo}>
                       <Text style={styles.resultTitle} numberOfLines={1}>

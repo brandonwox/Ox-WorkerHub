@@ -27,7 +27,7 @@ interface Props {
 }
 
 export function EditLogModal({ log, projectName, onClose }: Props) {
-  const jobs = useAppStore((s) => s.jobs);
+  const jobcards = useAppStore((s) => s.jobcards);
   const updateLog = useAppStore((s) => s.updateLog);
   const deleteLog = useAppStore((s) => s.deleteLog);
 
@@ -42,7 +42,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
   useEffect(() => {
     if (log) {
       setQuery(projectName);
-      setSelectedJobId(log.jobId ?? null);
+      setSelectedJobId(log.jobcardId ?? null);
       setStartDate(format(new Date(log.startTime), 'yyyy-MM-dd'));
       setStartTime(formatTime(log.startTime));
       setEndDate(format(new Date(log.endTime), 'yyyy-MM-dd'));
@@ -54,7 +54,9 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
   const trimmed = query.trim();
   const matches =
     trimmed && !selectedJobId
-      ? jobs.filter((j) => j.title.toLowerCase().includes(trimmed.toLowerCase()))
+      ? jobcards.filter((j) =>
+          j.title.toLowerCase().includes(trimmed.toLowerCase())
+        )
       : [];
 
   const pickJob = (jobId: string, title: string) => {
@@ -86,7 +88,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
     }
     updateLog(log.id, {
       date: format(sDate, 'yyyy-MM-dd'),
-      jobId: selectedJobId ?? undefined,
+      jobcardId: selectedJobId ?? undefined,
       customProjectName: selectedJobId ? undefined : trimmed,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
