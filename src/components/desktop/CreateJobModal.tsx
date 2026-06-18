@@ -100,7 +100,7 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
             autoCapitalize="none"
           />
           <FormInput
-            label="Flashing material (site-wide)"
+            label="Window Opening Flashing Material (site-wide)"
             value={flashingMaterial}
             onChangeText={setFlashingMaterial}
             placeholder="e.g. Clear Anodized Aluminum — optional"

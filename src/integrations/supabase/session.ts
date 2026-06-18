@@ -42,8 +42,13 @@ export function useSupabaseSession(): void {
     // Resolve any persisted session on launch.
     fetchCurrentWorker().then((worker) => apply(worker));
 
-    // React to sign-in / sign-out / token refresh.
-    const unsubscribe = onAuthChange(async (session) => {
+    // React only to actual sign-in / sign-out. We deliberately ignore
+    // USER_UPDATED and TOKEN_REFRESHED: re-fetching the worker on those would
+    // (a) clobber the optimistic 'active' flip right after a worker sets their
+    // password (USER_UPDATED reads the row before the status write commits), and
+    // (b) needlessly reload all backend data on every hourly token refresh.
+    const unsubscribe = onAuthChange(async (event, session) => {
+      if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') return;
       const worker = session ? await fetchCurrentWorker() : null;
       apply(worker);
     });

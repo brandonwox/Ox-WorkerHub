@@ -20,7 +20,7 @@
 | 4 | Scheduler Dashboard | ✅ Done |
 | 5 | Installer Crew Agenda | ✅ Done |
 | 6 | Operator Gap-Closure & Financial Sync | ✅ Done |
-| 7 | Backend Persistence & Scheduled Sync | 🟡 In progress (7a foundation done) |
+| 7 | Backend Persistence & Scheduled Sync | 🟡 In progress (7a–7d done; 7e left) |
 
 Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 reference
 
@@ -222,9 +222,15 @@ runs all live deploy commands (`supabase db push`, `functions deploy`,
   Developer) stays on mock.** Writes still update local state only (not persisted)
   except worker invites (7c persists via the function). The same mappers will be
   reused in reverse for writes.
-- **7d-2 write-through (not started):** route each mutating action to Supabase
-  (insert/update/delete) so changes persist; keep action signatures stable
-  (sync return + fire-and-forget async write, client-generated UUIDs).
+- **7d-2 write-through ✅ (done):** every mutating store action now persists to
+  Supabase when a real non-Developer session is active. `data.ts` gained the write
+  layer (domain→row mappers; **separate insert vs update** so an update never trips
+  the stricter INSERT RLS policy; crew/daily-crew member replace; bulk
+  mark-sent). The store fires fire-and-forget writes via a `write()` helper, gated
+  by `backendActive()` (`authWorker != null && role !== 'developer'`), and
+  generates client-side UUIDs for new rows in backend mode (counter ids stay in dev
+  mode). Action signatures unchanged → no UI changes. Dev mode + a signed-in
+  Developer stay local/sandbox (the Developer has no RLS write grants).
 
 **To do — later stages (not started):**
 - **7e** — `push-timesheets-to-qbt` Edge Function on pg_cron (Mon 07:30) +

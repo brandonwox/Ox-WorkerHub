@@ -11,9 +11,10 @@ import {
   View,
 } from 'react-native';
 
+import { priorityMeta } from '@/lib/priority';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { JobcardPriority, JobcardStatus } from '@/types';
+import { JobcardStatus } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 
 const STATUSES: JobcardStatus[] = ['Upcoming', 'In Progress', 'Finished'];
@@ -22,12 +23,6 @@ const statusColors: Record<JobcardStatus, { bg: string; fg: string }> = {
   Upcoming: { bg: colors.primaryDim, fg: colors.primary },
   'In Progress': { bg: colors.warningDim, fg: colors.warning },
   Finished: { bg: colors.successDim, fg: colors.success },
-};
-
-const priorityColors: Record<JobcardPriority, { bg: string; fg: string }> = {
-  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
-  Medium: { bg: colors.primaryDim, fg: colors.primary },
-  High: { bg: colors.dangerDim, fg: colors.danger },
 };
 
 export default function JobDetailsScreen() {
@@ -47,7 +42,7 @@ export default function JobDetailsScreen() {
   }
 
   const palette = statusColors[job.status];
-  const pr = priorityColors[job.priority];
+  const pr = priorityMeta(job.priority);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -145,7 +140,7 @@ export default function JobDetailsScreen() {
         </View>
         <InfoRow
           icon="layers"
-          label="Flashing Material (site-wide)"
+          label="Window Opening Flashing Material (site-wide)"
           value={job.flashingMaterial ?? 'Not specified'}
         />
         {job.materials ? (

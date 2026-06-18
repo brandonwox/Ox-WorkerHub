@@ -15,7 +15,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 export type DesktopRole = Exclude<AppRole, 'installer'>;
 
 export interface DesktopNavItem {
-  href: '/schedule' | '/jobs' | '/people' | '/review' | '/pm';
+  href: '/schedule' | '/jobs' | '/people' | '/review' | '/pm' | '/pm-jobs';
   label: string;
   icon: keyof typeof Feather.glyphMap;
 }
@@ -32,7 +32,11 @@ export const DESKTOP_NAV: Record<DesktopRole, DesktopNavItem[]> = {
     { href: '/review', label: 'Timesheets', icon: 'file-text' },
   ],
   scheduler: [{ href: '/schedule', label: 'Schedule', icon: 'calendar' }],
-  project_manager: [{ href: '/pm', label: 'Jobcards', icon: 'clipboard' }],
+  project_manager: [
+    // Distinct route from the Operator's '/jobs' but shown to the PM as "Jobs".
+    { href: '/pm-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/pm', label: 'Jobcards', icon: 'clipboard' },
+  ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
   developer: [{ href: '/jobs', label: 'Jobs', icon: 'briefcase' }],

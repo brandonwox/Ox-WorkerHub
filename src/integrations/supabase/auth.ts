@@ -1,4 +1,4 @@
-import { Session } from '@supabase/supabase-js';
+import { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 import { AppRole, Worker, WorkerStatus } from '@/types';
 
@@ -19,6 +19,15 @@ export async function signOut() {
   return getSupabase().auth.signOut();
 }
 
+/**
+ * Set (or change) the signed-in user's password. Invited workers arrive with a
+ * session (from the email invite link) but no password; this is how they set one
+ * so they can sign in normally afterwards. Requires an active session.
+ */
+export async function updatePassword(password: string) {
+  return getSupabase().auth.updateUser({ password });
+}
+
 /** Current session (or null), read from persisted storage. */
 export async function getSession(): Promise<Session | null> {
   const { data } = await getSupabase().auth.getSession();
@@ -27,10 +36,10 @@ export async function getSession(): Promise<Session | null> {
 
 /** Subscribe to auth changes; returns an unsubscribe function. */
 export function onAuthChange(
-  callback: (session: Session | null) => void
+  callback: (event: AuthChangeEvent, session: Session | null) => void
 ): () => void {
-  const { data } = getSupabase().auth.onAuthStateChange((_event, session) => {
-    callback(session);
+  const { data } = getSupabase().auth.onAuthStateChange((event, session) => {
+    callback(event, session);
   });
   return () => data.subscription.unsubscribe();
 }

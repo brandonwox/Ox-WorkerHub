@@ -51,6 +51,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(installer)" />
         <Stack.Screen name="(desktop)" />
+        <Stack.Screen name="set-password" />
         <Stack.Screen
           name="sign-in"
           options={{

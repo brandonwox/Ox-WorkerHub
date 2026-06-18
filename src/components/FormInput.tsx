@@ -40,6 +40,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.regular,
     fontSize: 15,
+    // Web: drop the browser focus ring (we show focus via border instead).
+    outlineWidth: 0,
   },
   inputError: {
     borderColor: colors.danger,

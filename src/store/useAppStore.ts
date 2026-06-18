@@ -18,7 +18,7 @@ import {
   defaultJobcodeMap,
   defaultQbtConfig,
 } from '@/integrations/quickbooksTime/config';
-import { fetchAllData } from '@/integrations/supabase/data';
+import * as backend from '@/integrations/supabase/data';
 import {
   ActiveShift,
   AppRole,
@@ -52,6 +52,27 @@ function onlyInstallerIds(workers: Worker[], ids: string[]): string[] {
   return ids.filter(
     (id) => workers.find((w) => w.id === id)?.role === 'installer'
   );
+}
+
+/**
+ * Write-through is active only for a real, non-Developer session. Dev mode (no
+ * auth) and a signed-in Developer (who has no RLS write grants) both stay local.
+ */
+function backendActive(state: { authWorker: Worker | null }): boolean {
+  return state.authWorker != null && state.authWorker.role !== 'developer';
+}
+
+/** Fire-and-forget a Supabase write; surface failures without breaking the UI. */
+function write(p: Promise<unknown>): void {
+  p.catch((e) => console.warn('Supabase write failed:', e));
+}
+
+/** RFC4122-ish v4 id for new records in backend mode (DB columns are uuid). */
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 /**
@@ -148,9 +169,12 @@ interface AppState {
   updateJob: (id: string, changes: Partial<Job>) => void;
 
   // --- Jobcards (field work items) ---
-  /** Create a Jobcard. Inherits flashingMaterial from the parent Job. */
+  /**
+   * Create a Jobcard. `flashingMaterial` defaults to the parent Job's value
+   * when omitted, but the caller may pass a per-card override.
+   */
   addJobcard: (
-    card: Omit<Jobcard, 'id' | 'status' | 'priorityOrder' | 'flashingMaterial'> & {
+    card: Omit<Jobcard, 'id' | 'status' | 'priorityOrder'> & {
       id?: string;
       status?: JobcardStatus;
       priorityOrder?: number;
@@ -256,7 +280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAuthWorker: (worker) => set({ authWorker: worker }),
 
   loadBackendData: async () => {
-    const data = await fetchAllData();
+    const data = await backend.fetchAllData();
     set({
       workers: data.workers,
       jobs: data.jobs,
@@ -279,20 +303,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       logs: mockLogs,
     }),
 
-  updateUser: (changes) =>
+  updateUser: (changes) => {
+    let updated: Worker | undefined;
     set((state) => {
       const me = currentWorkerOf(state);
       // Edit the effective identity: the real signed-in worker if that's who's
       // active, otherwise the matching mock roster row.
       if (state.authWorker && me.id === state.authWorker.id) {
-        return { authWorker: { ...state.authWorker, ...changes } };
+        updated = { ...state.authWorker, ...changes };
+        return { authWorker: updated };
       }
       return {
-        workers: state.workers.map((w) =>
-          w.id === me.id ? { ...w, ...changes } : w
-        ),
+        workers: state.workers.map((w) => {
+          if (w.id !== me.id) return w;
+          updated = { ...w, ...changes };
+          return updated;
+        }),
       };
-    }),
+    });
+    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+  },
 
   addWorker: (worker) => {
     const created: Worker = {
@@ -304,40 +334,83 @@ export const useAppStore = create<AppState>((set, get) => ({
     return created;
   },
 
-  updateWorker: (id, changes) =>
+  updateWorker: (id, changes) => {
+    let updated: Worker | undefined;
     set((state) => ({
-      workers: state.workers.map((w) => (w.id === id ? { ...w, ...changes } : w)),
-    })),
+      workers: state.workers.map((w) => {
+        if (w.id !== id) return w;
+        updated = { ...w, ...changes };
+        return updated;
+      }),
+      authWorker:
+        state.authWorker?.id === id
+          ? { ...state.authWorker, ...changes }
+          : state.authWorker,
+    }));
+    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+  },
 
-  setWorkerRole: (id, role) =>
+  setWorkerRole: (id, role) => {
+    let updated: Worker | undefined;
     set((state) => ({
-      workers: state.workers.map((w) => (w.id === id ? { ...w, role } : w)),
-    })),
+      workers: state.workers.map((w) => {
+        if (w.id !== id) return w;
+        updated = { ...w, role };
+        return updated;
+      }),
+      authWorker:
+        state.authWorker?.id === id
+          ? { ...state.authWorker, role }
+          : state.authWorker,
+    }));
+    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+  },
 
-  setWorkerRate: (id, hourlyRate) =>
+  setWorkerRate: (id, hourlyRate) => {
+    let updated: Worker | undefined;
     set((state) => ({
-      workers: state.workers.map((w) => (w.id === id ? { ...w, hourlyRate } : w)),
-    })),
+      workers: state.workers.map((w) => {
+        if (w.id !== id) return w;
+        updated = { ...w, hourlyRate };
+        return updated;
+      }),
+      authWorker:
+        state.authWorker?.id === id
+          ? { ...state.authWorker, hourlyRate }
+          : state.authWorker,
+    }));
+    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+  },
 
   addJob: (job) => {
+    const isBackend = backendActive(get());
     const created: Job = {
       status: 'Active',
       ...job,
-      id: job.id ?? `job-${nextJobId++}`,
+      id: job.id ?? (isBackend ? uuid() : `job-${nextJobId++}`),
     };
     set((state) => ({ jobs: [created, ...state.jobs] }));
+    if (isBackend) write(backend.insertJob(created));
     return created;
   },
 
-  updateJob: (id, changes) =>
+  updateJob: (id, changes) => {
+    let updated: Job | undefined;
     set((state) => ({
-      jobs: state.jobs.map((job) => (job.id === id ? { ...job, ...changes } : job)),
-    })),
+      jobs: state.jobs.map((job) => {
+        if (job.id !== id) return job;
+        updated = { ...job, ...changes };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJob(updated));
+  },
 
   addJobcard: (card) => {
     const state = get();
-    // Snapshot the parent Job's flashing material onto the card at creation
-    // time (auto-inheritance). A later Job edit must not mutate existing cards.
+    // Default the card's flashing material to the parent Job's value, snapshotted
+    // at creation time (a later Job edit must not mutate existing cards). The PM
+    // may pass an explicit override, which wins over the inherited value.
     const parentJob = card.jobId
       ? state.jobs.find((job) => job.id === card.jobId)
       : undefined;
@@ -345,98 +418,132 @@ export const useAppStore = create<AppState>((set, get) => ({
     const maxOrderOnDate = state.jobcards
       .filter((c) => c.date === card.date)
       .reduce((max, c) => Math.max(max, c.priorityOrder), 0);
+    const isBackend = backendActive(state);
     const created: Jobcard = {
       ...card,
-      id: card.id ?? `jc-${nextJobcardId++}`,
+      id: card.id ?? (isBackend ? uuid() : `jc-${nextJobcardId++}`),
       status: card.status ?? 'Upcoming',
       priority: card.priority ?? 'Medium',
       priorityOrder: card.priorityOrder ?? maxOrderOnDate + 1,
-      flashingMaterial: parentJob?.flashingMaterial,
+      flashingMaterial:
+        card.flashingMaterial !== undefined
+          ? card.flashingMaterial
+          : parentJob?.flashingMaterial,
     };
     set({ jobcards: [created, ...state.jobcards] });
+    if (isBackend) write(backend.insertJobcard(created));
     return created;
   },
 
-  updateJobcard: (id, changes) =>
+  updateJobcard: (id, changes) => {
+    let updated: Jobcard | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) =>
-        card.id === id ? { ...card, ...changes } : card
-      ),
-    })),
+      jobcards: state.jobcards.map((card) => {
+        if (card.id !== id) return card;
+        updated = { ...card, ...changes };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+  },
 
-  updateJobcardNotes: (id, fieldNotes) =>
+  updateJobcardNotes: (id, fieldNotes) => {
+    let updated: Jobcard | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) =>
-        card.id === id ? { ...card, fieldNotes } : card
-      ),
-    })),
+      jobcards: state.jobcards.map((card) => {
+        if (card.id !== id) return card;
+        updated = { ...card, fieldNotes };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+  },
 
-  setJobcardStatus: (jobcardId, status) =>
+  setJobcardStatus: (jobcardId, status) => {
+    let updated: Jobcard | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) =>
-        card.id === jobcardId ? { ...card, status } : card
-      ),
-    })),
+      jobcards: state.jobcards.map((card) => {
+        if (card.id !== jobcardId) return card;
+        updated = { ...card, status };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+  },
 
   addCrew: (crew) => {
     const state = get();
+    const isBackend = backendActive(state);
     const created: Crew = {
       ...crew,
-      id: crew.id ?? `crew-${nextCrewId++}`,
+      id: crew.id ?? (isBackend ? uuid() : `crew-${nextCrewId++}`),
       installerIds: onlyInstallerIds(state.workers, crew.installerIds),
     };
     set({ crews: [...state.crews, created] });
+    if (isBackend) write(backend.insertCrew(created));
     return created;
   },
 
-  updateCrew: (id, changes) =>
+  updateCrew: (id, changes) => {
+    let updated: Crew | undefined;
     set((state) => ({
-      crews: state.crews.map((crew) =>
-        crew.id === id
-          ? {
-              ...crew,
-              ...changes,
-              installerIds: changes.installerIds
-                ? onlyInstallerIds(state.workers, changes.installerIds)
-                : crew.installerIds,
-            }
-          : crew
-      ),
-    })),
+      crews: state.crews.map((crew) => {
+        if (crew.id !== id) return crew;
+        updated = {
+          ...crew,
+          ...changes,
+          installerIds: changes.installerIds
+            ? onlyInstallerIds(state.workers, changes.installerIds)
+            : crew.installerIds,
+        };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateCrew(updated));
+  },
 
-  removeCrew: (id) =>
-    set((state) => ({ crews: state.crews.filter((crew) => crew.id !== id) })),
+  removeCrew: (id) => {
+    set((state) => ({ crews: state.crews.filter((crew) => crew.id !== id) }));
+    if (backendActive(get())) write(backend.deleteCrew(id));
+  },
 
   addDailyCrew: (crew) => {
     const state = get();
+    const isBackend = backendActive(state);
     const created: DailyCrew = {
       ...crew,
-      id: crew.id ?? `dc-${nextDailyCrewId++}`,
+      id: crew.id ?? (isBackend ? uuid() : `dc-${nextDailyCrewId++}`),
       installerIds: onlyInstallerIds(state.workers, crew.installerIds),
     };
     set({ dailyCrews: [...state.dailyCrews, created] });
+    if (isBackend) write(backend.insertDailyCrew(created));
     return created;
   },
 
-  updateDailyCrew: (id, changes) =>
+  updateDailyCrew: (id, changes) => {
+    let updated: DailyCrew | undefined;
     set((state) => ({
-      dailyCrews: state.dailyCrews.map((crew) =>
-        crew.id === id
-          ? {
-              ...crew,
-              ...changes,
-              installerIds: changes.installerIds
-                ? onlyInstallerIds(state.workers, changes.installerIds)
-                : crew.installerIds,
-            }
-          : crew
-      ),
-    })),
+      dailyCrews: state.dailyCrews.map((crew) => {
+        if (crew.id !== id) return crew;
+        updated = {
+          ...crew,
+          ...changes,
+          installerIds: changes.installerIds
+            ? onlyInstallerIds(state.workers, changes.installerIds)
+            : crew.installerIds,
+        };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateDailyCrew(updated));
+  },
 
-  removeDailyCrew: (id) =>
+  removeDailyCrew: (id) => {
     set((state) => ({
       dailyCrews: state.dailyCrews.filter((crew) => crew.id !== id),
-    })),
+    }));
+    if (backendActive(get())) write(backend.deleteDailyCrew(id));
+  },
 
   assignJobcard: (jobcardId, crewId, date) => {
     const state = get();
@@ -446,20 +553,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       (a) => a.jobcardId === jobcardId && a.crewId === crewId && a.date === date
     );
     if (existing) return existing;
+    const isBackend = backendActive(state);
     const created: ScheduleAssignment = {
-      id: `asn-${nextAssignmentId++}`,
+      id: isBackend ? uuid() : `asn-${nextAssignmentId++}`,
       jobcardId,
       crewId,
       date,
     };
     set({ assignments: [...state.assignments, created] });
+    if (isBackend) write(backend.insertAssignment(created));
     return created;
   },
 
-  unassignJobcard: (assignmentId) =>
+  unassignJobcard: (assignmentId) => {
     set((state) => ({
       assignments: state.assignments.filter((a) => a.id !== assignmentId),
-    })),
+    }));
+    if (backendActive(get())) write(backend.deleteAssignment(assignmentId));
+  },
 
   clockIn: (ref) =>
     set({
@@ -475,8 +586,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       state.activeShift.startTime,
       end.toISOString()
     );
+    const isBackend = backendActive(state);
     const log: TimesheetLog = {
-      id: `t-${nextLogId++}`,
+      id: isBackend ? uuid() : `t-${nextLogId++}`,
       workerId: me.id,
       date: format(new Date(state.activeShift.startTime), 'yyyy-MM-dd'),
       jobcardId: state.activeShift.jobcardId,
@@ -488,6 +600,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sendStatus: 'unsent',
     };
     set({ activeShift: null, logs: [log, ...state.logs] });
+    if (isBackend) write(backend.insertTimesheet(log));
     return log;
   },
 
@@ -511,7 +624,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         : {}
     ),
 
-  updateLog: (logId, changes) =>
+  updateLog: (logId, changes) => {
+    let updatedLog: TimesheetLog | undefined;
     set((state) => {
       // An edited log needs re-pushing: drop it back to unsynced, but keep the
       // QBT timesheet id so the sync layer can update in place rather than
@@ -542,12 +656,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             ) / 100;
           // An edit invalidates any prior delivery — re-send on the next sweep.
           updated.sendStatus = 'unsent';
+          updatedLog = updated;
           return updated;
         }),
       };
-    }),
+    });
+    if (backendActive(get()) && updatedLog) write(backend.updateTimesheet(updatedLog));
+  },
 
-  deleteLog: (logId) =>
+  deleteLog: (logId) => {
     set((state) => {
       const sync = { ...state.qbt.sync };
       delete sync[logId];
@@ -555,14 +672,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         logs: state.logs.filter((log) => log.id !== logId),
         qbt: { ...state.qbt, sync },
       };
-    }),
+    });
+    if (backendActive(get())) write(backend.deleteTimesheet(logId));
+  },
 
   addLog: (entry) => {
     const state = get();
     const me = currentWorkerOf(state);
+    const isBackend = backendActive(state);
     const totalHours = hoursBetween(entry.startTime, entry.endTime);
     const log: TimesheetLog = {
-      id: `t-${nextLogId++}`,
+      id: isBackend ? uuid() : `t-${nextLogId++}`,
       workerId: me.id,
       date: format(new Date(entry.startTime), 'yyyy-MM-dd'),
       jobcardId: entry.jobcardId,
@@ -574,17 +694,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       sendStatus: 'unsent',
     };
     set({ logs: [log, ...state.logs] });
+    if (isBackend) write(backend.insertTimesheet(log));
     return log;
   },
 
-  markTimesheetsSent: () =>
+  markTimesheetsSent: () => {
     set((state) => ({
       // The weekly server sweep delivered these to QuickBooks Time. (A real
       // per-log failure path sets 'failed'; that happens server-side in Step 7.)
       logs: state.logs.map((log) =>
         log.sendStatus === 'sent' ? log : { ...log, sendStatus: 'sent' }
       ),
-    })),
+    }));
+    if (backendActive(get())) write(backend.markTimesheetsSentRemote());
+  },
 
   setQbtConfig: (changes) =>
     set((state) => ({

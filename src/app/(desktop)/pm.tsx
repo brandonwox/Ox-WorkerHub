@@ -1,13 +1,7 @@
 import { Feather } from '@expo/vector-icons';
+import { format } from 'date-fns';
 import { useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import {
@@ -15,26 +9,17 @@ import {
   NewJobcardInput,
 } from '@/components/desktop/CreateJobcardModal';
 import { Toast } from '@/components/Toast';
+import { priorityMeta } from '@/lib/priority';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job, JobcardPriority } from '@/types';
 
-const PRIORITY_META: Record<
-  JobcardPriority,
-  { bg: string; fg: string }
-> = {
-  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
-  Medium: { bg: colors.primaryDim, fg: colors.primary },
-  High: { bg: colors.dangerDim, fg: colors.danger },
-};
-
-export default function PmScreen() {
+/** Project Manager → Jobcards: every jobcard, its calendar status, and creation. */
+export default function PmJobcardsScreen() {
   const role = useCurrentRole();
   const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
   const addJobcard = useAppStore((s) => s.addJobcard);
-  const updateJob = useAppStore((s) => s.updateJob);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -44,14 +29,14 @@ export default function PmScreen() {
     [jobs]
   );
 
-  // "Unassigned" is derived: a jobcard with no row in `assignments`.
-  const assignedIds = useMemo(
+  // "On the calendar" = the jobcard has a row in `assignments` (Scheduler placed it).
+  const scheduledIds = useMemo(
     () => new Set(assignments.map((a) => a.jobcardId)),
     [assignments]
   );
-  const unassignedCount = useMemo(
-    () => jobcards.filter((c) => !assignedIds.has(c.id)).length,
-    [jobcards, assignedIds]
+  const unscheduledCount = useMemo(
+    () => jobcards.filter((c) => !scheduledIds.has(c.id)).length,
+    [jobcards, scheduledIds]
   );
 
   if (role !== 'project_manager') return <AccessDenied />;
@@ -60,15 +45,20 @@ export default function PmScreen() {
     jobs.find((j) => j.id === jobId)?.name ?? 'Unlinked job';
 
   const handleCreate = (input: NewJobcardInput) => {
-    // addJobcard snapshots the parent Job's flashingMaterial — we don't pass it.
+    const parent = jobs.find((j) => j.id === input.jobId);
     addJobcard({
       jobId: input.jobId,
       title: input.title,
-      address: input.address,
-      date: input.date,
+      address: parent?.location ?? '',
+      // No calendar date at creation — the Scheduler places it later.
+      date: format(new Date(), 'yyyy-MM-dd'),
       priority: input.priority,
+      scopes: input.scopes,
+      tasks: input.tasks,
+      readiness: input.readiness,
       materials: input.materials,
-      scopeOfWork: input.scopeOfWork,
+      flashingMaterial: input.flashingMaterial,
+      notes: input.notes,
       details: { generalContractor: '', managerName: '', managerPhone: '' },
     });
     setToast(`Jobcard "${input.title}" created`);
@@ -80,8 +70,8 @@ export default function PmScreen() {
         <View style={styles.headerRow}>
           <Text style={styles.subtitle}>
             {jobcards.length}{' '}
-            {jobcards.length === 1 ? 'jobcard' : 'jobcards'} ·{' '}
-            {unassignedCount} unassigned
+            {jobcards.length === 1 ? 'jobcard' : 'jobcards'} · {unscheduledCount}{' '}
+            not on calendar
           </Text>
           <Pressable
             style={({ pressed }) => [
@@ -97,120 +87,60 @@ export default function PmScreen() {
           </Pressable>
         </View>
 
-        {/* Section A — Jobs & flashing (the PM's one writable Job field). */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Jobs &amp; flashing</Text>
-          <Text style={styles.sectionHint}>
-            Set each active job&apos;s site-wide flashing material. New jobcards
-            inherit it automatically. You can only edit flashing here.
-          </Text>
-
-          <View style={styles.table}>
-            <View style={[styles.row, styles.headRow]}>
-              <Text style={[styles.cell, styles.colName, styles.headText]}>
-                Job
-              </Text>
-              <Text style={[styles.cell, styles.colLocation, styles.headText]}>
-                Location
-              </Text>
-              <Text style={[styles.cell, styles.colFlashing, styles.headText]}>
-                Flashing material
-              </Text>
-            </View>
-
-            {activeJobs.length === 0 ? (
-              <View style={styles.emptyRow}>
-                <Text style={styles.emptyText}>
-                  No active jobs yet — the Operator creates jobs.
-                </Text>
-              </View>
-            ) : (
-              activeJobs.map((job) => (
-                <View key={job.id} style={styles.row}>
-                  <View style={[styles.cell, styles.colName]}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {job.name}
+        {jobcards.length === 0 ? (
+          <Text style={styles.emptyText}>No jobcards yet.</Text>
+        ) : (
+          <View style={styles.cardStack}>
+            {jobcards.map((card) => {
+              const scheduled = scheduledIds.has(card.id);
+              const meta = priorityMeta(card.priority);
+              return (
+                <View key={card.id} style={styles.jobcardRow}>
+                  <View style={styles.jobcardMain}>
+                    <Text style={styles.jobcardTitle} numberOfLines={1}>
+                      {card.title}
+                    </Text>
+                    <Text style={styles.jobcardJob} numberOfLines={1}>
+                      {jobNameFor(card.jobId)}
+                      {card.scopes && card.scopes.length > 0
+                        ? `  ·  ${card.scopes.join(', ')}`
+                        : ''}
                     </Text>
                   </View>
-                  <View style={[styles.cell, styles.colLocation]}>
-                    <Text style={styles.location} numberOfLines={2}>
-                      {job.location}
+
+                  <View
+                    style={[styles.priorityPill, { backgroundColor: meta.bg }]}
+                  >
+                    <Text style={[styles.priorityText, { color: meta.fg }]}>
+                      {card.priority}
                     </Text>
                   </View>
-                  <View style={[styles.cell, styles.colFlashing]}>
-                    <FlashingCell
-                      job={job}
-                      onCommit={(flashingMaterial) =>
-                        updateJob(job.id, { flashingMaterial })
-                      }
+
+                  <View
+                    style={[
+                      styles.statusPill,
+                      scheduled ? styles.statusPillOn : styles.statusPillOff,
+                    ]}
+                  >
+                    <Feather
+                      name={scheduled ? 'calendar' : 'clock'}
+                      size={13}
+                      color={scheduled ? colors.success : colors.warning}
                     />
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        </View>
-
-        {/* Section B — Jobcards backlog with assigned/unassigned feedback. */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Jobcards</Text>
-          <Text style={styles.sectionHint}>
-            Newest first. Unassigned cards sit in the Scheduler&apos;s backlog
-            until a crew &amp; date are assigned.
-          </Text>
-
-          {jobcards.length === 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.emptyText}>No jobcards yet.</Text>
-            </View>
-          ) : (
-            <View style={styles.cardList}>
-              {jobcards.map((card) => {
-                const assigned = assignedIds.has(card.id);
-                const meta = PRIORITY_META[card.priority];
-                return (
-                  <View key={card.id} style={styles.jobcardRow}>
-                    <View style={styles.jobcardMain}>
-                      <Text style={styles.jobcardTitle} numberOfLines={1}>
-                        {card.title}
-                      </Text>
-                      <Text style={styles.jobcardJob} numberOfLines={1}>
-                        {jobNameFor(card.jobId)}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.priorityPill, { backgroundColor: meta.bg }]}>
-                      <Text style={[styles.priorityText, { color: meta.fg }]}>
-                        {card.priority}
-                      </Text>
-                    </View>
-
-                    <View
+                    <Text
                       style={[
-                        styles.assignPill,
-                        assigned ? styles.assignPillOn : styles.assignPillOff,
+                        styles.statusText,
+                        { color: scheduled ? colors.success : colors.warning },
                       ]}
                     >
-                      <Feather
-                        name={assigned ? 'check-circle' : 'clock'}
-                        size={13}
-                        color={assigned ? colors.success : colors.warning}
-                      />
-                      <Text
-                        style={[
-                          styles.assignText,
-                          { color: assigned ? colors.success : colors.warning },
-                        ]}
-                      >
-                        {assigned ? 'Assigned' : 'Unassigned'}
-                      </Text>
-                    </View>
+                      {scheduled ? 'On calendar' : 'Not on calendar'}
+                    </Text>
                   </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       <Toast message={toast} onDone={() => setToast(null)} />
@@ -225,38 +155,6 @@ export default function PmScreen() {
   );
 }
 
-/** Inline editable site-wide flashing material; commits on blur. */
-function FlashingCell({
-  job,
-  onCommit,
-}: {
-  job: Job;
-  onCommit: (value: string | undefined) => void;
-}) {
-  const [text, setText] = useState(job.flashingMaterial ?? '');
-
-  const commit = () => {
-    const trimmed = text.trim();
-    onCommit(trimmed || undefined);
-  };
-
-  const unset = !job.flashingMaterial;
-
-  return (
-    <View style={[styles.flashWrap, unset && styles.flashWrapUnset]}>
-      <TextInput
-        style={styles.flashInput}
-        value={text}
-        onChangeText={setText}
-        onBlur={commit}
-        onEndEditing={commit}
-        placeholder="not set"
-        placeholderTextColor={colors.textTertiary}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -264,7 +162,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.xl,
-    gap: spacing.xl,
+    gap: spacing.lg,
     maxWidth: 1100,
   },
   headerRow: {
@@ -298,113 +196,24 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
   },
-  section: {
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    color: colors.textPrimary,
-    fontFamily: fonts.bold,
-    fontSize: 17,
-  },
-  sectionHint: {
-    color: colors.textSecondary,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    maxWidth: 640,
-  },
-  table: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginTop: spacing.xs,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headRow: {
-    backgroundColor: colors.surfaceLight,
-  },
-  headText: {
-    color: colors.textTertiary,
-    fontFamily: fonts.semiBold,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  cell: {
-    paddingRight: spacing.md,
-    justifyContent: 'center',
-  },
-  colName: {
-    flex: 3,
-  },
-  colLocation: {
-    flex: 3,
-  },
-  colFlashing: {
-    flex: 3,
-  },
-  name: {
-    color: colors.textPrimary,
-    fontFamily: fonts.semiBold,
-    fontSize: 15,
-  },
-  location: {
-    color: colors.textSecondary,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-  },
-  emptyRow: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
   emptyText: {
     color: colors.textTertiary,
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  flashWrap: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-  },
-  flashWrapUnset: {
-    borderColor: colors.border,
-  },
-  flashInput: {
-    minWidth: 140,
-    paddingVertical: spacing.sm,
-    color: colors.textPrimary,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-  },
-  cardList: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginTop: spacing.xs,
+  cardStack: {
+    gap: spacing.sm,
   },
   jobcardRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   jobcardMain: {
     flex: 1,
@@ -421,31 +230,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   priorityPill: {
-    width: 76,
+    minWidth: 84,
     alignItems: 'center',
     borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
   priorityText: {
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
-  assignPill: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    width: 120,
+    width: 150,
     justifyContent: 'center',
     borderRadius: radii.pill,
     paddingVertical: 4,
   },
-  assignPillOn: {
+  statusPillOn: {
     backgroundColor: colors.successDim,
   },
-  assignPillOff: {
+  statusPillOff: {
     backgroundColor: colors.warningDim,
   },
-  assignText: {
+  statusText: {
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },

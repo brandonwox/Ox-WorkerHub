@@ -1,0 +1,15 @@
+-- Add the `developer` role to the app_role enum.
+--
+-- The app's AppRole type, ROLE_LABELS, the Add-worker picker, and the
+-- invite-worker function all already include `developer`, but the original
+-- enum (20260614201808_initial_schema.sql) only defined four roles. Inviting or
+-- assigning a `developer` therefore failed at the DB layer (enum check), which
+-- aborted the invite and rolled back the auth user.
+--
+-- A signed-in developer is intentionally a read-only sandbox: none of the write
+-- RLS policies grant the `developer` role, so adding the value here lets a
+-- developer be invited and sign in without gaining any write access.
+--
+-- Note: ALTER TYPE ... ADD VALUE only adds the label (it is not used in this
+-- migration), so it is safe to run inside the migration transaction.
+alter type public.app_role add value if not exists 'developer';

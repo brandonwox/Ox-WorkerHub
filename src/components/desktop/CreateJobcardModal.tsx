@@ -1,22 +1,39 @@
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
-import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
+import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
-import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job, JobcardPriority } from '@/types';
+import {
+  Job,
+  JobScope,
+  JOB_SCOPES,
+  PRIORITY_PRESETS,
+  READINESS_PRESETS,
+} from '@/types';
+import { useTypewriter } from '@/utils/useTypewriter';
 
-/** Payload the PM screen hands to `addJobcard` (flashing is inherited by the store). */
+/** Payload the PM screen hands to `addJobcard`. */
 export interface NewJobcardInput {
   jobId: string;
   title: string;
-  address: string;
-  date: string;
-  priority: JobcardPriority;
+  scopes: JobScope[];
+  tasks: string[];
+  readiness: string;
+  priority: string;
   materials?: string;
-  scopeOfWork?: string;
+  /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
+  flashingMaterial?: string;
+  notes?: string;
 }
 
 interface Props {
@@ -27,34 +44,63 @@ interface Props {
   onSubmit: (input: NewJobcardInput) => void;
 }
 
-const PRIORITY_OPTIONS: { value: JobcardPriority; label: string }[] = [
-  { value: 'Low', label: 'Low' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'High', label: 'High' },
+/** Title placeholder cycles through these via a typewriter animation. */
+const TITLE_PHRASES = [
+  'Install windows',
+  'Finish the north face',
+  'Fix the sashes',
+  'Set mirrors on floor 3',
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MIN_TASK_LEN = 15;
+
+const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
+const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
+const PRIORITY_OPTIONS = PRIORITY_PRESETS.map((p) => ({ value: p, label: p }));
 
 export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) {
-  const today = format(new Date(), 'yyyy-MM-dd');
-
-  const [jobId, setJobId] = useState(jobs[0]?.id ?? '');
+  const [jobId, setJobId] = useState('');
   const [title, setTitle] = useState('');
-  const [priority, setPriority] = useState<JobcardPriority>('Medium');
+  const [scopes, setScopes] = useState<JobScope[]>([]);
+  const [tasks, setTasks] = useState<string[]>(['']);
+  // The first task mirrors the title until the PM edits it directly — they're
+  // usually the same thing, so we save the PM re-typing it.
+  const [taskLinked, setTaskLinked] = useState(true);
+  const [readiness, setReadiness] = useState('');
+  const [readyConfirmed, setReadyConfirmed] = useState(false);
+  const [priority, setPriority] = useState('');
+  // Window Opening Flashing Material: tracks the parent Job until the PM edits it.
+  const [flashing, setFlashing] = useState('');
+  const [flashingTouched, setFlashingTouched] = useState(false);
   const [materials, setMaterials] = useState('');
-  const [scope, setScope] = useState('');
-  const [date, setDate] = useState(today);
+  const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const titlePlaceholder = useTypewriter(TITLE_PHRASES);
+
+  const jobOptions = useMemo(
+    () => jobs.map((j) => ({ value: j.id, label: j.name })),
+    [jobs]
+  );
   const selectedJob = jobs.find((j) => j.id === jobId);
+  const includesWindows = scopes.includes('Windows');
+  const flashingValue = flashingTouched
+    ? flashing
+    : (selectedJob?.flashingMaterial ?? '');
 
   const reset = () => {
-    setJobId(jobs[0]?.id ?? '');
+    setJobId('');
     setTitle('');
-    setPriority('Medium');
+    setScopes([]);
+    setTasks(['']);
+    setTaskLinked(true);
+    setReadiness('');
+    setReadyConfirmed(false);
+    setPriority('');
+    setFlashing('');
+    setFlashingTouched(false);
     setMaterials('');
-    setScope('');
-    setDate(today);
+    setNotes('');
     setError(null);
   };
 
@@ -63,23 +109,80 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
     onClose();
   };
 
+  const setTaskAt = (index: number, value: string) => {
+    // A direct edit of the first task unlinks it from the title.
+    if (index === 0) setTaskLinked(false);
+    setTasks((prev) => prev.map((t, i) => (i === index ? value : t)));
+  };
+  const addTask = () => setTasks((prev) => [...prev, '']);
+  const removeTask = (index: number) =>
+    setTasks((prev) => prev.filter((_, i) => i !== index));
+
+  // While linked, typing the title also fills the first task.
+  const onTitleChange = (value: string) => {
+    setTitle(value);
+    if (taskLinked) {
+      setTasks((prev) => {
+        const next = [...prev];
+        next[0] = value;
+        return next;
+      });
+    }
+  };
+
+  // When readiness changes away from "Now", the confirmation no longer applies.
+  const onReadinessChange = (value: string) => {
+    setReadiness(value);
+    if (value !== 'Now') setReadyConfirmed(false);
+  };
+
   const submit = () => {
     if (!selectedJob) {
       setError('Pick a parent job for this jobcard.');
       return;
     }
-    if (!DATE_RE.test(date.trim())) {
-      setError('Scheduled date must be in YYYY-MM-DD format.');
+    if (!title.trim()) {
+      setError('Title is required.');
       return;
     }
+    if (scopes.length === 0) {
+      setError('Select at least one scope.');
+      return;
+    }
+    const cleanTasks = tasks.map((t) => t.trim()).filter((t) => t.length > 0);
+    if (cleanTasks.length === 0) {
+      setError('Add at least one task.');
+      return;
+    }
+    if (cleanTasks.some((t) => t.length < MIN_TASK_LEN)) {
+      setError(`Each task must be at least ${MIN_TASK_LEN} characters.`);
+      return;
+    }
+    if (!readiness.trim()) {
+      setError('Choose when this jobcard is ready for installers.');
+      return;
+    }
+    if (readiness === 'Now' && !readyConfirmed) {
+      setError('Confirm the job and tasks are ready before marking it "Now".');
+      return;
+    }
+    if (!priority.trim()) {
+      setError('Choose a priority.');
+      return;
+    }
+
     onSubmit({
       jobId: selectedJob.id,
-      title: title.trim() || `${selectedJob.name} — Jobcard`,
-      address: selectedJob.location,
-      date: date.trim(),
-      priority,
+      title: title.trim(),
+      scopes,
+      tasks: cleanTasks,
+      readiness: readiness.trim(),
+      priority: priority.trim(),
       materials: materials.trim() || undefined,
-      scopeOfWork: scope.trim() || undefined,
+      flashingMaterial: includesWindows
+        ? flashingValue.trim() || undefined
+        : undefined,
+      notes: notes.trim() || undefined,
     });
     close();
   };
@@ -96,96 +199,159 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
             </Pressable>
           </View>
 
-          <View style={[styles.field, styles.zTop]}>
-            <Text style={styles.fieldLabel}>Parent job</Text>
-            {jobs.length === 0 ? (
-              <Text style={styles.noJobs}>
-                No active jobs available. The Operator must create one first.
-              </Text>
-            ) : (
-              <InlineSelect
-                value={jobId}
-                options={jobs.map((j) => ({ value: j.id, label: j.name }))}
-                onChange={setJobId}
-                minWidth={200}
-              />
-            )}
-          </View>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Parent job — searchable */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Parent job</Text>
+              {jobs.length === 0 ? (
+                <Text style={styles.noJobs}>
+                  No active jobs available. The Operator must create one first.
+                </Text>
+              ) : (
+                <Combobox
+                  value={jobId}
+                  options={jobOptions}
+                  onChange={setJobId}
+                  placeholder="Search jobs…"
+                />
+              )}
+            </View>
 
-          {/* Flashing is auto-inherited from the parent Job — read-only here. */}
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Flashing material</Text>
-            <View style={styles.readonlyRow}>
-              <Feather
-                name={selectedJob?.flashingMaterial ? 'link' : 'minus-circle'}
-                size={15}
-                color={
+            {/* Title (required, animated placeholder) — directly under the job */}
+            <FormInput
+              label="Title"
+              value={title}
+              onChangeText={onTitleChange}
+              placeholder={titlePlaceholder || 'Install windows'}
+              autoCapitalize="sentences"
+            />
+
+            {/* Scope — searchable multi-select */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Scope (select one or more)</Text>
+              <MultiCombobox
+                values={scopes}
+                options={SCOPE_OPTIONS}
+                onChange={(vals) => setScopes(vals as JobScope[])}
+                placeholder="Search scopes…"
+              />
+            </View>
+
+            {/* Tasks (at least one ≥ 15 chars) */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Tasks (each at least {MIN_TASK_LEN} characters)
+              </Text>
+              {tasks.map((task, index) => (
+                <View key={index} style={styles.taskRow}>
+                  <TextInput
+                    style={styles.taskInput}
+                    value={task}
+                    onChangeText={(t) => setTaskAt(index, t)}
+                    placeholder="Describe a task for the installers…"
+                    placeholderTextColor={colors.textTertiary}
+                    multiline
+                  />
+                  {tasks.length > 1 && (
+                    <Pressable
+                      style={styles.taskRemove}
+                      onPress={() => removeTask(index)}
+                      hitSlop={6}
+                    >
+                      <Feather name="x" size={16} color={colors.textSecondary} />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              <Pressable style={styles.addTask} onPress={addTask}>
+                <Feather name="plus" size={15} color={colors.primary} />
+                <Text style={styles.addTaskText}>Add task</Text>
+              </Pressable>
+            </View>
+
+            {/* Ready for installers — searchable, custom allowed via Enter */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Ready for installers</Text>
+              <Combobox
+                value={readiness}
+                options={READINESS_OPTIONS}
+                onChange={onReadinessChange}
+                placeholder="Now, Soon, Over 2 Weeks… or type your own + Enter"
+                allowCustom
+              />
+              {readiness === 'Now' && (
+                <Pressable
+                  style={[styles.confirm, readyConfirmed && styles.confirmOn]}
+                  onPress={() => setReadyConfirmed((v) => !v)}
+                >
+                  <Feather
+                    name={readyConfirmed ? 'check-square' : 'square'}
+                    size={18}
+                    color={readyConfirmed ? colors.success : colors.warning}
+                  />
+                  <Text style={styles.confirmText}>
+                    I&apos;ve double-checked the job and tasks are ready for
+                    installers to arrive now.
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Priority — searchable, custom allowed via Enter */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Priority</Text>
+              <Combobox
+                value={priority}
+                options={PRIORITY_OPTIONS}
+                onChange={setPriority}
+                placeholder="Now, Tomorrow, This Week… or type your own + Enter"
+                allowCustom
+              />
+            </View>
+
+            {/* Window Opening Flashing Material (Windows scope only) */}
+            {includesWindows && (
+              <FormInput
+                label="Window Opening Flashing Material"
+                value={flashingValue}
+                onChangeText={(t) => {
+                  setFlashingTouched(true);
+                  setFlashing(t);
+                }}
+                placeholder={
                   selectedJob?.flashingMaterial
-                    ? colors.primary
-                    : colors.textTertiary
+                    ? `Defaults to ${selectedJob.flashingMaterial}`
+                    : 'e.g. Clear Anodized Aluminum'
                 }
               />
-              <Text
-                style={[
-                  styles.readonlyText,
-                  !selectedJob?.flashingMaterial && styles.readonlyMuted,
-                ]}
-                numberOfLines={1}
-              >
-                {selectedJob?.flashingMaterial
-                  ? `${selectedJob.flashingMaterial}  ·  inherited from ${selectedJob.name}`
-                  : selectedJob
-                    ? 'None set on this job'
-                    : '—'}
-              </Text>
-            </View>
-          </View>
+            )}
 
-          <FormInput
-            label="Title (optional)"
-            value={title}
-            onChangeText={setTitle}
-            placeholder={
-              selectedJob ? `${selectedJob.name} — Jobcard` : 'Jobcard title'
-            }
-            autoCapitalize="words"
-          />
-
-          <View style={[styles.field, styles.zMid]}>
-            <Text style={styles.fieldLabel}>Priority</Text>
-            <InlineSelect
-              value={priority}
-              options={PRIORITY_OPTIONS}
-              onChange={setPriority}
-              minWidth={200}
+            {/* Materials needed (optional) */}
+            <FormInput
+              label="Materials needed (optional)"
+              value={materials}
+              onChangeText={setMaterials}
+              placeholder="Gaskets, setting blocks, structural silicone…"
+              multiline
+              style={styles.multiline}
             />
-          </View>
 
-          <FormInput
-            label="Materials needed (optional)"
-            value={materials}
-            onChangeText={setMaterials}
-            placeholder="Gaskets, setting blocks, structural silicone…"
-            multiline
-            style={styles.multiline}
-          />
-          <FormInput
-            label="Scope of work / work required (optional)"
-            value={scope}
-            onChangeText={setScope}
-            placeholder="What this card covers on site…"
-            multiline
-            style={styles.multiline}
-          />
-          <FormInput
-            label="Scheduled date"
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-            autoCapitalize="none"
-          />
+            {/* Notes */}
+            <FormInput
+              label="Notes (optional)"
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Anything else the crew or scheduler should know…"
+              multiline
+              style={styles.multiline}
+            />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </ScrollView>
 
           <View style={styles.actions}>
             <Pressable style={styles.cancelButton} onPress={close}>
@@ -218,7 +384,8 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 520,
+    maxHeight: '90%',
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -236,15 +403,15 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 20,
   },
+  scroll: {
+    flexShrink: 1,
+  },
+  body: {
+    gap: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
   field: {
     gap: spacing.xs + 2,
-  },
-  // Keep parent-job and priority dropdown menus above the fields beneath them.
-  zTop: {
-    zIndex: 30,
-  },
-  zMid: {
-    zIndex: 20,
   },
   fieldLabel: {
     color: colors.textSecondary,
@@ -256,25 +423,63 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
   },
-  readonlyRow: {
+  taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  taskInput: {
+    flex: 1,
+    minHeight: 44,
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md + 2,
+    paddingVertical: spacing.md,
+    color: colors.textPrimary,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    textAlignVertical: 'top',
+    outlineWidth: 0,
   },
-  readonlyText: {
+  taskRemove: {
+    padding: spacing.sm,
+  },
+  addTask: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+  },
+  addTaskText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  confirm: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    backgroundColor: colors.warningDim,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  confirmOn: {
+    backgroundColor: colors.successDim,
+    borderColor: colors.success,
+  },
+  confirmText: {
     flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.medium,
-    fontSize: 14,
-  },
-  readonlyMuted: {
-    color: colors.textTertiary,
+    fontSize: 13,
+    lineHeight: 18,
   },
   multiline: {
     minHeight: 64,
@@ -289,7 +494,6 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.xs,
   },
   cancelButton: {
     flex: 1,

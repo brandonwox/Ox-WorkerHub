@@ -65,7 +65,7 @@ export default function JobsScreen() {
               QBT Jobcode
             </Text>
             <Text style={[styles.cell, styles.colFlashing, styles.headText]}>
-              Flashing
+              Window Opening Flashing
             </Text>
             <Text style={[styles.cell, styles.colStatus, styles.headText]}>
               Status
@@ -295,6 +295,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 14,
+    outlineWidth: 0,
   },
   flashInput: {
     minWidth: 120,
@@ -302,5 +303,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 14,
+    outlineWidth: 0,
   },
 });

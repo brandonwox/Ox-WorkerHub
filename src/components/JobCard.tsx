@@ -2,16 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
+import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Jobcard, JobcardPriority } from '@/types';
+import { Jobcard } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
-
-const PRIORITY_META: Record<JobcardPriority, { bg: string; fg: string }> = {
-  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
-  Medium: { bg: colors.primaryDim, fg: colors.primary },
-  High: { bg: colors.dangerDim, fg: colors.danger },
-};
 
 interface Props {
   jobcard: Jobcard;
@@ -25,7 +20,7 @@ interface Props {
 export function JobCard({ jobcard, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
-  const priority = PRIORITY_META[jobcard.priority];
+  const priority = priorityMeta(jobcard.priority);
 
   return (
     <Pressable

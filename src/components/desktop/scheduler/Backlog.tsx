@@ -1,14 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Jobcard, JobcardPriority } from '@/types';
-
-const PRIORITY_META: Record<JobcardPriority, { bg: string; fg: string }> = {
-  Low: { bg: colors.surfaceLight, fg: colors.textSecondary },
-  Medium: { bg: colors.primaryDim, fg: colors.primary },
-  High: { bg: colors.dangerDim, fg: colors.danger },
-};
+import { Jobcard } from '@/types';
 
 interface Props {
   /** Unassigned jobcards (no row in `assignments`). */
@@ -45,7 +40,7 @@ export function Backlog({
           </View>
         ) : (
           cards.map((card) => {
-            const meta = PRIORITY_META[card.priority];
+            const meta = priorityMeta(card.priority);
             const selected = placingCardId === card.id;
             const hint = card.flashingMaterial || card.materials;
             return (

@@ -5,6 +5,7 @@ import {
   Jobcard,
   JobcardPriority,
   JobcardStatus,
+  JobScope,
   JobStatus,
   ScheduleAssignment,
   TimesheetLog,
@@ -43,8 +44,12 @@ interface JobcardRow {
   status: string;
   priority: string;
   priority_order: number;
+  scopes: string[] | null;
+  tasks: string[] | null;
+  readiness: string | null;
   flashing_material: string | null;
   materials: string | null;
+  notes: string | null;
   scope_of_work: string | null;
   field_notes: string | null;
   details: {
@@ -117,8 +122,12 @@ function rowToJobcard(r: JobcardRow): Jobcard {
     status: r.status as JobcardStatus,
     priority: r.priority as JobcardPriority,
     priorityOrder: r.priority_order,
+    scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
+    tasks: r.tasks ?? undefined,
+    readiness: r.readiness ?? undefined,
     flashingMaterial: r.flashing_material ?? undefined,
     materials: r.materials ?? undefined,
+    notes: r.notes ?? undefined,
     scopeOfWork: r.scope_of_work ?? undefined,
     fieldNotes: r.field_notes ?? undefined,
     details: {
@@ -232,4 +241,206 @@ export async function fetchAllData(): Promise<BackendData> {
     ),
     logs: ((timesheetsR.data ?? []) as TimesheetRow[]).map(rowToTimesheet),
   };
+}
+
+// --- Write layer (domain -> row). INSERT and UPDATE are kept separate so an
+//     update never trips a stricter INSERT RLS policy (e.g. self profile edits).
+
+function check(error: { message: string } | null): void {
+  if (error) throw new Error(error.message);
+}
+
+function jobToRow(job: Job) {
+  return {
+    id: job.id,
+    name: job.name,
+    location: job.location,
+    status: job.status,
+    qbt_jobcode_id: job.qbtJobcodeId ?? null,
+    flashing_material: job.flashingMaterial ?? null,
+  };
+}
+
+export async function insertJob(job: Job): Promise<void> {
+  check((await getSupabase().from('jobs').insert(jobToRow(job))).error);
+}
+export async function updateJob(job: Job): Promise<void> {
+  check(
+    (await getSupabase().from('jobs').update(jobToRow(job)).eq('id', job.id))
+      .error
+  );
+}
+
+function jobcardToRow(card: Jobcard) {
+  return {
+    id: card.id,
+    job_id: card.jobId ?? null,
+    title: card.title,
+    address: card.address,
+    date: card.date,
+    start_time: card.startTime ?? null,
+    end_time: card.endTime ?? null,
+    status: card.status,
+    priority: card.priority,
+    priority_order: card.priorityOrder,
+    scopes: card.scopes ?? null,
+    tasks: card.tasks ?? null,
+    readiness: card.readiness ?? null,
+    flashing_material: card.flashingMaterial ?? null,
+    materials: card.materials ?? null,
+    notes: card.notes ?? null,
+    scope_of_work: card.scopeOfWork ?? null,
+    field_notes: card.fieldNotes ?? null,
+    details: card.details,
+  };
+}
+
+export async function insertJobcard(card: Jobcard): Promise<void> {
+  check((await getSupabase().from('jobcards').insert(jobcardToRow(card))).error);
+}
+export async function updateJobcard(card: Jobcard): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('jobcards')
+        .update(jobcardToRow(card))
+        .eq('id', card.id)
+    ).error
+  );
+}
+
+function workerToRow(w: Worker) {
+  return {
+    name: w.name,
+    email: w.email,
+    phone: w.phone,
+    role: w.role,
+    trade_role: w.tradeRole,
+    hourly_rate: w.hourlyRate,
+    status: w.status,
+  };
+}
+export async function updateWorker(w: Worker): Promise<void> {
+  check(
+    (await getSupabase().from('workers').update(workerToRow(w)).eq('id', w.id))
+      .error
+  );
+}
+
+/**
+ * Flip the signed-in worker's own row from 'invited' to 'active' (called once
+ * after they set their password). Sends only `status` so it can't trip the
+ * operator-only role/rate guard trigger; throws on failure so the caller can
+ * surface it instead of silently leaving the account stuck as 'invited'.
+ */
+export async function markSelfActive(id: string): Promise<void> {
+  check(
+    (await getSupabase().from('workers').update({ status: 'active' }).eq('id', id))
+      .error
+  );
+}
+
+async function replaceMembers(
+  table: 'crew_members' | 'daily_crew_members',
+  fkColumn: 'crew_id' | 'daily_crew_id',
+  parentId: string,
+  installerIds: string[]
+): Promise<void> {
+  const sb = getSupabase();
+  check((await sb.from(table).delete().eq(fkColumn, parentId)).error);
+  if (installerIds.length) {
+    check(
+      (
+        await sb
+          .from(table)
+          .insert(installerIds.map((installer_id) => ({ [fkColumn]: parentId, installer_id })))
+      ).error
+    );
+  }
+}
+
+export async function insertCrew(crew: Crew): Promise<void> {
+  check((await getSupabase().from('crews').insert({ id: crew.id, name: crew.name })).error);
+  await replaceMembers('crew_members', 'crew_id', crew.id, crew.installerIds);
+}
+export async function updateCrew(crew: Crew): Promise<void> {
+  check(
+    (await getSupabase().from('crews').update({ name: crew.name }).eq('id', crew.id)).error
+  );
+  await replaceMembers('crew_members', 'crew_id', crew.id, crew.installerIds);
+}
+export async function deleteCrew(id: string): Promise<void> {
+  check((await getSupabase().from('crews').delete().eq('id', id)).error);
+}
+
+export async function insertDailyCrew(dc: DailyCrew): Promise<void> {
+  check(
+    (await getSupabase().from('daily_crews').insert({ id: dc.id, date: dc.date, name: dc.name }))
+      .error
+  );
+  await replaceMembers('daily_crew_members', 'daily_crew_id', dc.id, dc.installerIds);
+}
+export async function updateDailyCrew(dc: DailyCrew): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('daily_crews')
+        .update({ date: dc.date, name: dc.name })
+        .eq('id', dc.id)
+    ).error
+  );
+  await replaceMembers('daily_crew_members', 'daily_crew_id', dc.id, dc.installerIds);
+}
+export async function deleteDailyCrew(id: string): Promise<void> {
+  check((await getSupabase().from('daily_crews').delete().eq('id', id)).error);
+}
+
+export async function insertAssignment(a: ScheduleAssignment): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('schedule_assignments')
+        .insert({ id: a.id, jobcard_id: a.jobcardId, crew_id: a.crewId, date: a.date })
+    ).error
+  );
+}
+export async function deleteAssignment(id: string): Promise<void> {
+  check((await getSupabase().from('schedule_assignments').delete().eq('id', id)).error);
+}
+
+function timesheetToRow(log: TimesheetLog) {
+  return {
+    id: log.id,
+    worker_id: log.workerId,
+    date: log.date,
+    jobcard_id: log.jobcardId ?? null,
+    custom_project_name: log.customProjectName ?? null,
+    start_time: log.startTime,
+    end_time: log.endTime,
+    total_hours: log.totalHours,
+    earned_amount: log.earnedAmount,
+    send_status: log.sendStatus,
+  };
+}
+export async function insertTimesheet(log: TimesheetLog): Promise<void> {
+  check((await getSupabase().from('timesheets').insert(timesheetToRow(log))).error);
+}
+export async function updateTimesheet(log: TimesheetLog): Promise<void> {
+  check(
+    (await getSupabase().from('timesheets').update(timesheetToRow(log)).eq('id', log.id))
+      .error
+  );
+}
+export async function deleteTimesheet(id: string): Promise<void> {
+  check((await getSupabase().from('timesheets').delete().eq('id', id)).error);
+}
+export async function markTimesheetsSentRemote(): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('timesheets')
+        .update({ send_status: 'sent' })
+        .in('send_status', ['unsent', 'failed'])
+    ).error
+  );
 }

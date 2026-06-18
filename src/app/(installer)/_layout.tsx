@@ -2,11 +2,17 @@ import { Feather } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 
 import { roleHomeHref } from '@/roles';
-import { useCurrentRole } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts } from '@/theme';
 
 export default function TabsLayout() {
   const role = useCurrentRole();
+  const authWorker = useAppStore((s) => s.authWorker);
+
+  // Invited workers must set a password before using the app.
+  if (authWorker?.status === 'invited') {
+    return <Redirect href="/set-password" />;
+  }
 
   // Desktop roles don't belong in the mobile tabs — send them to their console.
   if (role !== 'installer') {

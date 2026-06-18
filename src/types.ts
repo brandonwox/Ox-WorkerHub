@@ -59,8 +59,40 @@ export interface Job {
 /** Status of a unit of work (a Jobcard) as it moves through the field. */
 export type JobcardStatus = 'Upcoming' | 'In Progress' | 'Finished';
 
-/** PM-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort). */
-export type JobcardPriority = 'Low' | 'Medium' | 'High';
+/**
+ * PM-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort).
+ * Free text so the PM can pick a preset ({@link PRIORITY_PRESETS}) or type a
+ * custom value — older cards may still carry legacy 'Low' | 'Medium' | 'High'.
+ */
+export type JobcardPriority = string;
+
+/** The preset priorities the PM picks from (a custom string is also allowed). */
+export const PRIORITY_PRESETS = [
+  'Now',
+  'Tomorrow',
+  'This Week',
+  'Low Priority',
+] as const;
+
+/** Trade scope a Jobcard covers. At least one is chosen at creation time. */
+export type JobScope =
+  | 'Windows'
+  | 'Mirrors'
+  | 'Storefront'
+  | 'Service'
+  | 'Showerglass Door';
+
+/** All selectable scopes, in display order. */
+export const JOB_SCOPES: JobScope[] = [
+  'Windows',
+  'Mirrors',
+  'Storefront',
+  'Service',
+  'Showerglass Door',
+];
+
+/** Preset answers to "when is this jobcard ready for installers?". */
+export const READINESS_PRESETS = ['Now', 'Soon', 'Over 2 Weeks'] as const;
 
 /**
  * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
@@ -86,16 +118,35 @@ export interface Jobcard {
   endTime?: string;
   status: JobcardStatus;
   priorityOrder: number;
-  /** PM-assigned priority. Defaults to 'Medium'. */
+  /** PM-assigned priority. A {@link PRIORITY_PRESETS} value or a custom string. */
   priority: JobcardPriority;
   /**
-   * Flashing material inherited from the parent Job AT CREATION TIME (a snapshot,
-   * not a live link — so later Job edits don't silently mutate existing cards).
+   * Trades this card covers (Windows, Mirrors, …). At least one is chosen at
+   * creation; only when 'Windows' is included is {@link flashingMaterial} shown.
+   */
+  scopes?: JobScope[];
+  /**
+   * Discrete tasks the installers must complete. Each must be ≥15 chars; a card
+   * cannot be created without at least one. PM-authored.
+   */
+  tasks?: string[];
+  /**
+   * When the card is ready for installers to arrive — a {@link READINESS_PRESETS}
+   * value ('Now' | 'Soon' | 'Over 2 Weeks') or a custom string.
+   */
+  readiness?: string;
+  /**
+   * Window Opening Flashing Material. Defaults to the parent Job's value at
+   * creation time but the PM may customize it per card (a snapshot, not a live
+   * link — so later Job edits don't silently mutate existing cards). Only
+   * meaningful when the 'Windows' scope is selected.
    */
   flashingMaterial?: string;
-  /** Task-specific / additional materials needed (free text). PM-authored. */
+  /** Task-specific / additional materials needed (free text, optional). PM-authored. */
   materials?: string;
-  /** Scope of work / what's required on this card (free text). PM-authored. */
+  /** Free-form PM notes captured at the bottom of the creation form. */
+  notes?: string;
+  /** @deprecated Superseded by {@link scopes} + {@link tasks}. Kept for legacy data. */
   scopeOfWork?: string;
   /**
    * Shared field notes updated by installers on site. Because a Jobcard is a
