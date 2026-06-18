@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -18,6 +18,7 @@ import { colors, fonts, radii, spacing } from '@/theme';
 export default function SignInScreen() {
   const router = useRouter();
   const enterDevMode = useAppStore((s) => s.enterDevMode);
+  const authWorker = useAppStore((s) => s.authWorker);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,13 +32,14 @@ export default function SignInScreen() {
     setBusy(true);
     setError(null);
     const { error: signInError } = await signIn(email.trim(), password);
-    setBusy(false);
     if (signInError) {
+      setBusy(false);
       setError(signInError.message);
       return;
     }
-    // The session bootstrap resolves the worker; the role gates redirect from "/".
-    router.replace('/');
+    // Leave navigation to the reactive redirect below: the auth listener sets
+    // authWorker a moment from now, which flips this screen to "/". Keep `busy`
+    // true so the button stays disabled through that brief gap.
   };
 
   // Local development only: load the in-memory mock seed and enter the app as
@@ -47,6 +49,12 @@ export default function SignInScreen() {
     enterDevMode();
     router.replace('/');
   };
+
+  // A real session has resolved (set asynchronously by the auth listener after
+  // signIn). Leave the login screen; the role gates at "/" route to the correct
+  // home, or to set-password for invited workers. Gating on authWorker (not the
+  // effective worker) keeps the form usable in dev mode and for account switches.
+  if (authWorker) return <Redirect href="/" />;
 
   return (
     <KeyboardAvoidingView
