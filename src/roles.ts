@@ -14,47 +14,54 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 /** Roles that get the wide desktop sidebar console (everyone except installers). */
 export type DesktopRole = Exclude<AppRole, 'installer'>;
 
+/**
+ * Every page is role-prefixed so each route is owned by exactly one role
+ * (e.g. the Operator's Jobs lives at /operator-jobs, the PM's at /pm-jobs).
+ * Universal routes (/sign-in, /set-password, the /job/[id] modal) are not listed.
+ */
+export type DesktopHref =
+  | '/scheduler-calendar'
+  | '/operator-jobs'
+  | '/operator-people'
+  | '/operator-timesheets'
+  | '/pm-jobcards'
+  | '/pm-jobs';
+
 export interface DesktopNavItem {
-  href: '/schedule' | '/jobs' | '/people' | '/review' | '/pm' | '/pm-jobs';
+  href: DesktopHref;
   label: string;
   icon: keyof typeof Feather.glyphMap;
 }
 
-/**
- * Sidebar sections each desktop role sees. The Operator's "Timesheets" review
- * lives at /review so it doesn't collide with the Installer's /timesheets.
- * Scheduler and Project Manager are placeholders for now.
- */
+/** Sidebar sections each desktop role sees. */
 export const DESKTOP_NAV: Record<DesktopRole, DesktopNavItem[]> = {
   operator: [
-    { href: '/jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/people', label: 'People', icon: 'users' },
-    { href: '/review', label: 'Timesheets', icon: 'file-text' },
+    { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/operator-people', label: 'People', icon: 'users' },
+    { href: '/operator-timesheets', label: 'Timesheets', icon: 'file-text' },
   ],
-  scheduler: [{ href: '/schedule', label: 'Schedule', icon: 'calendar' }],
+  scheduler: [{ href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' }],
   project_manager: [
-    // Distinct route from the Operator's '/jobs' but shown to the PM as "Jobs".
+    // Distinct route from the Operator's '/operator-jobs', shown to the PM as "Jobs".
     { href: '/pm-jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/pm', label: 'Jobcards', icon: 'clipboard' },
+    { href: '/pm-jobcards', label: 'Jobcards', icon: 'clipboard' },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
-  developer: [{ href: '/jobs', label: 'Jobs', icon: 'briefcase' }],
+  developer: [{ href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' }],
 };
 
 /** Landing route for a role — used by the role gate to redirect on sign-in/switch. */
-export function roleHomeHref(
-  role: AppRole
-): '/' | '/schedule' | '/jobs' | '/pm' {
+export function roleHomeHref(role: AppRole): '/' | DesktopHref {
   switch (role) {
     case 'operator':
-      return '/jobs';
+      return '/operator-jobs';
     case 'scheduler':
-      return '/schedule';
+      return '/scheduler-calendar';
     case 'project_manager':
-      return '/pm';
+      return '/pm-jobcards';
     case 'developer':
-      return '/jobs';
+      return '/operator-jobs';
     default:
       return '/';
   }
@@ -63,4 +70,32 @@ export function roleHomeHref(
 /** Desktop roles use the wide sidebar shell; installers use the mobile tabs. */
 export function isDesktopRole(role: AppRole): role is DesktopRole {
   return role !== 'installer';
+}
+
+/** Every desktop route a role is allowed to open. */
+export function desktopAccessibleHrefs(role: DesktopRole): DesktopHref[] {
+  // Developer roams the whole console (it views *as* other roles for testing),
+  // so it isn't gated to a single role's nav.
+  if (role === 'developer') {
+    return [
+      '/scheduler-calendar',
+      '/operator-jobs',
+      '/operator-people',
+      '/operator-timesheets',
+      '/pm-jobcards',
+      '/pm-jobs',
+    ];
+  }
+  return DESKTOP_NAV[role].map((item) => item.href);
+}
+
+/**
+ * Whether `role` may view `pathname`. Matches a nav href exactly or as a path
+ * prefix (so `/operator-jobs/123` still counts as that section), while keeping
+ * distinct routes like `/operator-jobs` and `/pm-jobs` apart.
+ */
+export function roleCanAccessPath(role: DesktopRole, pathname: string): boolean {
+  return desktopAccessibleHrefs(role).some(
+    (href) => pathname === href || pathname.startsWith(`${href}/`)
+  );
 }

@@ -11,6 +11,7 @@ import {
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { AddWorkerModal, NewWorkerInput } from '@/components/desktop/AddWorkerModal';
+import { EditWorkerModal, WorkerChanges } from '@/components/desktop/EditWorkerModal';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { Toast } from '@/components/Toast';
 import { inviteWorker } from '@/integrations/supabase';
@@ -41,8 +42,10 @@ export default function PeopleScreen() {
   const setWorkerRole = useAppStore((s) => s.setWorkerRole);
   const setWorkerRate = useAppStore((s) => s.setWorkerRate);
   const updateWorker = useAppStore((s) => s.updateWorker);
+  const removeWorker = useAppStore((s) => s.removeWorker);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<Worker | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   if (role !== 'operator') return <AccessDenied />;
@@ -81,6 +84,17 @@ export default function PeopleScreen() {
     setToast(`Invite sent to ${input.email} (local)`);
   };
 
+  const handleSave = (id: string, changes: WorkerChanges) => {
+    updateWorker(id, changes);
+    setToast(`${changes.name} updated`);
+  };
+
+  const handleDelete = (id: string) => {
+    const name = workers.find((w) => w.id === id)?.name ?? 'Worker';
+    removeWorker(id);
+    setToast(`${name} removed`);
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -113,6 +127,7 @@ export default function PeopleScreen() {
               onSetInstallerType={(id, installerType) =>
                 updateWorker(id, { installerType })
               }
+              onEdit={setEditing}
             />
           );
         })}
@@ -125,6 +140,13 @@ export default function PeopleScreen() {
         onClose={() => setAddOpen(false)}
         onSubmit={handleAdd}
       />
+
+      <EditWorkerModal
+        worker={editing}
+        onClose={() => setEditing(null)}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
     </View>
   );
 }
@@ -136,12 +158,14 @@ function RoleTable({
   onSetRole,
   onSetRate,
   onSetInstallerType,
+  onEdit,
 }: {
   role: AppRole;
   members: Worker[];
   onSetRole: (id: string, role: AppRole) => void;
   onSetRate: (id: string, rate: number) => void;
   onSetInstallerType: (id: string, type: InstallerType | undefined) => void;
+  onEdit: (worker: Worker) => void;
 }) {
   const isInstaller = role === 'installer';
   return (
@@ -152,9 +176,7 @@ function RoleTable({
           <Text style={[styles.cell, styles.colName, styles.headText]}>Name</Text>
           <Text style={[styles.cell, styles.colRole, styles.headText]}>Role</Text>
           <Text style={[styles.cell, styles.colRate, styles.headText]}>Rate</Text>
-          <Text style={[styles.cell, styles.colStatus, styles.headText]}>
-            Status
-          </Text>
+          <Text style={[styles.cell, styles.colActions, styles.headText]} />
         </View>
 
         {members.map((worker, index) => (
@@ -163,9 +185,12 @@ function RoleTable({
             style={[styles.row, { zIndex: members.length - index }]}
           >
             <View style={[styles.cell, styles.colName]}>
-              <Text style={styles.name} numberOfLines={1}>
-                {worker.name}
-              </Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {worker.name}
+                </Text>
+                {worker.status !== 'active' && <InvitedTag />}
+              </View>
               <Text style={styles.email} numberOfLines={1}>
                 {worker.email}
               </Text>
@@ -206,8 +231,17 @@ function RoleTable({
               )}
             </View>
 
-            <View style={[styles.cell, styles.colStatus]}>
-              <StatusBadge status={worker.status} />
+            <View style={[styles.cell, styles.colActions]}>
+              <Pressable
+                onPress={() => onEdit(worker)}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.editButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Feather name="edit-2" size={15} color={colors.textSecondary} />
+              </Pressable>
             </View>
           </View>
         ))}
@@ -249,23 +283,15 @@ function RateCell({
   );
 }
 
-function StatusBadge({ status }: { status: Worker['status'] }) {
-  const active = status === 'active';
+/**
+ * Small inline "Invited" pill shown next to a worker's name while their account
+ * is still pending. Active workers render nothing, so the common case adds no
+ * visual noise and no dedicated column.
+ */
+function InvitedTag() {
   return (
-    <View
-      style={[
-        styles.statusPill,
-        { backgroundColor: active ? colors.successDim : colors.warningDim },
-      ]}
-    >
-      <Text
-        style={[
-          styles.statusText,
-          { color: active ? colors.success : colors.warning },
-        ]}
-      >
-        {active ? 'Active' : 'Invited'}
-      </Text>
+    <View style={styles.invitedPill}>
+      <Text style={styles.invitedText}>Invited</Text>
     </View>
   );
 }
@@ -360,13 +386,30 @@ const styles = StyleSheet.create({
   colRate: {
     flex: 2,
   },
-  colStatus: {
-    flex: 1.4,
+  colActions: {
+    flex: 0.6,
+    alignItems: 'flex-end',
+    paddingRight: 0,
+  },
+  editButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   name: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 15,
+    flexShrink: 1,
   },
   email: {
     color: colors.textSecondary,
@@ -406,14 +449,15 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  statusPill: {
-    alignSelf: 'flex-start',
+  invitedPill: {
     borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: colors.warningDim,
   },
-  statusText: {
+  invitedText: {
+    color: colors.warning,
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 11,
   },
 });

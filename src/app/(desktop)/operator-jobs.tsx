@@ -11,6 +11,7 @@ import {
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
+import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { Toast } from '@/components/Toast';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
@@ -27,8 +28,10 @@ export default function JobsScreen() {
   const jobs = useAppStore((s) => s.jobs);
   const addJob = useAppStore((s) => s.addJob);
   const updateJob = useAppStore((s) => s.updateJob);
+  const removeJob = useAppStore((s) => s.removeJob);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Job | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   if (role !== 'operator') return <AccessDenied />;
@@ -36,6 +39,17 @@ export default function JobsScreen() {
   const handleCreate = (input: NewJobInput) => {
     addJob(input);
     setToast(`Job "${input.name}" created`);
+  };
+
+  const handleSave = (id: string, changes: JobChanges) => {
+    updateJob(id, changes);
+    setToast(`Job "${changes.name}" updated`);
+  };
+
+  const handleDelete = (id: string) => {
+    const name = jobs.find((j) => j.id === id)?.name ?? 'Job';
+    removeJob(id);
+    setToast(`Job "${name}" deleted`);
   };
 
   return (
@@ -70,6 +84,7 @@ export default function JobsScreen() {
             <Text style={[styles.cell, styles.colStatus, styles.headText]}>
               Status
             </Text>
+            <Text style={[styles.cell, styles.colActions, styles.headText]} />
           </View>
 
           {jobs.map((job, index) => (
@@ -106,6 +121,18 @@ export default function JobsScreen() {
                   minWidth={120}
                 />
               </View>
+              <View style={[styles.cell, styles.colActions]}>
+                <Pressable
+                  onPress={() => setEditing(job)}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.editButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Feather name="edit-2" size={15} color={colors.textSecondary} />
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>
@@ -117,6 +144,13 @@ export default function JobsScreen() {
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
+      />
+
+      <EditJobModal
+        job={editing}
+        onClose={() => setEditing(null)}
+        onSave={handleSave}
+        onDelete={handleDelete}
       />
     </View>
   );
@@ -267,6 +301,20 @@ const styles = StyleSheet.create({
   },
   colStatus: {
     flex: 1.5,
+  },
+  colActions: {
+    flex: 0.6,
+    alignItems: 'flex-end',
+    paddingRight: 0,
+  },
+  editButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   name: {
     color: colors.textPrimary,

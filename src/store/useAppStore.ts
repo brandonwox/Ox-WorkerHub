@@ -51,9 +51,14 @@ function backendActive(state: { authWorker: Worker | null }): boolean {
   return state.authWorker != null && state.authWorker.role !== 'developer';
 }
 
-/** Fire-and-forget a Supabase write; surface failures without breaking the UI. */
+/**
+ * Fire-and-forget a Supabase write; surface failures without breaking the UI.
+ * Logged as an error (not a warning) so a rejected write — e.g. an RLS policy
+ * denying the row — is obvious in the console rather than silently dropped. The
+ * thrown message carries the Postgres error, which names the offending table.
+ */
 function write(p: Promise<unknown>): void {
-  p.catch((e) => console.warn('Supabase write failed:', e));
+  p.catch((e) => console.error('Supabase write failed (change not saved):', e));
 }
 
 /** RFC4122-ish v4 id for new records in backend mode (DB columns are uuid). */
@@ -177,6 +182,8 @@ interface AppState {
   /** Add a worker to the roster. Returns the created record. */
   addWorker: (worker: Omit<Worker, 'id' | 'status'> & { id?: string }) => Worker;
   updateWorker: (id: string, changes: Partial<Worker>) => void;
+  /** Remove a worker from the roster (Operator). */
+  removeWorker: (id: string) => void;
   setWorkerRole: (id: string, role: AppRole) => void;
   setWorkerRate: (id: string, hourlyRate: number) => void;
 
@@ -184,6 +191,12 @@ interface AppState {
   /** Create a jobsite. Returns the created record. */
   addJob: (job: Omit<Job, 'id' | 'status'> & { id?: string; status?: JobStatus }) => Job;
   updateJob: (id: string, changes: Partial<Job>) => void;
+  /**
+   * Delete a jobsite and everything hanging off it. Mirrors the DB's
+   * `on delete cascade`: locally drops the job's jobcards and any schedule
+   * assignments referencing those cards so in-memory state stays consistent.
+   */
+  removeJob: (id: string) => void;
 
   // --- Jobcards (field work items) ---
   /**
@@ -399,6 +412,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get()) && updated) write(backend.updateWorker(updated));
   },
 
+  removeWorker: (id) => {
+    set((state) => ({ workers: state.workers.filter((w) => w.id !== id) }));
+    if (backendActive(get())) write(backend.deleteWorker(id));
+  },
+
   setWorkerRole: (id, role) => {
     let updated: Worker | undefined;
     set((state) => ({
@@ -453,6 +471,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) write(backend.updateJob(updated));
+  },
+
+  removeJob: (id) => {
+    set((state) => {
+      // Cascade locally the way the DB does: drop child jobcards, then any
+      // schedule assignments pointing at those (now-orphaned) cards.
+      const orphanedCardIds = new Set(
+        state.jobcards.filter((c) => c.jobId === id).map((c) => c.id)
+      );
+      return {
+        jobs: state.jobs.filter((job) => job.id !== id),
+        jobcards: state.jobcards.filter((c) => c.jobId !== id),
+        assignments: state.assignments.filter(
+          (a) => !orphanedCardIds.has(a.jobcardId)
+        ),
+      };
+    });
+    // The DB cascade handles jobcards/assignments server-side; we only fire the
+    // job delete.
+    if (backendActive(get())) write(backend.deleteJob(id));
   },
 
   addJobcard: (card) => {

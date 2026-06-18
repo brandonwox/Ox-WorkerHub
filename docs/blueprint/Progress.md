@@ -5,7 +5,7 @@
 > `Step-0-Overview.md` for the shared vocabulary and conventions; read the
 > matching `Step-N-*.md` for the full work order.
 
-**Last updated:** 2026-06-14
+**Last updated:** 2026-06-18
 
 ---
 
@@ -259,3 +259,9 @@ during 7d.
   (`'unsent' | 'sent' | 'failed'`), renames `reviewStatus → sendStatus`, drops
   `setLogReviewStatus`, and replaces `sendApprovedToQbt → markTimesheetsSent`. The
   Operator timesheet screen becomes **read-only**. Reflected in Steps 0, 6, 7.
+- **2026-06-18 — Operators can edit & delete jobs.** The Jobs screen now has a
+  per-row edit action opening an `EditJobModal` (name/location/QBT jobcode/flashing/
+  status) plus an inline-confirm **Delete job**. New store action `removeJob` mirrors
+  the DB `on delete cascade` locally (drops the job's jobcards + their schedule
+  assignments); new backend `deleteJob`. Gated by the existing operator-only `/jobs`
+  route and the `jobs_delete` RLS policy (operator-only).

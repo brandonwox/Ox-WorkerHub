@@ -270,6 +270,9 @@ export async function updateJob(job: Job): Promise<void> {
       .error
   );
 }
+export async function deleteJob(id: string): Promise<void> {
+  check((await getSupabase().from('jobs').delete().eq('id', id)).error);
+}
 
 function jobcardToRow(card: Jobcard) {
   return {
@@ -326,6 +329,9 @@ export async function updateWorker(w: Worker): Promise<void> {
     (await getSupabase().from('workers').update(workerToRow(w)).eq('id', w.id))
       .error
   );
+}
+export async function deleteWorker(id: string): Promise<void> {
+  check((await getSupabase().from('workers').delete().eq('id', id)).error);
 }
 
 /**
