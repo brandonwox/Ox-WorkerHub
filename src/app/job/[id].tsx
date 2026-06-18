@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
 import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { priorityMeta } from '@/lib/priority';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -32,6 +33,7 @@ export default function JobDetailsScreen() {
   const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
+  const statusWrapRef = useRef<View>(null);
 
   if (!job) {
     return (
@@ -48,7 +50,7 @@ export default function JobDetailsScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.titleRow}>
         <Text style={styles.title}>{job.title}</Text>
-        <View style={styles.statusWrap}>
+        <View ref={statusWrapRef} style={styles.statusWrap}>
           <Pressable
             style={[styles.statusPill, { backgroundColor: palette.bg }]}
             onPress={() => setStatusMenuOpen((open) => !open)}
@@ -62,7 +64,13 @@ export default function JobDetailsScreen() {
               color={palette.fg}
             />
           </Pressable>
-          {statusMenuOpen && (
+          <DropdownPortal
+            anchorRef={statusWrapRef}
+            open={statusMenuOpen}
+            onClose={() => setStatusMenuOpen(false)}
+            align="right"
+            minWidth={150}
+          >
             <View style={styles.statusMenu}>
               {STATUSES.map((status) => {
                 const active = job.status === status;
@@ -99,7 +107,7 @@ export default function JobDetailsScreen() {
                 );
               })}
             </View>
-          )}
+          </DropdownPortal>
         </View>
       </View>
 
@@ -273,16 +281,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   statusMenu: {
-    position: 'absolute',
-    top: 34,
-    right: 0,
     minWidth: 150,
     backgroundColor: colors.surfaceLight,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.xs,
-    zIndex: 20,
     boxShadow: '0 4px 10px rgba(0, 0, 0, 0.35)',
   },
   statusMenuItem: {

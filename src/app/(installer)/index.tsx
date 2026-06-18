@@ -27,7 +27,7 @@ export default function CalendarScreen() {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const currentUserId = useAppStore((s) => currentWorkerOf(s).id);
+  const currentUserId = useAppStore((s) => currentWorkerOf(s)?.id ?? '');
   const clockIn = useAppStore((s) => s.clockIn);
   const updateShiftProject = useAppStore((s) => s.updateShiftProject);
   const activeShift = useAppStore((s) => s.activeShift);

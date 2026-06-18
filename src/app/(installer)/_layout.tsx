@@ -2,12 +2,20 @@ import { Feather } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 
 import { roleHomeHref } from '@/roles';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts } from '@/theme';
 
 export default function TabsLayout() {
-  const role = useCurrentRole();
+  const authResolved = useAppStore((s) => s.authResolved);
   const authWorker = useAppStore((s) => s.authWorker);
+  const worker = useCurrentWorker();
+
+  // Wait for the Supabase session to resolve before deciding, so a returning
+  // user isn't flashed the login screen on launch.
+  if (!authResolved) return null;
+
+  // No identity (signed out, and not in local dev mode) → require sign-in.
+  if (!worker) return <Redirect href="/sign-in" />;
 
   // Invited workers must set a password before using the app.
   if (authWorker?.status === 'invited') {
@@ -15,6 +23,7 @@ export default function TabsLayout() {
   }
 
   // Desktop roles don't belong in the mobile tabs — send them to their console.
+  const role = worker.role;
   if (role !== 'installer') {
     return <Redirect href={roleHomeHref(role)} />;
   }

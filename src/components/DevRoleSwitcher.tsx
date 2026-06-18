@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { ROLE_LABELS } from '@/roles';
 import { currentWorkerOf, useAppStore, useIsDeveloper } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -21,15 +22,41 @@ export function DevRoleSwitcher({ variant = 'card' }: Props) {
   const current = useAppStore(currentWorkerOf);
   const isDeveloper = useIsDeveloper();
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<View>(null);
 
-  if (!isDeveloper) return null;
+  if (!isDeveloper || !current) return null;
 
   // You impersonate real roles — never the Developer itself.
   const viewTargets = workers.filter((w) => w.role !== 'developer');
   const isBar = variant === 'bar';
 
+  const items = viewTargets.map((w) => {
+    const active = w.id === current.id;
+    return (
+      <Pressable
+        key={w.id}
+        style={({ pressed }) => [
+          styles.menuItem,
+          pressed && styles.menuItemPressed,
+        ]}
+        onPress={() => {
+          setViewAs(w.id);
+          setOpen(false);
+        }}
+      >
+        <View style={styles.menuItemText}>
+          <Text style={styles.menuName} numberOfLines={1}>
+            {w.name}
+          </Text>
+          <Text style={styles.menuRole}>{ROLE_LABELS[w.role]}</Text>
+        </View>
+        {active && <Feather name="check" size={15} color={colors.primary} />}
+      </Pressable>
+    );
+  });
+
   return (
-    <View style={isBar ? styles.barWrap : styles.cardWrap}>
+    <View ref={wrapRef} style={isBar ? styles.barWrap : styles.cardWrap}>
       {!isBar && (
         <Text style={styles.devLabel}>
           <Feather name="tool" size={11} color={colors.warning} /> Dev · View as
@@ -55,35 +82,16 @@ export function DevRoleSwitcher({ variant = 'card' }: Props) {
         />
       </Pressable>
 
-      {open && (
-        <View style={[styles.menu, isBar && styles.menuBar]}>
-          {viewTargets.map((w) => {
-            const active = w.id === current.id;
-            return (
-              <Pressable
-                key={w.id}
-                style={({ pressed }) => [
-                  styles.menuItem,
-                  pressed && styles.menuItemPressed,
-                ]}
-                onPress={() => {
-                  setViewAs(w.id);
-                  setOpen(false);
-                }}
-              >
-                <View style={styles.menuItemText}>
-                  <Text style={styles.menuName} numberOfLines={1}>
-                    {w.name}
-                  </Text>
-                  <Text style={styles.menuRole}>{ROLE_LABELS[w.role]}</Text>
-                </View>
-                {active && (
-                  <Feather name="check" size={15} color={colors.primary} />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
+      {isBar ? (
+        <DropdownPortal
+          anchorRef={wrapRef}
+          open={open}
+          onClose={() => setOpen(false)}
+        >
+          <View style={styles.menu}>{items}</View>
+        </DropdownPortal>
+      ) : (
+        open && <View style={styles.menu}>{items}</View>
       )}
     </View>
   );
@@ -156,13 +164,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingVertical: spacing.xs,
     marginTop: spacing.xs,
-  },
-  menuBar: {
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    left: 0,
-    zIndex: 50,
     boxShadow: '0 6px 16px rgba(0, 0, 0, 0.4)',
   },
   menuItem: {

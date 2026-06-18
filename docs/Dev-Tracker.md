@@ -4,6 +4,8 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+host the app so it can be accessed from anywhere.
+
 scheduler should get pinged anytime a new jobcard is created with priority of "Now", we could even have it automatically send them a text or email.
 
 pm needs to be able to edit jobcards.
@@ -12,13 +14,15 @@ pm needs to have a better sort and view of their jobcards. sort by job maybe.
 
 pm jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for.
 
+installers can set the status of the jobcard from "Issues" and "Complete". If the installer sets the status to "Issues", the jobcard will be highlighted in red and the pm will be notified. If the installer sets the status to "Issues", the installer must write at least 1 issue in the issue field.
+
 for the desktop user roles (operator, scheduler, project manager) the popup modals are pretty thin, but since these roles are used on the desktop, they can be a little wider. for example the create jobcard popup is pretty thin.
 
 add profit sharing tab to see all my profit sharing checks (past and upcoming). and also so i can see all the profit sharing remaining on any job.
 
 Installer -> Settings tab: underneath the installers name is the word "Glazier". There should be a few types of installers: "Window Installer", "Storefront Installer", "ShowerGlassDoor Installer", "Remodel Installer". These installer types should also be set by the operator role for each installer. (these types do not affect anything, they are a title.)
 
-Project Manager -> Jobcards tab: there should be a simple dashboard of all their jobcards. Each jobcard should be clickable so the project manager can view and edit the jobcard details. there should be a create jobcard button so the project manager can create new jobcards. Each jobcard should have a schedule status (e.g. "On the Schedule", "completed", "cancelled").
+Project Manager -> Jobcards tab: Each jobcard should have a schedule status (e.g. "On the Schedule", "completed", "cancelled").
 
 operator role -> jobs tab -> create job: the operator does not even need to see the flashing material input while creating a job. they also dont need a status input while creating a job. the creation should have an input for the job name, location, and QBT Jobcode ID. 
 

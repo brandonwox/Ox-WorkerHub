@@ -52,6 +52,7 @@ interface WorkerRow {
   phone: string;
   role: AppRole;
   trade_role: string;
+  installer_type: string;
   hourly_rate: number;
   status: WorkerStatus;
 }
@@ -65,6 +66,7 @@ export function rowToWorker(row: WorkerRow): Worker {
     phone: row.phone,
     role: row.role,
     tradeRole: row.trade_role,
+    installerType: (row.installer_type || undefined) as Worker['installerType'],
     hourlyRate: Number(row.hourly_rate),
     status: row.status,
   };

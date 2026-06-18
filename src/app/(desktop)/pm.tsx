@@ -8,10 +8,17 @@ import {
   CreateJobcardModal,
   NewJobcardInput,
 } from '@/components/desktop/CreateJobcardModal';
+import {
+  JobcardFilters,
+  ScheduleFilter,
+} from '@/components/desktop/JobcardFilters';
+import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { Toast } from '@/components/Toast';
-import { priorityMeta } from '@/lib/priority';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
+import { PRIORITY_PRESETS } from '@/types';
+
+const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
 /** Project Manager → Jobcards: every jobcard, its calendar status, and creation. */
 export default function PmJobcardsScreen() {
@@ -23,6 +30,12 @@ export default function PmJobcardsScreen() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Filters / sort (all stack).
+  const [search, setSearch] = useState('');
+  const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleFilter>('all');
+  const [groupByJob, setGroupByJob] = useState(false);
 
   const activeJobs = useMemo(
     () => jobs.filter((j) => j.status === 'Active'),
@@ -39,10 +52,74 @@ export default function PmJobcardsScreen() {
     [jobcards, scheduledIds]
   );
 
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    jobs.forEach((j) => map.set(j.id, j.name));
+    return map;
+  }, [jobs]);
+  const jobNameFor = (jobId?: string) =>
+    (jobId && nameById.get(jobId)) || 'Unlinked job';
+
+  // Distinct priorities present, ordered presets-first then alphabetical.
+  const priorities = useMemo(() => {
+    const distinct = [...new Set(jobcards.map((c) => c.priority))];
+    return distinct.sort((a, b) => {
+      const ia = PRESET_ORDER.indexOf(a);
+      const ib = PRESET_ORDER.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }, [jobcards]);
+
+  // Apply search + priority + schedule filters (stacking).
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jobcards.filter((card) => {
+      if (q) {
+        const hay = `${card.title} ${jobNameFor(card.jobId)}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (
+        selectedPriorities.length > 0 &&
+        !selectedPriorities.includes(card.priority)
+      ) {
+        return false;
+      }
+      if (schedule === 'scheduled' && !scheduledIds.has(card.id)) return false;
+      if (schedule === 'unscheduled' && scheduledIds.has(card.id)) return false;
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobcards, search, selectedPriorities, schedule, scheduledIds, nameById]);
+
+  // Group the filtered cards by parent job (only when toggled on).
+  const groups = useMemo(() => {
+    if (!groupByJob) return null;
+    const byJob = new Map<string, typeof filtered>();
+    for (const card of filtered) {
+      const key = card.jobId ?? '__none';
+      const list = byJob.get(key);
+      if (list) list.push(card);
+      else byJob.set(key, [card]);
+    }
+    return [...byJob.entries()]
+      .map(([key, cards]) => ({
+        key,
+        name: jobNameFor(key === '__none' ? undefined : key),
+        cards,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupByJob, filtered, nameById]);
+
   if (role !== 'project_manager') return <AccessDenied />;
 
-  const jobNameFor = (jobId?: string) =>
-    jobs.find((j) => j.id === jobId)?.name ?? 'Unlinked job';
+  const togglePriority = (p: string) =>
+    setSelectedPriorities((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    );
 
   const handleCreate = (input: NewJobcardInput) => {
     const parent = jobs.find((j) => j.id === input.jobId);
@@ -67,12 +144,28 @@ export default function PmJobcardsScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headerRow}>
-          <Text style={styles.subtitle}>
-            {jobcards.length}{' '}
-            {jobcards.length === 1 ? 'jobcard' : 'jobcards'} · {unscheduledCount}{' '}
-            not on calendar
-          </Text>
+        <Text style={styles.subtitle}>
+          {jobcards.length} {jobcards.length === 1 ? 'jobcard' : 'jobcards'} ·{' '}
+          {unscheduledCount} not on calendar
+        </Text>
+
+        {/* Single-row toolbar: filters (when there are cards) + Create button. */}
+        <View style={styles.toolbar}>
+          {jobcards.length > 0 ? (
+            <JobcardFilters
+              search={search}
+              onSearch={setSearch}
+              priorities={priorities}
+              selectedPriorities={selectedPriorities}
+              onTogglePriority={togglePriority}
+              schedule={schedule}
+              onSchedule={setSchedule}
+              groupByJob={groupByJob}
+              onToggleGroup={() => setGroupByJob((v) => !v)}
+            />
+          ) : (
+            <View style={styles.toolbarSpacer} />
+          )}
           <Pressable
             style={({ pressed }) => [
               styles.addButton,
@@ -89,56 +182,39 @@ export default function PmJobcardsScreen() {
 
         {jobcards.length === 0 ? (
           <Text style={styles.emptyText}>No jobcards yet.</Text>
+        ) : filtered.length === 0 ? (
+          <Text style={styles.emptyText}>No jobcards match these filters.</Text>
+        ) : groups ? (
+          <View style={styles.groupStack}>
+            {groups.map((group) => (
+              <View key={group.key} style={styles.group}>
+                <Text style={styles.groupHeader}>
+                  {group.name}{' '}
+                  <Text style={styles.groupCount}>· {group.cards.length}</Text>
+                </Text>
+                <View style={styles.cardStack}>
+                  {group.cards.map((card) => (
+                    <JobcardRow
+                      key={card.id}
+                      jobcard={card}
+                      jobName={group.name}
+                      scheduled={scheduledIds.has(card.id)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
         ) : (
           <View style={styles.cardStack}>
-            {jobcards.map((card) => {
-              const scheduled = scheduledIds.has(card.id);
-              const meta = priorityMeta(card.priority);
-              return (
-                <View key={card.id} style={styles.jobcardRow}>
-                  <View style={styles.jobcardMain}>
-                    <Text style={styles.jobcardTitle} numberOfLines={1}>
-                      {card.title}
-                    </Text>
-                    <Text style={styles.jobcardJob} numberOfLines={1}>
-                      {jobNameFor(card.jobId)}
-                      {card.scopes && card.scopes.length > 0
-                        ? `  ·  ${card.scopes.join(', ')}`
-                        : ''}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[styles.priorityPill, { backgroundColor: meta.bg }]}
-                  >
-                    <Text style={[styles.priorityText, { color: meta.fg }]}>
-                      {card.priority}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.statusPill,
-                      scheduled ? styles.statusPillOn : styles.statusPillOff,
-                    ]}
-                  >
-                    <Feather
-                      name={scheduled ? 'calendar' : 'clock'}
-                      size={13}
-                      color={scheduled ? colors.success : colors.warning}
-                    />
-                    <Text
-                      style={[
-                        styles.statusText,
-                        { color: scheduled ? colors.success : colors.warning },
-                      ]}
-                    >
-                      {scheduled ? 'On calendar' : 'Not on calendar'}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
+            {filtered.map((card) => (
+              <JobcardRow
+                key={card.id}
+                jobcard={card}
+                jobName={jobNameFor(card.jobId)}
+                scheduled={scheduledIds.has(card.id)}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
@@ -165,10 +241,16 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     maxWidth: 1100,
   },
-  headerRow: {
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
+    // Lift the whole toolbar above the card list so open dropdown menus
+    // (priority / calendar) render over the jobcards instead of under them.
+    zIndex: 20,
+  },
+  toolbarSpacer: {
+    flex: 1,
   },
   subtitle: {
     color: colors.textSecondary,
@@ -204,59 +286,20 @@ const styles = StyleSheet.create({
   cardStack: {
     gap: spacing.sm,
   },
-  jobcardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+  groupStack: {
+    gap: spacing.lg,
   },
-  jobcardMain: {
-    flex: 1,
-    gap: 2,
+  group: {
+    gap: spacing.sm,
   },
-  jobcardTitle: {
+  groupHeader: {
     color: colors.textPrimary,
-    fontFamily: fonts.semiBold,
-    fontSize: 14,
+    fontFamily: fonts.bold,
+    fontSize: 15,
   },
-  jobcardJob: {
-    color: colors.textSecondary,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-  },
-  priorityPill: {
-    minWidth: 84,
-    alignItems: 'center',
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  priorityText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 12,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    width: 150,
-    justifyContent: 'center',
-    borderRadius: radii.pill,
-    paddingVertical: 4,
-  },
-  statusPillOn: {
-    backgroundColor: colors.successDim,
-  },
-  statusPillOff: {
-    backgroundColor: colors.warningDim,
-  },
-  statusText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 12,
+  groupCount: {
+    color: colors.textTertiary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
   },
 });

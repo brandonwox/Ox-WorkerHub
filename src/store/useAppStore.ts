@@ -3,17 +3,6 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import {
-  DEVELOPER_ID,
-  mockAssignments,
-  mockCrews,
-  mockDailyCrews,
-  mockJobcards,
-  mockJobs,
-  mockLogs,
-  mockWorkers,
-  PRIMARY_INSTALLER_ID,
-} from '@/data/mock';
-import {
   defaultJobcodeId,
   defaultJobcodeMap,
   defaultQbtConfig,
@@ -76,11 +65,21 @@ function uuid(): string {
 }
 
 /**
- * Which real role the Developer views as by default: web opens to a desktop role
- * (Operator), native to the Installer app. (The base identity is the Developer;
- * this is just the initial impersonation target.)
+ * Loads the in-memory mock seed for local development.
+ *
+ * The `require` lives inside `if (__DEV__)` so the production bundler (`expo
+ * export`, where __DEV__ === false) eliminates this branch AND drops the entire
+ * '@/data/mock' module from the graph — exactly how React Native keeps its dev
+ * tooling out of release builds. The upshot: mock data is physically absent from
+ * the deployed website bundle and can never load there. Only ever called by
+ * enterDevMode() below.
  */
-const defaultViewAsId = Platform.OS === 'web' ? 'w-op' : PRIMARY_INSTALLER_ID;
+function loadDevSeed(): typeof import('@/data/mock') | null {
+  if (__DEV__) {
+    return require('@/data/mock');
+  }
+  return null;
+}
 
 /**
  * Mapping key for a timecard's project: jobcards map by id, custom projects by
@@ -112,11 +111,11 @@ interface QbtState {
 }
 
 interface AppState {
-  /** Full roster across all roles (seeded now, Supabase-backed later). */
+  /** Full roster across all roles. Empty until a real sign-in (or local dev mode). */
   workers: Worker[];
   /**
-   * Dev-mode base identity (a mock worker id) — the Developer. Used only when
-   * not signed in via Supabase (`authWorker` is null).
+   * Local dev-mode base identity (a mock worker id) — the Developer. Set ONLY by
+   * enterDevMode() in local development; empty otherwise.
    */
   devBaseUserId: string;
   /**
@@ -124,6 +123,17 @@ interface AppState {
    * IS the base identity, overriding `devBaseUserId`.
    */
   authWorker: Worker | null;
+  /**
+   * True only in local dev after enterDevMode() loads the mock seed. Never true
+   * in a production build (the dev entry point is compiled out). Distinguishes
+   * "logged out" (show login) from "browsing mock data locally".
+   */
+  devMode: boolean;
+  /**
+   * False until the initial Supabase session lookup completes. The layouts wait
+   * on this so a returning user isn't flashed the login screen on launch.
+   */
+  authResolved: boolean;
   /**
    * Developer-only "View as" impersonation target (a mock worker id). Ignored
    * unless the base identity's role is `developer`.
@@ -147,14 +157,21 @@ interface AppState {
   setViewAs: (userId: string | null) => void;
   /** Set/clear the real signed-in worker (Supabase auth bootstrap). */
   setAuthWorker: (worker: Worker | null) => void;
+  /** Mark the initial Supabase session lookup as complete. */
+  setAuthResolved: (resolved: boolean) => void;
   /** Edit the current (effective) worker's own profile. */
   updateUser: (changes: Partial<Worker>) => void;
 
   // --- Backend hydration (Supabase store swap, Step 7d) ---
   /** Replace every collection with live Supabase data (on real sign-in). */
   loadBackendData: () => Promise<void>;
-  /** Restore the in-memory mock data (on sign-out / dev mode). */
-  resetToMockData: () => void;
+  /** Empty every collection (on sign-out) — leaves the app at the login gate. */
+  clearData: () => void;
+  /**
+   * Local development only: load the in-memory mock seed and enter dev mode.
+   * A no-op in production builds (the mock module is stripped from the bundle).
+   */
+  enterDevMode: () => void;
 
   // --- Worker management (Operator) ---
   /** Add a worker to the roster. Returns the created record. */
@@ -255,16 +272,21 @@ let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
 
 export const useAppStore = create<AppState>((set, get) => ({
-  workers: mockWorkers,
-  devBaseUserId: DEVELOPER_ID,
+  // Start empty: real data arrives on Supabase sign-in, mock data only via
+  // enterDevMode() in local development. The website thus shows no data until
+  // a real worker signs in.
+  workers: [],
+  devBaseUserId: '',
   authWorker: null,
-  viewAsUserId: defaultViewAsId,
-  jobs: mockJobs,
-  jobcards: mockJobcards,
-  crews: mockCrews,
-  dailyCrews: mockDailyCrews,
-  assignments: mockAssignments,
-  logs: mockLogs,
+  viewAsUserId: null,
+  jobs: [],
+  jobcards: [],
+  crews: [],
+  dailyCrews: [],
+  assignments: [],
+  logs: [],
+  devMode: false,
+  authResolved: false,
   activeShift: null,
   qbt: {
     config: defaultQbtConfig(),
@@ -279,6 +301,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setAuthWorker: (worker) => set({ authWorker: worker }),
 
+  setAuthResolved: (authResolved) => set({ authResolved }),
+
+  enterDevMode: () => {
+    const seed = loadDevSeed();
+    if (!seed) return; // production: mock module is stripped, nothing to load
+    set({
+      workers: seed.mockWorkers,
+      jobs: seed.mockJobs,
+      jobcards: seed.mockJobcards,
+      crews: seed.mockCrews,
+      dailyCrews: seed.mockDailyCrews,
+      assignments: seed.mockAssignments,
+      logs: seed.mockLogs,
+      devMode: true,
+      devBaseUserId: seed.DEVELOPER_ID,
+      viewAsUserId:
+        Platform.OS === 'web' ? 'w-op' : seed.PRIMARY_INSTALLER_ID,
+      authWorker: null,
+      authResolved: true,
+    });
+  },
+
   loadBackendData: async () => {
     const data = await backend.fetchAllData();
     set({
@@ -292,21 +336,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  resetToMockData: () =>
+  clearData: () =>
     set({
-      workers: mockWorkers,
-      jobs: mockJobs,
-      jobcards: mockJobcards,
-      crews: mockCrews,
-      dailyCrews: mockDailyCrews,
-      assignments: mockAssignments,
-      logs: mockLogs,
+      workers: [],
+      jobs: [],
+      jobcards: [],
+      crews: [],
+      dailyCrews: [],
+      assignments: [],
+      logs: [],
+      devMode: false,
+      devBaseUserId: '',
+      viewAsUserId: null,
+      activeShift: null,
     }),
 
   updateUser: (changes) => {
     let updated: Worker | undefined;
     set((state) => {
       const me = currentWorkerOf(state);
+      if (!me) return {};
       // Edit the effective identity: the real signed-in worker if that's who's
       // active, otherwise the matching mock roster row.
       if (state.authWorker && me.id === state.authWorker.id) {
@@ -581,6 +630,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     if (!state.activeShift) return null;
     const me = currentWorkerOf(state);
+    if (!me) return null;
     const end = new Date();
     const totalHours = hoursBetween(
       state.activeShift.startTime,
@@ -679,6 +729,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   addLog: (entry) => {
     const state = get();
     const me = currentWorkerOf(state);
+    if (!me) throw new Error('Cannot add a log without an active worker.');
     const isBackend = backendActive(state);
     const totalHours = hoursBetween(entry.startTime, entry.endTime);
     const log: TimesheetLog = {
@@ -748,27 +799,30 @@ type IdentityState = {
   devBaseUserId: string;
   authWorker: Worker | null;
   viewAsUserId: string | null;
+  devMode: boolean;
 };
 
 /**
  * The real signed-in identity: the Supabase auth worker if present, otherwise
- * the dev base (the Developer). This is what gates the "View as" switcher.
+ * (local dev mode only) the dev base (the Developer). Returns null when there is
+ * no identity at all — i.e. signed out — which routes the UI to the login gate.
  */
-export function baseWorkerOf(state: IdentityState): Worker {
-  return (
-    state.authWorker ??
-    state.workers.find((w) => w.id === state.devBaseUserId) ??
-    state.workers[0]
-  );
+export function baseWorkerOf(state: IdentityState): Worker | null {
+  if (state.authWorker) return state.authWorker;
+  if (state.devMode) {
+    return state.workers.find((w) => w.id === state.devBaseUserId) ?? null;
+  }
+  return null;
 }
 
 /**
- * The identity the UI renders as. Only the Developer can impersonate: when the
- * base role is `developer` and a `viewAsUserId` is set, that worker is returned;
- * for everyone else the effective identity is simply themselves.
+ * The identity the UI renders as, or null when signed out. Only the Developer
+ * can impersonate: when the base role is `developer` and a `viewAsUserId` is
+ * set, that worker is returned; for everyone else it's simply themselves.
  */
-export function currentWorkerOf(state: IdentityState): Worker {
+export function currentWorkerOf(state: IdentityState): Worker | null {
   const base = baseWorkerOf(state);
+  if (!base) return null;
   if (base.role === 'developer' && state.viewAsUserId) {
     return state.workers.find((w) => w.id === state.viewAsUserId) ?? base;
   }
@@ -852,17 +906,17 @@ export function assignedDatesForInstaller(
   return dates;
 }
 
-/** Hook: the effective worker (impersonated for the Developer, else self). */
-export function useCurrentWorker(): Worker {
+/** Hook: the effective worker (impersonated for the Developer, else self), or null when signed out. */
+export function useCurrentWorker(): Worker | null {
   return useAppStore((s) => currentWorkerOf(s));
 }
 
-/** Hook: the effective role — handy for routing/gating. */
-export function useCurrentRole(): AppRole {
-  return useAppStore((s) => currentWorkerOf(s).role);
+/** Hook: the effective role, or null when signed out — handy for routing/gating. */
+export function useCurrentRole(): AppRole | null {
+  return useAppStore((s) => currentWorkerOf(s)?.role ?? null);
 }
 
 /** Hook: true when the real (base) identity is the Developer — gates the switcher. */
 export function useIsDeveloper(): boolean {
-  return useAppStore((s) => baseWorkerOf(s).role === 'developer');
+  return useAppStore((s) => baseWorkerOf(s)?.role === 'developer');
 }

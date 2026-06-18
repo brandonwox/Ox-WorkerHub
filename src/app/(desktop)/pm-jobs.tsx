@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
+import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
@@ -19,9 +20,11 @@ export default function PmJobsScreen() {
   const role = useCurrentRole();
   const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
+  const assignments = useAppStore((s) => s.assignments);
   const updateJob = useAppStore((s) => s.updateJob);
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [viewJob, setViewJob] = useState<Job | null>(null);
 
   // Show every job, Active first.
   const sortedJobs = useMemo(
@@ -30,6 +33,12 @@ export default function PmJobsScreen() {
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
     [jobs]
+  );
+
+  // "On the calendar" = the jobcard has a row in `assignments`.
+  const scheduledIds = useMemo(
+    () => new Set(assignments.map((a) => a.jobcardId)),
+    [assignments]
   );
 
   if (role !== 'project_manager') return <AccessDenied />;
@@ -60,6 +69,7 @@ export default function PmJobsScreen() {
                 onToggle={() =>
                   setExpandedJobId((id) => (id === job.id ? null : job.id))
                 }
+                onViewJobcards={() => setViewJob(job)}
                 onCommitFlashing={(flashingMaterial) =>
                   updateJob(job.id, { flashingMaterial })
                 }
@@ -68,6 +78,13 @@ export default function PmJobsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <JobJobcardsModal
+        job={viewJob}
+        jobcards={jobcards}
+        scheduledIds={scheduledIds}
+        onClose={() => setViewJob(null)}
+      />
     </View>
   );
 }
@@ -78,12 +95,14 @@ function JobRow({
   jobcardCount,
   expanded,
   onToggle,
+  onViewJobcards,
   onCommitFlashing,
 }: {
   job: Job;
   jobcardCount: number;
   expanded: boolean;
   onToggle: () => void;
+  onViewJobcards: () => void;
   onCommitFlashing: (value: string | undefined) => void;
 }) {
   return (
@@ -104,9 +123,19 @@ function JobRow({
             {job.location || 'No location set'}
           </Text>
         </View>
-        <Text style={styles.jobMeta}>
-          {jobcardCount} {jobcardCount === 1 ? 'card' : 'cards'}
-        </Text>
+        {/* Nested Pressable: opens the popup without toggling the flashing row. */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.viewButton,
+            pressed && styles.viewButtonPressed,
+          ]}
+          onPress={onViewJobcards}
+        >
+          <Feather name="clipboard" size={14} color={colors.primary} />
+          <Text style={styles.viewButtonText}>
+            {jobcardCount} {jobcardCount === 1 ? 'jobcard' : 'jobcards'}
+          </Text>
+        </Pressable>
         <Feather
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={18}
@@ -216,9 +245,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  jobMeta: {
-    color: colors.textTertiary,
-    fontFamily: fonts.medium,
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primaryDim,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  viewButtonPressed: {
+    opacity: 0.85,
+  },
+  viewButtonText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
     fontSize: 12,
   },
   archivedPill: {

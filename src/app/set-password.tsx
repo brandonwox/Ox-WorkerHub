@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -31,6 +31,7 @@ export default function SetPasswordScreen() {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (!worker) return;
     if (password.length < 6) {
       setError('Choose a password of at least 6 characters.');
       return;
@@ -68,6 +69,9 @@ export default function SetPasswordScreen() {
     setBusy(false);
     router.replace('/');
   };
+
+  // Reached only with an active session; if there's no worker, bounce to login.
+  if (!worker) return <Redirect href="/sign-in" />;
 
   return (
     <KeyboardAvoidingView

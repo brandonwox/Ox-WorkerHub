@@ -316,6 +316,7 @@ function workerToRow(w: Worker) {
     phone: w.phone,
     role: w.role,
     trade_role: w.tradeRole,
+    installer_type: w.installerType ?? '',
     hourly_rate: w.hourlyRate,
     status: w.status,
   };

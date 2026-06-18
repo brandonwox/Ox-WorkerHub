@@ -13,6 +13,24 @@ export type AppRole =
 /** Account lifecycle. `invited` until the person accepts their email invite. */
 export type WorkerStatus = 'invited' | 'active';
 
+/**
+ * An installer's specialty title. Purely cosmetic — it does not affect any
+ * scheduling or permissions; it's a label the Operator assigns per installer.
+ */
+export type InstallerType =
+  | 'Window Installer'
+  | 'Storefront Installer'
+  | 'ShowerGlassDoor Installer'
+  | 'Remodel Installer';
+
+/** All installer types, in display order. */
+export const INSTALLER_TYPES: InstallerType[] = [
+  'Window Installer',
+  'Storefront Installer',
+  'ShowerGlassDoor Installer',
+  'Remodel Installer',
+];
+
 export interface Worker {
   id: string;
   name: string;
@@ -22,6 +40,11 @@ export interface Worker {
   role: AppRole;
   /** Trade specialty, e.g. 'Glazier'. Only meaningful for installers. */
   tradeRole: string;
+  /**
+   * Operator-assigned installer specialty title (cosmetic only). Empty/unset
+   * until the Operator picks one. Only meaningful for installers.
+   */
+  installerType?: InstallerType;
   /** Pay rate in dollars/hour. Only meaningful for installers. */
   hourlyRate: number;
   status: WorkerStatus;

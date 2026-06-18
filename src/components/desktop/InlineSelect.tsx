@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { colors, fonts, radii, spacing } from '@/theme';
 
 export interface SelectOption<T extends string> {
@@ -24,10 +25,11 @@ export function InlineSelect<T extends string>({
   minWidth = 150,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<View>(null);
   const current = options.find((o) => o.value === value);
 
   return (
-    <View style={[styles.wrap, { minWidth, zIndex: open ? 100 : 1 }]}>
+    <View ref={wrapRef} style={[styles.wrap, { minWidth }]}>
       <Pressable
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
         onPress={() => setOpen((o) => !o)}
@@ -39,7 +41,12 @@ export function InlineSelect<T extends string>({
           color={colors.textSecondary}
         />
       </Pressable>
-      {open && (
+      <DropdownPortal
+        anchorRef={wrapRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        minWidth={minWidth}
+      >
         <View style={styles.menu}>
           {options.map((opt) => {
             const active = opt.value === value;
@@ -65,7 +72,7 @@ export function InlineSelect<T extends string>({
             );
           })}
         </View>
-      )}
+      </DropdownPortal>
     </View>
   );
 }
@@ -95,17 +102,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   menu: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: spacing.xs,
     backgroundColor: colors.surfaceLight,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.xs,
-    zIndex: 100,
     boxShadow: '0 6px 16px rgba(0, 0, 0, 0.4)',
   },
   item: {

@@ -33,7 +33,7 @@ function timeframeRange(timeframe: Timeframe): { from: string; to: string } {
 export default function TimesheetsScreen() {
   const logs = useAppStore((s) => s.logs);
   const jobcards = useAppStore((s) => s.jobcards);
-  const currentUserId = useAppStore((s) => currentWorkerOf(s).id);
+  const currentUserId = useAppStore((s) => currentWorkerOf(s)?.id ?? '');
   const [timeframe, setTimeframe] = useState<Timeframe>('This Week');
   const [editingLog, setEditingLog] = useState<TimesheetLog | null>(null);
 

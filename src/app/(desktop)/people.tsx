@@ -17,12 +17,21 @@ import { inviteWorker } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { AppRole, Worker } from '@/types';
+import { AppRole, INSTALLER_TYPES, InstallerType, Worker } from '@/types';
 
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
   value,
   label: ROLE_LABELS[value],
 }));
+
+/** Order the per-role tables are stacked in on the People screen. */
+const ROLE_ORDER = Object.keys(ROLE_LABELS) as AppRole[];
+
+/** Installer-type picker options, with a placeholder for "not yet set". */
+const INSTALLER_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Set type…' },
+  ...INSTALLER_TYPES.map((value) => ({ value, label: value })),
+];
 
 export default function PeopleScreen() {
   const role = useCurrentRole();
@@ -31,6 +40,7 @@ export default function PeopleScreen() {
   const addWorker = useAppStore((s) => s.addWorker);
   const setWorkerRole = useAppStore((s) => s.setWorkerRole);
   const setWorkerRate = useAppStore((s) => s.setWorkerRate);
+  const updateWorker = useAppStore((s) => s.updateWorker);
 
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -90,56 +100,22 @@ export default function PeopleScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.table}>
-          <View style={[styles.row, styles.headRow]}>
-            <Text style={[styles.cell, styles.colName, styles.headText]}>Name</Text>
-            <Text style={[styles.cell, styles.colRole, styles.headText]}>Role</Text>
-            <Text style={[styles.cell, styles.colRate, styles.headText]}>Rate</Text>
-            <Text style={[styles.cell, styles.colStatus, styles.headText]}>
-              Status
-            </Text>
-          </View>
-
-          {workers.map((worker, index) => (
-            <View
-              key={worker.id}
-              style={[styles.row, { zIndex: workers.length - index }]}
-            >
-              <View style={[styles.cell, styles.colName]}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {worker.name}
-                </Text>
-                <Text style={styles.email} numberOfLines={1}>
-                  {worker.email}
-                </Text>
-              </View>
-
-              <View style={[styles.cell, styles.colRole]}>
-                <InlineSelect
-                  value={worker.role}
-                  options={ROLE_OPTIONS}
-                  onChange={(role) => setWorkerRole(worker.id, role)}
-                  minWidth={140}
-                />
-              </View>
-
-              <View style={[styles.cell, styles.colRate]}>
-                {worker.role === 'installer' ? (
-                  <RateCell
-                    worker={worker}
-                    onCommit={(rate) => setWorkerRate(worker.id, rate)}
-                  />
-                ) : (
-                  <Text style={styles.muted}>—</Text>
-                )}
-              </View>
-
-              <View style={[styles.cell, styles.colStatus]}>
-                <StatusBadge status={worker.status} />
-              </View>
-            </View>
-          ))}
-        </View>
+        {ROLE_ORDER.map((groupRole) => {
+          const members = workers.filter((w) => w.role === groupRole);
+          if (members.length === 0) return null;
+          return (
+            <RoleTable
+              key={groupRole}
+              role={groupRole}
+              members={members}
+              onSetRole={setWorkerRole}
+              onSetRate={setWorkerRate}
+              onSetInstallerType={(id, installerType) =>
+                updateWorker(id, { installerType })
+              }
+            />
+          );
+        })}
       </ScrollView>
 
       <Toast message={toast} onDone={() => setToast(null)} />
@@ -149,6 +125,93 @@ export default function PeopleScreen() {
         onClose={() => setAddOpen(false)}
         onSubmit={handleAdd}
       />
+    </View>
+  );
+}
+
+/** One titled table holding every worker that currently has `role`. */
+function RoleTable({
+  role,
+  members,
+  onSetRole,
+  onSetRate,
+  onSetInstallerType,
+}: {
+  role: AppRole;
+  members: Worker[];
+  onSetRole: (id: string, role: AppRole) => void;
+  onSetRate: (id: string, rate: number) => void;
+  onSetInstallerType: (id: string, type: InstallerType | undefined) => void;
+}) {
+  const isInstaller = role === 'installer';
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{ROLE_LABELS[role]}</Text>
+      <View style={styles.table}>
+        <View style={[styles.row, styles.headRow]}>
+          <Text style={[styles.cell, styles.colName, styles.headText]}>Name</Text>
+          <Text style={[styles.cell, styles.colRole, styles.headText]}>Role</Text>
+          <Text style={[styles.cell, styles.colRate, styles.headText]}>Rate</Text>
+          <Text style={[styles.cell, styles.colStatus, styles.headText]}>
+            Status
+          </Text>
+        </View>
+
+        {members.map((worker, index) => (
+          <View
+            key={worker.id}
+            style={[styles.row, { zIndex: members.length - index }]}
+          >
+            <View style={[styles.cell, styles.colName]}>
+              <Text style={styles.name} numberOfLines={1}>
+                {worker.name}
+              </Text>
+              <Text style={styles.email} numberOfLines={1}>
+                {worker.email}
+              </Text>
+            </View>
+
+            <View style={[styles.cell, styles.colRole]}>
+              <InlineSelect
+                value={worker.role}
+                options={ROLE_OPTIONS}
+                onChange={(next) => onSetRole(worker.id, next)}
+                minWidth={140}
+              />
+              {isInstaller && (
+                <View style={styles.installerTypeWrap}>
+                  <InlineSelect
+                    value={worker.installerType ?? ''}
+                    options={INSTALLER_TYPE_OPTIONS}
+                    onChange={(value) =>
+                      onSetInstallerType(
+                        worker.id,
+                        (value || undefined) as InstallerType | undefined
+                      )
+                    }
+                    minWidth={140}
+                  />
+                </View>
+              )}
+            </View>
+
+            <View style={[styles.cell, styles.colRate]}>
+              {isInstaller ? (
+                <RateCell
+                  worker={worker}
+                  onCommit={(rate) => onSetRate(worker.id, rate)}
+                />
+              ) : (
+                <Text style={styles.muted}>—</Text>
+              )}
+            </View>
+
+            <View style={[styles.cell, styles.colStatus]}>
+              <StatusBadge status={worker.status} />
+            </View>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -244,6 +307,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
   },
+  section: {
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 18,
+  },
   table: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -281,6 +352,10 @@ const styles = StyleSheet.create({
   },
   colRole: {
     flex: 2,
+    gap: spacing.sm,
+  },
+  installerTypeWrap: {
+    alignSelf: 'flex-start',
   },
   colRate: {
     flex: 2,

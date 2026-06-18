@@ -30,9 +30,9 @@ export default function SettingsScreen() {
   const user = useCurrentWorker();
   const updateUser = useAppStore((s) => s.updateUser);
 
-  const [name, setName] = useState(user.name);
-  const [phone, setPhone] = useState(user.phone);
-  const [email, setEmail] = useState(user.email);
+  const [name, setName] = useState(user?.name ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -66,6 +66,9 @@ export default function SettingsScreen() {
     savedTimer.current = setTimeout(() => setSaved(false), 2500);
   };
 
+  // Gated by the installer layout; null only during the sign-out transition.
+  if (!user) return null;
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <KeyboardAvoidingView
@@ -81,7 +84,9 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.profileInfo}>
               <Text style={styles.profileName}>{user.name}</Text>
-              <Text style={styles.profileRole}>{user.tradeRole}</Text>
+              <Text style={styles.profileRole}>
+                {user.installerType ?? user.tradeRole}
+              </Text>
               <Text style={styles.profileRate}>
                 {formatMoney(user.hourlyRate)}/hr
               </Text>

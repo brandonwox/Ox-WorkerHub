@@ -9,19 +9,25 @@ import { isSupabaseConfigured } from './config';
 /**
  * Syncs the Supabase auth session into the store. When signed in, the resolved
  * worker becomes the base identity AND the store is hydrated with live Supabase
- * data; when signed out, it reverts to the Developer dev base on mock data.
- * Mount once at the app root.
+ * data; when signed out, every collection is emptied so the app sits at the
+ * login gate. Mount once at the app root.
  *
- * Safe before the backend is set up: if the worker or tables aren't there yet,
- * the worker resolves to null and the app stays in dev mode on mock data.
+ * Marks `authResolved` once the first lookup completes so the layouts can wait
+ * before deciding whether to show the app or the login screen.
  */
 export function useSupabaseSession(): void {
   const setAuthWorker = useAppStore((s) => s.setAuthWorker);
+  const setAuthResolved = useAppStore((s) => s.setAuthResolved);
   const loadBackendData = useAppStore((s) => s.loadBackendData);
-  const resetToMockData = useAppStore((s) => s.resetToMockData);
+  const clearData = useAppStore((s) => s.clearData);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    // No backend configured: nothing to resolve, but unblock the gate so local
+    // dev mode is still reachable from the login screen.
+    if (!isSupabaseConfigured()) {
+      setAuthResolved(true);
+      return;
+    }
     let active = true;
 
     const apply = async (worker: Worker | null) => {
@@ -32,11 +38,14 @@ export function useSupabaseSession(): void {
           await loadBackendData();
         } catch (e) {
           // Tables/migration may not be in place yet — keep the app usable.
-          console.warn('Supabase hydrate failed; staying on local data.', e);
+          console.warn('Supabase hydrate failed; no data loaded.', e);
         }
-      } else {
-        resetToMockData();
+      } else if (!useAppStore.getState().devMode) {
+        // Empty everything on a real signed-out session — but never clobber a
+        // locally-entered dev session (which has no Supabase session of its own).
+        clearData();
       }
+      setAuthResolved(true);
     };
 
     // Resolve any persisted session on launch.
@@ -57,5 +66,5 @@ export function useSupabaseSession(): void {
       active = false;
       unsubscribe();
     };
-  }, [setAuthWorker, loadBackendData, resetToMockData]);
+  }, [setAuthWorker, setAuthResolved, loadBackendData, clearData]);
 }

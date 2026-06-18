@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -11,10 +12,12 @@ import {
 
 import { FormInput } from '@/components/FormInput';
 import { signIn } from '@/integrations/supabase';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 
 export default function SignInScreen() {
   const router = useRouter();
+  const enterDevMode = useAppStore((s) => s.enterDevMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -37,16 +40,29 @@ export default function SignInScreen() {
     router.replace('/');
   };
 
+  // Local development only: load the in-memory mock seed and enter the app as
+  // the Developer. This block is compiled out of production builds (__DEV__ is
+  // false), so it can never appear on the deployed website.
+  const enterDev = () => {
+    enterDevMode();
+    router.replace('/');
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Sign in to Ox WorkerHub</Text>
-        <Text style={styles.subtitle}>
-          Use the email and password for your worker account.
-        </Text>
+        <View style={styles.brand}>
+          <View style={styles.logoMark}>
+            <Feather name="box" size={28} color={colors.primary} />
+          </View>
+          <Text style={styles.brandName}>Ox WorkerHub</Text>
+          <Text style={styles.brandTagline}>
+            Sign in with your worker account.
+          </Text>
+        </View>
 
         <View style={styles.card}>
           <FormInput
@@ -81,10 +97,22 @@ export default function SignInScreen() {
             </Text>
           </Pressable>
 
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </Pressable>
+          {router.canGoBack() ? (
+            <Pressable onPress={() => router.back()} hitSlop={8}>
+              <Text style={styles.cancel}>Cancel</Text>
+            </Pressable>
+          ) : null}
         </View>
+
+        {__DEV__ ? (
+          <Pressable
+            style={({ pressed }) => [styles.devButton, pressed && styles.buttonDim]}
+            onPress={enterDev}
+          >
+            <Feather name="tool" size={14} color={colors.warning} />
+            <Text style={styles.devButtonText}>Enter dev mode (mock data)</Text>
+          </Pressable>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -104,15 +132,32 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  title: {
+  brand: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  logoMark: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primaryDim,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  brandName: {
     color: colors.textPrimary,
     fontFamily: fonts.bold,
-    fontSize: 24,
+    fontSize: 26,
   },
-  subtitle: {
+  brandTagline: {
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 14,
+    textAlign: 'center',
   },
   card: {
     backgroundColor: colors.surface,
@@ -147,5 +192,22 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 14,
     textAlign: 'center',
+  },
+  devButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.warningDim,
+    backgroundColor: colors.surface,
+  },
+  devButtonText: {
+    color: colors.warning,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
 });
