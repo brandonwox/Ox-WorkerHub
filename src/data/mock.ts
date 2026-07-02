@@ -18,9 +18,10 @@ export const PRIMARY_INSTALLER_ID = 'w-i1';
 export const DEVELOPER_ID = 'w-dev';
 
 /**
- * Seed roster covering all three roles so every interface is previewable via
- * the dev "View as" switcher. Replaced by the Supabase `workers` table once
- * the backend is wired.
+ * Seed roster covering every role (two installers so the dev can switch between
+ * them, plus one of each other role) so every interface is previewable via the
+ * dev "View as" switcher. Replaced by the Supabase `workers` table once the
+ * backend is wired.
  */
 export const mockWorkers: Worker[] = [
   {
@@ -54,6 +55,28 @@ export const mockWorkers: Worker[] = [
     status: 'active',
   },
   {
+    id: 'w-pm',
+    name: 'Derek Nolan',
+    email: 'derek@ox-glass.com',
+    phone: '(555) 640-3312',
+    role: 'project_manager',
+    tradeRole: 'Project Manager',
+    hourlyRate: 0,
+    status: 'active',
+  },
+  {
+    // A second PM so the "each PM sees only their own jobs" rule is testable via
+    // the dev "View as" switcher (Derek and Alicia share job-1, differ elsewhere).
+    id: 'w-pm2',
+    name: 'Alicia Gomez',
+    email: 'alicia@ox-glass.com',
+    phone: '(555) 771-2093',
+    role: 'project_manager',
+    tradeRole: 'Project Manager',
+    hourlyRate: 0,
+    status: 'active',
+  },
+  {
     id: PRIMARY_INSTALLER_ID,
     name: 'Marcus Lee',
     email: 'marcus@ox-glass.com',
@@ -72,16 +95,6 @@ export const mockWorkers: Worker[] = [
     tradeRole: 'Glazier',
     hourlyRate: 38,
     status: 'active',
-  },
-  {
-    id: 'w-i3',
-    name: 'Tyler Brooks',
-    email: 'tyler@ox-glass.com',
-    phone: '(555) 119-2273',
-    role: 'installer',
-    tradeRole: 'Apprentice',
-    hourlyRate: 26,
-    status: 'invited',
   },
 ];
 
@@ -227,7 +240,13 @@ const seededJobcards: Jobcard[] = [
   },
 ];
 
-/** Jobsites/projects the Operator owns. Jobcards (below) hang off these. */
+/**
+ * Jobsites/projects the Operator owns. Jobcards (below) hang off these.
+ *
+ * `pmIds` are the assigned Project Managers: Derek (w-pm) and Alicia (w-pm2)
+ * share job-1 (exercises the multi-PM case) and otherwise cover different jobs,
+ * so switching between them shows each a distinct slice.
+ */
 export const mockJobs: Job[] = [
   {
     id: 'job-1',
@@ -236,6 +255,7 @@ export const mockJobs: Job[] = [
     status: 'Active',
     qbtJobcodeId: '90112',
     flashingMaterial: 'Clear Anodized Aluminum',
+    pmIds: ['w-pm', 'w-pm2'],
   },
   {
     id: 'job-2',
@@ -244,6 +264,7 @@ export const mockJobs: Job[] = [
     status: 'Active',
     qbtJobcodeId: '90113',
     flashingMaterial: 'Stainless Steel (Brushed)',
+    pmIds: ['w-pm'],
   },
   {
     id: 'job-3',
@@ -251,6 +272,7 @@ export const mockJobs: Job[] = [
     location: '88 Oakdale Ave, Evanston, IL',
     status: 'Active',
     // Not yet mapped to a QBT jobcode — shows the unmapped state in the table.
+    pmIds: ['w-pm'],
   },
   {
     id: 'job-4',
@@ -258,6 +280,7 @@ export const mockJobs: Job[] = [
     location: '500 N Michigan Ave, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90120',
+    pmIds: ['w-pm2'],
   },
   {
     id: 'job-5',
@@ -265,6 +288,7 @@ export const mockJobs: Job[] = [
     location: '740 N Rush St, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90131',
+    pmIds: ['w-pm2'],
   },
   {
     id: 'job-6',
@@ -272,6 +296,7 @@ export const mockJobs: Job[] = [
     location: '1255 S Prairie Ave, Chicago, IL',
     status: 'Archived',
     qbtJobcodeId: '88004',
+    pmIds: ['w-pm'],
   },
 ];
 
@@ -313,7 +338,7 @@ export const mockCrews: Crew[] = [
   {
     id: 'crew-alpha',
     name: 'Crew Alpha',
-    installerIds: [PRIMARY_INSTALLER_ID, 'w-i3'], // Marcus Lee, Tyler Brooks
+    installerIds: [PRIMARY_INSTALLER_ID], // Marcus Lee
   },
   {
     id: 'crew-bravo',

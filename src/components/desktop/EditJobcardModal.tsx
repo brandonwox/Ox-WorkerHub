@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -15,42 +15,36 @@ import { FormInput } from '@/components/FormInput';
 import { colors, fonts, radii, spacing } from '@/theme';
 import {
   Job,
+  Jobcard,
   JobScope,
   JOB_SCOPES,
   PRIORITY_PRESETS,
   READINESS_PRESETS,
 } from '@/types';
-import { useTypewriter } from '@/utils/useTypewriter';
 
-/** Payload the PM screen hands to `addJobcard`. */
-export interface NewJobcardInput {
+/** Fields the PM may edit on an existing jobcard. */
+export interface JobcardChanges {
   jobId: string;
+  address: string;
   title: string;
   scopes: JobScope[];
   tasks: string[];
   readiness: string;
   priority: string;
   materials?: string;
-  /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
+  /** Per-card Window Opening Flashing Material (Windows scope only). */
   flashingMaterial?: string;
   notes?: string;
 }
 
 interface Props {
-  visible: boolean;
+  /** The jobcard being edited, or null when the modal is closed. */
+  jobcard: Jobcard | null;
   /** Active Jobs the card can be parented to. */
   jobs: Job[];
   onClose: () => void;
-  onSubmit: (input: NewJobcardInput) => void;
+  onSave: (id: string, changes: JobcardChanges) => void;
 }
-
-/** Title placeholder cycles through these via a typewriter animation. */
-const TITLE_PHRASES = [
-  'Install windows',
-  'Finish the north face',
-  'Fix the sashes',
-  'Set mirrors on floor 3',
-];
 
 const MIN_TASK_LEN = 15;
 
@@ -58,25 +52,36 @@ const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
 const PRIORITY_OPTIONS = PRIORITY_PRESETS.map((p) => ({ value: p, label: p }));
 
-export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) {
+export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
   const [jobId, setJobId] = useState('');
   const [title, setTitle] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [tasks, setTasks] = useState<string[]>(['']);
-  // The first task mirrors the title until the PM edits it directly — they're
-  // usually the same thing, so we save the PM re-typing it.
-  const [taskLinked, setTaskLinked] = useState(true);
   const [readiness, setReadiness] = useState('');
   const [readyConfirmed, setReadyConfirmed] = useState(false);
   const [priority, setPriority] = useState('');
-  // Window Opening Flashing Material: tracks the parent Job until the PM edits it.
   const [flashing, setFlashing] = useState('');
-  const [flashingTouched, setFlashingTouched] = useState(false);
   const [materials, setMaterials] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const titlePlaceholder = useTypewriter(TITLE_PHRASES);
+  // Re-seed the form whenever a different jobcard is opened.
+  useEffect(() => {
+    if (!jobcard) return;
+    setJobId(jobcard.jobId ?? '');
+    setTitle(jobcard.title);
+    setScopes(jobcard.scopes ?? []);
+    setTasks(jobcard.tasks && jobcard.tasks.length > 0 ? jobcard.tasks : ['']);
+    setReadiness(jobcard.readiness ?? '');
+    // A card already marked "Now" was confirmed when created — keep it confirmed
+    // so the PM isn't forced to re-check it on every edit.
+    setReadyConfirmed(jobcard.readiness === 'Now');
+    setPriority(jobcard.priority ?? '');
+    setFlashing(jobcard.flashingMaterial ?? '');
+    setMaterials(jobcard.materials ?? '');
+    setNotes(jobcard.notes ?? '');
+    setError(null);
+  }, [jobcard]);
 
   const jobOptions = useMemo(
     () => jobs.map((j) => ({ value: j.id, label: j.name })),
@@ -84,59 +89,20 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
   );
   const selectedJob = jobs.find((j) => j.id === jobId);
   const includesWindows = scopes.includes('Windows');
-  const flashingValue = flashingTouched
-    ? flashing
-    : (selectedJob?.flashingMaterial ?? '');
 
-  const reset = () => {
-    setJobId('');
-    setTitle('');
-    setScopes([]);
-    setTasks(['']);
-    setTaskLinked(true);
-    setReadiness('');
-    setReadyConfirmed(false);
-    setPriority('');
-    setFlashing('');
-    setFlashingTouched(false);
-    setMaterials('');
-    setNotes('');
-    setError(null);
-  };
-
-  const close = () => {
-    reset();
-    onClose();
-  };
-
-  const setTaskAt = (index: number, value: string) => {
-    // A direct edit of the first task unlinks it from the title.
-    if (index === 0) setTaskLinked(false);
+  const setTaskAt = (index: number, value: string) =>
     setTasks((prev) => prev.map((t, i) => (i === index ? value : t)));
-  };
   const addTask = () => setTasks((prev) => [...prev, '']);
   const removeTask = (index: number) =>
     setTasks((prev) => prev.filter((_, i) => i !== index));
 
-  // While linked, typing the title also fills the first task.
-  const onTitleChange = (value: string) => {
-    setTitle(value);
-    if (taskLinked) {
-      setTasks((prev) => {
-        const next = [...prev];
-        next[0] = value;
-        return next;
-      });
-    }
-  };
-
-  // When readiness changes away from "Now", the confirmation no longer applies.
   const onReadinessChange = (value: string) => {
     setReadiness(value);
     if (value !== 'Now') setReadyConfirmed(false);
   };
 
-  const submit = () => {
+  const save = () => {
+    if (!jobcard) return;
     if (!selectedJob) {
       setError('Pick a parent job for this jobcard.');
       return;
@@ -171,8 +137,9 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       return;
     }
 
-    onSubmit({
+    onSave(jobcard.id, {
       jobId: selectedJob.id,
+      address: selectedJob.location ?? jobcard.address,
       title: title.trim(),
       scopes,
       tasks: cleanTasks,
@@ -180,21 +147,26 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       priority: priority.trim(),
       materials: materials.trim() || undefined,
       flashingMaterial: includesWindows
-        ? flashingValue.trim() || undefined
+        ? flashing.trim() || undefined
         : undefined,
       notes: notes.trim() || undefined,
     });
-    close();
+    onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
+    <Modal
+      visible={jobcard != null}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={close} />
+        <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.title}>Create jobcard</Text>
-            <Pressable onPress={close} hitSlop={8}>
+            <Text style={styles.title}>Edit jobcard</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
               <Feather name="x" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
@@ -208,9 +180,7 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Parent job</Text>
               {jobs.length === 0 ? (
-                <Text style={styles.noJobs}>
-                  No active jobs available. The Operator must create one first.
-                </Text>
+                <Text style={styles.noJobs}>No active jobs available.</Text>
               ) : (
                 <Combobox
                   value={jobId}
@@ -221,12 +191,12 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
               )}
             </View>
 
-            {/* Title (required, animated placeholder) — directly under the job */}
+            {/* Title */}
             <FormInput
               label="Title"
               value={title}
-              onChangeText={onTitleChange}
-              placeholder={titlePlaceholder || 'Install windows'}
+              onChangeText={setTitle}
+              placeholder="Install windows"
               autoCapitalize="sentences"
             />
 
@@ -321,11 +291,8 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
             {includesWindows && (
               <FormInput
                 label="Window Opening Flashing Material"
-                value={flashingValue}
-                onChangeText={(t) => {
-                  setFlashingTouched(true);
-                  setFlashing(t);
-                }}
+                value={flashing}
+                onChangeText={setFlashing}
                 placeholder={
                   selectedJob?.flashingMaterial
                     ? `Defaults to ${selectedJob.flashingMaterial}`
@@ -358,11 +325,11 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
           </ScrollView>
 
           <View style={styles.actions}>
-            <Pressable style={styles.cancelButton} onPress={close}>
+            <Pressable style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.submitButton} onPress={submit}>
-              <Text style={styles.submitText}>Create jobcard</Text>
+            <Pressable style={styles.submitButton} onPress={save}>
+              <Text style={styles.submitText}>Save changes</Text>
             </Pressable>
           </View>
         </View>

@@ -1,3 +1,5 @@
+import type { RealtimeChannel } from '@supabase/supabase-js';
+
 import {
   Crew,
   DailyCrew,
@@ -31,6 +33,11 @@ interface JobRow {
   status: string;
   qbt_jobcode_id: string | null;
   flashing_material: string | null;
+}
+
+interface JobPmRow {
+  job_id: string;
+  pm_id: string;
 }
 
 interface JobcardRow {
@@ -176,6 +183,7 @@ export async function fetchAllData(): Promise<BackendData> {
   const [
     workersR,
     jobsR,
+    jobPmsR,
     jobcardsR,
     crewsR,
     crewMembersR,
@@ -186,6 +194,7 @@ export async function fetchAllData(): Promise<BackendData> {
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
+    sb.from('job_pms').select('*'),
     sb.from('jobcards').select('*'),
     sb.from('crews').select('*'),
     sb.from('crew_members').select('*'),
@@ -198,6 +207,7 @@ export async function fetchAllData(): Promise<BackendData> {
   const firstError =
     workersR.error ??
     jobsR.error ??
+    jobPmsR.error ??
     jobcardsR.error ??
     crewsR.error ??
     crewMembersR.error ??
@@ -206,6 +216,15 @@ export async function fetchAllData(): Promise<BackendData> {
     assignmentsR.error ??
     timesheetsR.error;
   if (firstError) throw new Error(firstError.message);
+
+  // Group PM assignments by job so each Job carries its own pmIds list.
+  const jobPms = (jobPmsR.data ?? []) as JobPmRow[];
+  const pmIdsByJob = new Map<string, string[]>();
+  for (const { job_id, pm_id } of jobPms) {
+    const list = pmIdsByJob.get(job_id);
+    if (list) list.push(pm_id);
+    else pmIdsByJob.set(job_id, [pm_id]);
+  }
 
   const crewMembers = (crewMembersR.data ?? []) as CrewMemberRow[];
   const crews: Crew[] = ((crewsR.data ?? []) as CrewRow[]).map((c) => ({
@@ -232,7 +251,10 @@ export async function fetchAllData(): Promise<BackendData> {
     workers: ((workersR.data ?? []) as Parameters<typeof rowToWorker>[0][]).map(
       rowToWorker
     ),
-    jobs: ((jobsR.data ?? []) as JobRow[]).map(rowToJob),
+    jobs: ((jobsR.data ?? []) as JobRow[]).map((r) => ({
+      ...rowToJob(r),
+      pmIds: pmIdsByJob.get(r.id) ?? [],
+    })),
     jobcards: ((jobcardsR.data ?? []) as JobcardRow[]).map(rowToJobcard),
     crews,
     dailyCrews,
@@ -263,8 +285,13 @@ function jobToRow(job: Job) {
 
 export async function insertJob(job: Job): Promise<void> {
   check((await getSupabase().from('jobs').insert(jobToRow(job))).error);
+  // PM assignments live in the job_pms join table, not on the jobs row.
+  await setJobPms(job.id, job.pmIds ?? []);
 }
 export async function updateJob(job: Job): Promise<void> {
+  // Note: PM assignments are NOT written here. They go through setJobPms so a
+  // non-operator update (e.g. a PM editing flashing material) never touches the
+  // operator-only job_pms table. See useAppStore.updateJob.
   check(
     (await getSupabase().from('jobs').update(jobToRow(job)).eq('id', job.id))
       .error
@@ -272,6 +299,21 @@ export async function updateJob(job: Job): Promise<void> {
 }
 export async function deleteJob(id: string): Promise<void> {
   check((await getSupabase().from('jobs').delete().eq('id', id)).error);
+}
+
+/** Replace a job's PM assignments (operator-only; mirrors crew member replace). */
+export async function setJobPms(jobId: string, pmIds: string[]): Promise<void> {
+  const sb = getSupabase();
+  check((await sb.from('job_pms').delete().eq('job_id', jobId)).error);
+  if (pmIds.length) {
+    check(
+      (
+        await sb
+          .from('job_pms')
+          .insert(pmIds.map((pm_id) => ({ job_id: jobId, pm_id })))
+      ).error
+    );
+  }
 }
 
 function jobcardToRow(card: Jobcard) {
@@ -312,21 +354,42 @@ export async function updateJobcard(card: Jobcard): Promise<void> {
   );
 }
 
-function workerToRow(w: Worker) {
+/**
+ * Profile columns only. `role` and `hourly_rate` are operator-only (enforced by
+ * the `guard_worker_role_rate` DB trigger), so they are NEVER sent on a general
+ * profile update — a self-edit (name/phone/email) would otherwise be rejected
+ * for sending a role/rate the trigger thinks changed. Role/rate go through
+ * updateWorkerRole / updateWorkerRate, called only from operator actions. Mirrors
+ * markSelfActive, which sends just `status` for exactly this reason.
+ */
+function workerProfileRow(w: Worker) {
   return {
     name: w.name,
     email: w.email,
     phone: w.phone,
-    role: w.role,
     trade_role: w.tradeRole,
     installer_type: w.installerType ?? '',
-    hourly_rate: w.hourlyRate,
     status: w.status,
   };
 }
 export async function updateWorker(w: Worker): Promise<void> {
   check(
-    (await getSupabase().from('workers').update(workerToRow(w)).eq('id', w.id))
+    (
+      await getSupabase()
+        .from('workers')
+        .update(workerProfileRow(w))
+        .eq('id', w.id)
+    ).error
+  );
+}
+/** Operator-only: change a worker's role (sent alone to satisfy the DB guard). */
+export async function updateWorkerRole(id: string, role: Worker['role']): Promise<void> {
+  check((await getSupabase().from('workers').update({ role }).eq('id', id)).error);
+}
+/** Operator-only: change a worker's pay rate (sent alone to satisfy the DB guard). */
+export async function updateWorkerRate(id: string, hourlyRate: number): Promise<void> {
+  check(
+    (await getSupabase().from('workers').update({ hourly_rate: hourlyRate }).eq('id', id))
       .error
   );
 }
@@ -450,4 +513,60 @@ export async function markTimesheetsSentRemote(): Promise<void> {
         .in('send_status', ['unsent', 'failed'])
     ).error
   );
+}
+
+// --- Realtime sync -----------------------------------------------------------
+
+/**
+ * The collaborative tables whose changes any session needs to see live. When a
+ * PM creates a jobcard or the Operator adds a worker, every other signed-in
+ * session should reflect it without a manual refresh. (Notifications have their
+ * own recipient-scoped channel in ./notifications and are intentionally omitted
+ * here.) These tables must also be members of the `supabase_realtime`
+ * publication — see the realtime-core-tables migration.
+ */
+const REALTIME_TABLES = [
+  'workers',
+  'jobs',
+  'job_pms',
+  'jobcards',
+  'crews',
+  'crew_members',
+  'daily_crews',
+  'daily_crew_members',
+  'schedule_assignments',
+  'timesheets',
+] as const;
+
+// One shared data channel per session; re-subscribing (or signing out) tears the
+// previous one down so channels never leak across sessions.
+let dataChannel: RealtimeChannel | null = null;
+
+/**
+ * Stream INSERT/UPDATE/DELETE on every collaborative table and invoke `onChange`
+ * for each one. Realtime evaluates each table's SELECT RLS policy, so a session
+ * only ever receives rows it is allowed to read. `onChange` fires once per row
+ * event; callers should debounce a refetch since one logical change can emit
+ * several events (e.g. a job plus its job_pms rows). Idempotent: replaces any
+ * prior subscription.
+ */
+export function subscribeAllData(onChange: () => void): void {
+  unsubscribeAllData();
+  let ch = getSupabase().channel('app-data');
+  for (const table of REALTIME_TABLES) {
+    ch = ch.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table },
+      () => onChange()
+    );
+  }
+  dataChannel = ch.subscribe();
+}
+
+/** Tear down the active data channel (on sign-out / re-subscribe). */
+export function unsubscribeAllData(): void {
+  if (dataChannel) {
+    getSupabase().removeChannel(dataChannel);
+    dataChannel = null;
+  }
 }

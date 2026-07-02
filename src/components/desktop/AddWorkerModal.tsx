@@ -82,21 +82,27 @@ export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
             An email invite is sent so they can set a password and sign in.
           </Text>
 
-          <FormInput
-            label="Full name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Jordan Pike"
-            autoCapitalize="words"
-          />
-          <FormInput
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="name@ox-glass.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <FormInput
+                label="Full name"
+                value={name}
+                onChangeText={setName}
+                placeholder="Jordan Pike"
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.col}>
+              <FormInput
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="name@ox-glass.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Role</Text>
@@ -151,7 +157,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 440,
+    maxWidth: 580,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -174,6 +180,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
     marginTop: -spacing.md,
+  },
+  // Two-column row for paired fields on the wide desktop layout.
+  row: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  col: {
+    flex: 1,
   },
   field: {
     gap: spacing.xs + 2,

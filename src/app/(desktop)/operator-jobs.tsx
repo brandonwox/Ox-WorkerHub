@@ -1,31 +1,19 @@
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
 import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
-import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { Toast } from '@/components/Toast';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job, JobStatus } from '@/types';
-
-const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
-  { value: 'Active', label: 'Active' },
-  { value: 'Archived', label: 'Archived' },
-];
+import { Job } from '@/types';
 
 export default function JobsScreen() {
   const role = useCurrentRole();
   const jobs = useAppStore((s) => s.jobs);
+  const workers = useAppStore((s) => s.workers);
   const addJob = useAppStore((s) => s.addJob);
   const updateJob = useAppStore((s) => s.updateJob);
   const removeJob = useAppStore((s) => s.removeJob);
@@ -33,6 +21,11 @@ export default function JobsScreen() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  const projectManagers = useMemo(
+    () => workers.filter((w) => w.role === 'project_manager'),
+    [workers]
+  );
 
   if (role !== 'operator') return <AccessDenied />;
 
@@ -69,71 +62,9 @@ export default function JobsScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.table}>
-          <View style={[styles.row, styles.headRow]}>
-            <Text style={[styles.cell, styles.colName, styles.headText]}>Job</Text>
-            <Text style={[styles.cell, styles.colLocation, styles.headText]}>
-              Location
-            </Text>
-            <Text style={[styles.cell, styles.colCode, styles.headText]}>
-              QBT Jobcode
-            </Text>
-            <Text style={[styles.cell, styles.colFlashing, styles.headText]}>
-              Window Opening Flashing
-            </Text>
-            <Text style={[styles.cell, styles.colStatus, styles.headText]}>
-              Status
-            </Text>
-            <Text style={[styles.cell, styles.colActions, styles.headText]} />
-          </View>
-
-          {jobs.map((job, index) => (
-            <View key={job.id} style={[styles.row, { zIndex: jobs.length - index }]}>
-              <View style={[styles.cell, styles.colName]}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {job.name}
-                </Text>
-              </View>
-              <View style={[styles.cell, styles.colLocation]}>
-                <Text style={styles.location} numberOfLines={2}>
-                  {job.location}
-                </Text>
-              </View>
-              <View style={[styles.cell, styles.colCode]}>
-                <JobcodeCell
-                  job={job}
-                  onCommit={(qbtJobcodeId) => updateJob(job.id, { qbtJobcodeId })}
-                />
-              </View>
-              <View style={[styles.cell, styles.colFlashing]}>
-                <FlashingCell
-                  job={job}
-                  onCommit={(flashingMaterial) =>
-                    updateJob(job.id, { flashingMaterial })
-                  }
-                />
-              </View>
-              <View style={[styles.cell, styles.colStatus]}>
-                <InlineSelect
-                  value={job.status}
-                  options={STATUS_OPTIONS}
-                  onChange={(status) => updateJob(job.id, { status })}
-                  minWidth={120}
-                />
-              </View>
-              <View style={[styles.cell, styles.colActions]}>
-                <Pressable
-                  onPress={() => setEditing(job)}
-                  hitSlop={6}
-                  style={({ pressed }) => [
-                    styles.editButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Feather name="edit-2" size={15} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-            </View>
+        <View style={styles.grid}>
+          {jobs.map((job) => (
+            <JobCard key={job.id} job={job} onEdit={() => setEditing(job)} />
           ))}
         </View>
       </ScrollView>
@@ -142,12 +73,14 @@ export default function JobsScreen() {
 
       <CreateJobModal
         visible={createOpen}
+        projectManagers={projectManagers}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
       />
 
       <EditJobModal
         job={editing}
+        projectManagers={projectManagers}
         onClose={() => setEditing(null)}
         onSave={handleSave}
         onDelete={handleDelete}
@@ -156,65 +89,63 @@ export default function JobsScreen() {
   );
 }
 
-/** Inline editable QBT jobcode mapping; commits on blur. */
-function JobcodeCell({
-  job,
-  onCommit,
-}: {
-  job: Job;
-  onCommit: (value: string | undefined) => void;
-}) {
-  const [text, setText] = useState(job.qbtJobcodeId ?? '');
-
-  const commit = () => {
-    const trimmed = text.trim();
-    onCommit(trimmed || undefined);
-  };
-
+/** Square-ish job card shown in the grid; the edit button opens the full editor. */
+function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
+  const archived = job.status === 'Archived';
   const unmapped = !job.qbtJobcodeId;
+  const pmCount = job.pmIds?.length ?? 0;
 
   return (
-    <View style={[styles.codeWrap, unmapped && styles.codeWrapUnmapped]}>
-      <TextInput
-        style={styles.codeInput}
-        value={text}
-        onChangeText={setText}
-        onBlur={commit}
-        onEndEditing={commit}
-        placeholder="unmapped"
-        placeholderTextColor={colors.warning}
-        autoCapitalize="none"
-      />
-    </View>
-  );
-}
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.name} numberOfLines={2}>
+          {job.name}
+        </Text>
+        <View
+          style={[styles.statusBadge, archived && styles.statusBadgeArchived]}
+        >
+          <Text
+            style={[styles.statusText, archived && styles.statusTextArchived]}
+          >
+            {job.status}
+          </Text>
+        </View>
+      </View>
 
-/** Inline editable site-wide flashing material; commits on blur. */
-function FlashingCell({
-  job,
-  onCommit,
-}: {
-  job: Job;
-  onCommit: (value: string | undefined) => void;
-}) {
-  const [text, setText] = useState(job.flashingMaterial ?? '');
+      <View style={styles.cardBody}>
+        <View style={styles.detailRow}>
+          <Feather name="hash" size={14} color={colors.textTertiary} />
+          {unmapped ? (
+            <Text style={[styles.detailValue, styles.unmapped]}>
+              QBT code unmapped
+            </Text>
+          ) : (
+            <Text style={styles.detailValue} numberOfLines={1}>
+              QBT {job.qbtJobcodeId}
+            </Text>
+          )}
+        </View>
+        <View style={styles.detailRow}>
+          <Feather name="user" size={14} color={colors.textTertiary} />
+          {pmCount === 0 ? (
+            <Text style={[styles.detailValue, styles.unmapped]}>
+              No PM assigned
+            </Text>
+          ) : (
+            <Text style={styles.detailValue} numberOfLines={1}>
+              {pmCount} {pmCount === 1 ? 'PM' : 'PMs'} assigned
+            </Text>
+          )}
+        </View>
+      </View>
 
-  const commit = () => {
-    const trimmed = text.trim();
-    onCommit(trimmed || undefined);
-  };
-
-  return (
-    <View style={styles.codeWrap}>
-      <TextInput
-        style={styles.flashInput}
-        value={text}
-        onChangeText={setText}
-        onBlur={commit}
-        onEndEditing={commit}
-        placeholder="not set"
-        placeholderTextColor={colors.textTertiary}
-      />
+      <Pressable
+        onPress={onEdit}
+        style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
+      >
+        <Feather name="edit-2" size={14} color={colors.textPrimary} />
+        <Text style={styles.editButtonText}>Edit</Text>
+      </Pressable>
     </View>
   );
 }
@@ -228,6 +159,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.lg,
     maxWidth: 1100,
+    width: '100%',
   },
   headerRow: {
     flexDirection: 'row',
@@ -256,101 +188,86 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
   },
-  table: {
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+  },
+  card: {
+    width: 300,
+    minHeight: 240,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'visible',
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  row: {
+  cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
-  headRow: {
+  name: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.successDim,
+  },
+  statusBadgeArchived: {
     backgroundColor: colors.surfaceLight,
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
   },
-  headText: {
-    color: colors.textTertiary,
+  statusText: {
+    color: colors.success,
     fontFamily: fonts.semiBold,
     fontSize: 11,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
-  cell: {
-    paddingRight: spacing.md,
-    justifyContent: 'center',
+  statusTextArchived: {
+    color: colors.textTertiary,
   },
-  colName: {
-    flex: 2.4,
+  cardBody: {
+    flex: 1,
+    gap: spacing.sm + 2,
   },
-  colLocation: {
-    flex: 2.6,
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
   },
-  colCode: {
-    flex: 1.6,
-  },
-  colFlashing: {
-    flex: 2.4,
-  },
-  colStatus: {
-    flex: 1.5,
-  },
-  colActions: {
-    flex: 0.6,
-    alignItems: 'flex-end',
-    paddingRight: 0,
-  },
-  editButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  name: {
-    color: colors.textPrimary,
-    fontFamily: fonts.semiBold,
-    fontSize: 15,
-  },
-  location: {
+  detailValue: {
+    flex: 1,
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 13,
+    lineHeight: 18,
   },
-  codeWrap: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
+  unmapped: {
+    color: colors.warning,
+    fontFamily: fonts.medium,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
   },
-  codeWrapUnmapped: {
-    borderColor: colors.warningDim,
-  },
-  codeInput: {
-    minWidth: 90,
-    paddingVertical: spacing.sm,
+  editButtonText: {
     color: colors.textPrimary,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    outlineWidth: 0,
-  },
-  flashInput: {
-    minWidth: 120,
-    paddingVertical: spacing.sm,
-    color: colors.textPrimary,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    outlineWidth: 0,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
 });

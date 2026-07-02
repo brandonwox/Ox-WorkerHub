@@ -1,9 +1,12 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Link, usePathname } from 'expo-router';
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AuthControl } from '@/components/AuthControl';
+import { NotificationBell } from '@/components/desktop/NotificationBell';
+import { SavedPill } from '@/components/desktop/SavedPill';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { DesktopNavItem } from '@/roles';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -22,9 +25,11 @@ export function SidebarShell({ navItems, children }: Props) {
     <View style={styles.root}>
       <View style={styles.sidebar}>
         <View style={styles.brand}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>Ox</Text>
-          </View>
+          <Image
+            source={require('../../../assets/images/ox-logo.png')}
+            style={styles.brandMark}
+            contentFit="contain"
+          />
           <Text style={styles.brandText}>WorkerHub</Text>
         </View>
 
@@ -53,12 +58,17 @@ export function SidebarShell({ navItems, children }: Props) {
             );
           })}
         </View>
+
+        <View style={styles.sidebarFooter}>
+          <SavedPill />
+        </View>
       </View>
 
       <View style={styles.main}>
         <View style={styles.topbar}>
           <Text style={styles.pageTitle}>{active?.label ?? ''}</Text>
           <View style={styles.topbarRight}>
+            <NotificationBell />
             <DevRoleSwitcher variant="bar" />
             <AuthControl variant="bar" />
           </View>
@@ -80,30 +90,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    paddingVertical: spacing.xl,
     paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
     gap: spacing.xl,
   },
+  // Brand header bar: same 64px height and bottom border as the top bar, and
+  // spans the full sidebar width by cancelling the sidebar's horizontal padding.
   brand: {
+    height: 64,
+    marginHorizontal: -spacing.md,
+    paddingHorizontal: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   brandMark: {
-    width: 34,
-    height: 34,
-    borderRadius: radii.md,
-    backgroundColor: colors.primaryDim,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandMarkText: {
-    color: colors.primary,
-    fontFamily: fonts.bold,
-    fontSize: 15,
+    width: 42,
+    height: 42,
   },
   brandText: {
     color: colors.textPrimary,
@@ -112,6 +117,11 @@ const styles = StyleSheet.create({
   },
   nav: {
     gap: spacing.xs,
+  },
+  // Pushes the "Changes Saved" pill to the bottom of the sidebar.
+  sidebarFooter: {
+    marginTop: 'auto',
+    alignItems: 'center',
   },
   navItem: {
     flexDirection: 'row',

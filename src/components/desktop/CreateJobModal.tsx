@@ -3,43 +3,40 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
-import { InlineSelect } from '@/components/desktop/InlineSelect';
+import { PmPicker } from '@/components/desktop/PmPicker';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { JobStatus } from '@/types';
+import { Worker } from '@/types';
 
 export interface NewJobInput {
   name: string;
   location: string;
   qbtJobcodeId?: string;
-  flashingMaterial?: string;
-  status: JobStatus;
+  pmIds: string[];
 }
 
 interface Props {
   visible: boolean;
+  /** Roster of project managers the Operator can assign to this job. */
+  projectManagers: Worker[];
   onClose: () => void;
   onSubmit: (job: NewJobInput) => void;
 }
 
-const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
-  { value: 'Active', label: 'Active' },
-  { value: 'Archived', label: 'Archived' },
-];
-
-export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
+export function CreateJobModal({
+  visible,
+  projectManagers,
+  onClose,
+  onSubmit,
+}: Props) {
   const [name, setName] = useState('');
-  const [location, setLocation] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
-  const [flashingMaterial, setFlashingMaterial] = useState('');
-  const [status, setStatus] = useState<JobStatus>('Active');
+  const [pmIds, setPmIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setName('');
-    setLocation('');
     setQbtJobcodeId('');
-    setFlashingMaterial('');
-    setStatus('Active');
+    setPmIds([]);
     setError(null);
   };
 
@@ -53,16 +50,12 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
       setError('Job name is required.');
       return;
     }
-    if (!location.trim()) {
-      setError('Job location is required.');
-      return;
-    }
+    // Address is set by the Project Manager, not the Operator.
     onSubmit({
       name: name.trim(),
-      location: location.trim(),
+      location: '',
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
-      flashingMaterial: flashingMaterial.trim() || undefined,
-      status,
+      pmIds,
     });
     close();
   };
@@ -87,33 +80,28 @@ export function CreateJobModal({ visible, onClose, onSubmit }: Props) {
             autoCapitalize="words"
           />
           <FormInput
-            label="Location / address"
-            value={location}
-            onChangeText={setLocation}
-            placeholder="123 Main St, Park City, UT"
-          />
-          <FormInput
             label="QuickBooks Time jobcode ID"
             value={qbtJobcodeId}
             onChangeText={setQbtJobcodeId}
             placeholder="e.g. 90112 — maps hours to QBT"
             autoCapitalize="none"
           />
-          <FormInput
-            label="Window Opening Flashing Material (site-wide)"
-            value={flashingMaterial}
-            onChangeText={setFlashingMaterial}
-            placeholder="e.g. Clear Anodized Aluminum — optional"
-          />
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Status</Text>
-            <InlineSelect
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={setStatus}
-              minWidth={200}
+            <Text style={styles.fieldLabel}>Project managers</Text>
+            <PmPicker
+              projectManagers={projectManagers}
+              selected={pmIds}
+              onToggle={(id) =>
+                setPmIds((ids) =>
+                  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
+                )
+              }
             />
+            <Text style={styles.fieldHint}>
+              Assigned PMs see this job and its jobcards. You can pick more than
+              one.
+            </Text>
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -149,7 +137,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 620,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -169,12 +157,17 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.xs + 2,
-    zIndex: 10,
   },
   fieldLabel: {
     color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  fieldHint: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
   },
   error: {
     color: colors.danger,

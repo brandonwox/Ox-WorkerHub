@@ -24,6 +24,13 @@ export default function SetPasswordScreen() {
   const router = useRouter();
   const worker = useCurrentWorker();
   const setAuthWorker = useAppStore((s) => s.setAuthWorker);
+  const passwordRecovery = useAppStore((s) => s.passwordRecovery);
+  const setPasswordRecovery = useAppStore((s) => s.setPasswordRecovery);
+
+  // Distinguish a forgotten-password reset (existing active worker via a
+  // recovery link) from an invited worker finishing setup — same form, but the
+  // copy and the post-save activation differ.
+  const isReset = passwordRecovery && worker?.status !== 'invited';
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -50,22 +57,27 @@ export default function SetPasswordScreen() {
       return;
     }
 
-    // Persist the activation BEFORE navigating, and wait for it — otherwise the
-    // invited-status gate bounces straight back here. Surface any failure rather
-    // than leaving the account silently stuck as 'invited'.
-    try {
-      await markSelfActive(worker.id);
-    } catch (e) {
-      setBusy(false);
-      setError(
-        `Password saved, but activating your account failed: ${
-          e instanceof Error ? e.message : 'unknown error'
-        }`
-      );
-      return;
+    // A reset just changes the password on an already-active account; only the
+    // invited-setup path needs to flip status to 'active'. Persist that BEFORE
+    // navigating, and wait for it — otherwise the invited-status gate bounces
+    // straight back here.
+    if (!isReset) {
+      try {
+        await markSelfActive(worker.id);
+      } catch (e) {
+        setBusy(false);
+        setError(
+          `Password saved, but activating your account failed: ${
+            e instanceof Error ? e.message : 'unknown error'
+          }`
+        );
+        return;
+      }
+      setAuthWorker({ ...worker, status: 'active' });
     }
 
-    setAuthWorker({ ...worker, status: 'active' });
+    // Clear the recovery flag so the layout gate stops routing back here.
+    setPasswordRecovery(false);
     setBusy(false);
     router.replace('/');
   };
@@ -79,12 +91,13 @@ export default function SetPasswordScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Set your password</Text>
+        <Text style={styles.title}>
+          {isReset ? 'Reset your password' : 'Set your password'}
+        </Text>
         <Text style={styles.subtitle}>
-          {worker.name
-            ? `Welcome, ${worker.name}. `
-            : ''}
-          Choose a password to finish setting up your Ox WorkerHub account.
+          {isReset
+            ? 'Choose a new password for your Ox WorkerHub account.'
+            : `${worker.name ? `Welcome, ${worker.name}. ` : ''}Choose a password to finish setting up your Ox WorkerHub account.`}
         </Text>
 
         <View style={styles.card}>

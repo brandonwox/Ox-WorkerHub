@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { useMemo } from 'react';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
@@ -7,9 +8,12 @@ import {
   defaultJobcodeMap,
   defaultQbtConfig,
 } from '@/integrations/quickbooksTime/config';
+import { syncRealtimeAuth } from '@/integrations/supabase/auth';
 import * as backend from '@/integrations/supabase/data';
+import * as notificationsBackend from '@/integrations/supabase/notifications';
 import {
   ActiveShift,
+  AppNotification,
   AppRole,
   Crew,
   DailyCrew,
@@ -17,13 +21,13 @@ import {
   Jobcard,
   JobcardStatus,
   JobStatus,
+  NotificationType,
   QbtConfig,
   QbtConnection,
   QbtJobcode,
   QbtSyncRecord,
   ScheduleAssignment,
   TimesheetLog,
-  TimesheetSendStatus,
   Worker,
 } from '@/types';
 import { hoursBetween } from '@/utils/time';
@@ -51,14 +55,46 @@ function backendActive(state: { authWorker: Worker | null }): boolean {
   return state.authWorker != null && state.authWorker.role !== 'developer';
 }
 
+/** Ids of every worker with the 'scheduler' role — the "Now" ping recipients. */
+function schedulerIds(workers: Worker[]): string[] {
+  return workers.filter((w) => w.role === 'scheduler').map((w) => w.id);
+}
+
+/**
+ * Ping every scheduler that a jobcard is now top priority. Called from the
+ * jobcard create/edit actions whenever a card's priority becomes "Now".
+ */
+function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
+  const state = get();
+  const recipients = schedulerIds(state.workers);
+  if (recipients.length === 0) return;
+  const jobName = card.jobId
+    ? state.jobs.find((j) => j.id === card.jobId)?.name
+    : undefined;
+  get().pushNotification({
+    recipientIds: recipients,
+    type: 'jobcard_now',
+    title: 'Priority "Now" jobcard',
+    body: `${card.title}${jobName ? ` · ${jobName}` : ''} needs scheduling now.`,
+    data: { jobcardId: card.id },
+  });
+}
+
 /**
  * Fire-and-forget a Supabase write; surface failures without breaking the UI.
  * Logged as an error (not a warning) so a rejected write — e.g. an RLS policy
  * denying the row — is obvious in the console rather than silently dropped. The
  * thrown message carries the Postgres error, which names the offending table.
+ *
+ * On success it bumps the store's `savedTick` so the desktop sidebar can pop a
+ * "Changes Saved" pill — this fires only for real backend writes (backendActive
+ * gates every caller), so the Developer and local dev mode never trigger it.
  */
 function write(p: Promise<unknown>): void {
-  p.catch((e) => console.error('Supabase write failed (change not saved):', e));
+  p.then(
+    () => useAppStore.getState().signalSaved(),
+    (e) => console.error('Supabase write failed (change not saved):', e)
+  );
 }
 
 /** RFC4122-ish v4 id for new records in backend mode (DB columns are uuid). */
@@ -140,6 +176,13 @@ interface AppState {
    */
   authResolved: boolean;
   /**
+   * True while the session came from a password-recovery link (the Supabase
+   * `PASSWORD_RECOVERY` event). The layouts route to /set-password so the user
+   * can choose a new password instead of landing on their home page. Cleared
+   * once the new password is saved (or on sign-out).
+   */
+  passwordRecovery: boolean;
+  /**
    * Developer-only "View as" impersonation target (a mock worker id). Ignored
    * unless the base identity's role is `developer`.
    */
@@ -157,19 +200,43 @@ interface AppState {
   logs: TimesheetLog[];
   activeShift: ActiveShift | null;
   qbt: QbtState;
+  /**
+   * All notifications currently held in memory. In backend mode these are the
+   * signed-in worker's own rows (fetched + streamed via realtime); in local dev
+   * mode every recipient's notifications live here and the UI filters by the
+   * currently-viewed worker.
+   */
+  notifications: AppNotification[];
+  /**
+   * Monotonic counter bumped once every time a backend write succeeds. The
+   * desktop sidebar watches it to flash a "Changes Saved" pill. It never fires
+   * in local dev mode or for the Developer (neither writes to Supabase).
+   */
+  savedTick: number;
 
   /** Developer-only "View as": impersonate a role for the UI (or null for none). */
   setViewAs: (userId: string | null) => void;
+  /** Bump `savedTick` — called by the write helper after a successful DB write. */
+  signalSaved: () => void;
   /** Set/clear the real signed-in worker (Supabase auth bootstrap). */
   setAuthWorker: (worker: Worker | null) => void;
   /** Mark the initial Supabase session lookup as complete. */
   setAuthResolved: (resolved: boolean) => void;
+  /** Flag/clear the password-recovery session (drives the reset redirect). */
+  setPasswordRecovery: (recovery: boolean) => void;
   /** Edit the current (effective) worker's own profile. */
   updateUser: (changes: Partial<Worker>) => void;
 
   // --- Backend hydration (Supabase store swap, Step 7d) ---
   /** Replace every collection with live Supabase data (on real sign-in). */
   loadBackendData: () => Promise<void>;
+  /**
+   * Re-read the core collections from Supabase without touching the auth session
+   * or the notifications channel. Driven by the realtime data subscription so a
+   * change another session makes (e.g. a PM creating a jobcard) streams into this
+   * session's lists.
+   */
+  refreshBackendData: () => Promise<void>;
   /** Empty every collection (on sign-out) — leaves the app at the login gate. */
   clearData: () => void;
   /**
@@ -263,6 +330,26 @@ interface AppState {
    */
   markTimesheetsSent: () => void;
 
+  // --- Notifications ---
+  /**
+   * Create and deliver a notification to each recipient. In backend mode it
+   * inserts one row per recipient (each recipient's session receives it over
+   * realtime); in local dev mode it appends straight to the in-memory list.
+   */
+  pushNotification: (input: {
+    recipientIds: string[];
+    type: NotificationType;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }) => void;
+  /** Append a notification that arrived over realtime (deduped by id). */
+  receiveNotification: (notification: AppNotification) => void;
+  /** Mark a single notification as read (acknowledged). */
+  markNotificationRead: (id: string) => void;
+  /** Mark every unread notification for the current worker as read. */
+  markAllNotificationsRead: () => void;
+
   // --- QuickBooks Time ---
   setQbtConfig: (changes: Partial<QbtConfig>) => void;
   setQbtConnection: (connection: QbtConnection | null) => void;
@@ -283,6 +370,11 @@ let nextJobcardId = 100;
 let nextCrewId = 100;
 let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
+let nextNotificationId = 100;
+
+// Coalesces the burst of realtime row events one logical change can emit into a
+// single collection refetch. Module-level so it survives across store calls.
+let dataRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Start empty: real data arrives on Supabase sign-in, mock data only via
@@ -298,8 +390,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   dailyCrews: [],
   assignments: [],
   logs: [],
+  notifications: [],
+  savedTick: 0,
   devMode: false,
   authResolved: false,
+  passwordRecovery: false,
   activeShift: null,
   qbt: {
     config: defaultQbtConfig(),
@@ -312,9 +407,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setViewAs: (userId) => set({ viewAsUserId: userId }),
 
+  signalSaved: () => set((state) => ({ savedTick: state.savedTick + 1 })),
+
   setAuthWorker: (worker) => set({ authWorker: worker }),
 
   setAuthResolved: (authResolved) => set({ authResolved }),
+
+  setPasswordRecovery: (passwordRecovery) => set({ passwordRecovery }),
 
   enterDevMode: () => {
     const seed = loadDevSeed();
@@ -337,6 +436,56 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadBackendData: async () => {
+    // Authenticate the Realtime socket before opening any channel. On a restored
+    // session (cold load / refresh) supabase-js fires INITIAL_SESSION, which does
+    // NOT push the JWT to Realtime, so without this every RLS-protected
+    // subscription below would silently receive nothing. Tolerant of failure so a
+    // hiccup here never blocks hydration.
+    try {
+      await syncRealtimeAuth();
+    } catch (e) {
+      console.warn('Realtime auth sync failed; live updates may not work.', e);
+    }
+    const data = await backend.fetchAllData();
+    set({
+      workers: data.workers,
+      jobs: data.jobs,
+      jobcards: data.jobcards,
+      crews: data.crews,
+      dailyCrews: data.dailyCrews,
+      assignments: data.assignments,
+      logs: data.logs,
+    });
+    // Load this worker's notifications and open a live channel for new ones.
+    // Kept separate from the bulk read (and tolerant of failure) so a missing
+    // notifications migration never blocks the rest of the app from hydrating.
+    const me = get().authWorker;
+    if (me) {
+      try {
+        set({ notifications: await notificationsBackend.fetchNotifications(me.id) });
+      } catch (e) {
+        console.warn('Notifications load failed; none shown.', e);
+      }
+      notificationsBackend.subscribeNotifications(me.id, (n) =>
+        get().receiveNotification(n)
+      );
+    }
+    // Live-sync the core collections: any change another session makes streams
+    // in so this session's lists (e.g. the scheduler's backlog) update without a
+    // manual refresh. Debounced because one logical change can emit several row
+    // events (e.g. a job plus its job_pms rows).
+    backend.subscribeAllData(() => {
+      if (dataRefreshTimer) clearTimeout(dataRefreshTimer);
+      dataRefreshTimer = setTimeout(() => {
+        dataRefreshTimer = null;
+        get()
+          .refreshBackendData()
+          .catch((e) => console.warn('Realtime data refresh failed.', e));
+      }, 300);
+    });
+  },
+
+  refreshBackendData: async () => {
     const data = await backend.fetchAllData();
     set({
       workers: data.workers,
@@ -349,7 +498,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  clearData: () =>
+  clearData: () => {
+    notificationsBackend.unsubscribeNotifications();
+    backend.unsubscribeAllData();
+    if (dataRefreshTimer) {
+      clearTimeout(dataRefreshTimer);
+      dataRefreshTimer = null;
+    }
     set({
       workers: [],
       jobs: [],
@@ -358,11 +513,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: [],
       assignments: [],
       logs: [],
+      notifications: [],
       devMode: false,
       devBaseUserId: '',
       viewAsUserId: null,
       activeShift: null,
-    }),
+    });
+  },
 
   updateUser: (changes) => {
     let updated: Worker | undefined;
@@ -430,7 +587,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...state.authWorker, role }
           : state.authWorker,
     }));
-    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+    if (backendActive(get()) && updated) write(backend.updateWorkerRole(id, role));
   },
 
   setWorkerRate: (id, hourlyRate) => {
@@ -446,7 +603,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...state.authWorker, hourlyRate }
           : state.authWorker,
     }));
-    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+    if (backendActive(get()) && updated) write(backend.updateWorkerRate(id, hourlyRate));
   },
 
   addJob: (job) => {
@@ -457,6 +614,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: job.id ?? (isBackend ? uuid() : `job-${nextJobId++}`),
     };
     set((state) => ({ jobs: [created, ...state.jobs] }));
+    // insertJob writes both the job row and its PM assignments (job_pms).
     if (isBackend) write(backend.insertJob(created));
     return created;
   },
@@ -470,7 +628,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJob(updated));
+    if (backendActive(get()) && updated) {
+      // Job-column edits go to the jobs table. The PM-assignment join table is a
+      // separate, operator-only write, so only touch it when pmIds is actually
+      // part of this edit — a PM saving flashing material must not hit job_pms
+      // (they have no write grant there).
+      write(backend.updateJob(updated));
+      if ('pmIds' in changes) {
+        write(backend.setJobPms(id, updated.pmIds ?? []));
+      }
+    }
   },
 
   removeJob: (id) => {
@@ -519,19 +686,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ jobcards: [created, ...state.jobcards] });
     if (isBackend) write(backend.insertJobcard(created));
+    // A brand-new "Now" card pings the schedulers right away.
+    if (created.priority === 'Now') notifyNowJobcard(get, created);
     return created;
   },
 
   updateJobcard: (id, changes) => {
     let updated: Jobcard | undefined;
+    let wasNow = false;
     set((state) => ({
       jobcards: state.jobcards.map((card) => {
         if (card.id !== id) return card;
+        wasNow = card.priority === 'Now';
         updated = { ...card, ...changes };
         return updated;
       }),
     }));
     if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+    // Ping only on the transition INTO "Now" — re-saving an already-"Now" card
+    // (or any other edit) must not re-notify.
+    if (updated && updated.priority === 'Now' && !wasNow) {
+      notifyNowJobcard(get, updated);
+    }
   },
 
   updateJobcardNotes: (id, fieldNotes) => {
@@ -798,6 +974,71 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get())) write(backend.markTimesheetsSentRemote());
   },
 
+  pushNotification: (input) => {
+    const state = get();
+    const createdAt = new Date().toISOString();
+    if (backendActive(state)) {
+      // One row per recipient; realtime fans each out to its owner's session.
+      for (const recipientId of input.recipientIds) {
+        write(
+          notificationsBackend.insertNotification({
+            id: uuid(),
+            recipientId,
+            type: input.type,
+            title: input.title,
+            body: input.body,
+            data: input.data,
+            read: false,
+            createdAt,
+          })
+        );
+      }
+      return;
+    }
+    // Local/dev: there is no per-session delivery, so every recipient's
+    // notification is held in the one in-memory list; the UI filters by viewer.
+    const created: AppNotification[] = input.recipientIds.map((recipientId) => ({
+      id: `ntf-${nextNotificationId++}`,
+      recipientId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      data: input.data,
+      read: false,
+      createdAt,
+    }));
+    set({ notifications: [...created, ...state.notifications] });
+  },
+
+  receiveNotification: (notification) =>
+    set((state) =>
+      state.notifications.some((n) => n.id === notification.id)
+        ? {}
+        : { notifications: [notification, ...state.notifications] }
+    ),
+
+  markNotificationRead: (id) => {
+    set((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      ),
+    }));
+    if (backendActive(get())) write(notificationsBackend.markNotificationRead(id));
+  },
+
+  markAllNotificationsRead: () => {
+    const me = currentWorkerOf(get());
+    if (!me) return;
+    set((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.recipientId === me.id && !n.read ? { ...n, read: true } : n
+      ),
+    }));
+    if (backendActive(get())) {
+      write(notificationsBackend.markAllNotificationsRead(me.id));
+    }
+  },
+
   setQbtConfig: (changes) =>
     set((state) => ({
       qbt: { ...state.qbt, config: { ...state.qbt.config, ...changes } },
@@ -890,6 +1131,16 @@ export function activeCrewIdFor(
   return null;
 }
 
+/**
+ * The jobs a Project Manager may see: only those they're assigned to via
+ * {@link Job.pmIds}. A job with no PMs is visible to nobody. Used by both PM
+ * screens so "own jobs only" (and, transitively, "own jobcards only") is
+ * enforced in one place.
+ */
+export function jobsForProjectManager(jobs: Job[], pmId: string): Job[] {
+  return jobs.filter((job) => job.pmIds?.includes(pmId));
+}
+
 /** Jobcard ids assigned to a given crew on a given date. */
 export function jobcardIdsForCrewOnDate(
   state: { assignments: ScheduleAssignment[] },
@@ -957,4 +1208,23 @@ export function useCurrentRole(): AppRole | null {
 /** Hook: true when the real (base) identity is the Developer — gates the switcher. */
 export function useIsDeveloper(): boolean {
   return useAppStore((s) => baseWorkerOf(s)?.role === 'developer');
+}
+
+/**
+ * Hook: the current (effective) worker's notifications, newest first. Memoized
+ * so the filtered array stays referentially stable until the inputs change.
+ */
+export function useMyNotifications(): AppNotification[] {
+  const notifications = useAppStore((s) => s.notifications);
+  const me = useCurrentWorker();
+  return useMemo(
+    () => (me ? notifications.filter((n) => n.recipientId === me.id) : []),
+    [notifications, me]
+  );
+}
+
+/** Hook: how many of the current worker's notifications are unread. */
+export function useUnreadNotificationCount(): number {
+  const mine = useMyNotifications();
+  return useMemo(() => mine.filter((n) => !n.read).length, [mine]);
 }

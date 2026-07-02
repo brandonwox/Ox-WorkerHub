@@ -1,6 +1,7 @@
 import { Redirect, Slot, usePathname } from 'expo-router';
 
 import { SidebarShell } from '@/components/desktop/SidebarShell';
+import { NotificationToaster } from '@/components/NotificationToaster';
 import { DESKTOP_NAV, roleCanAccessPath, roleHomeHref } from '@/roles';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 
@@ -8,6 +9,7 @@ import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 export default function DesktopLayout() {
   const authResolved = useAppStore((s) => s.authResolved);
   const authWorker = useAppStore((s) => s.authWorker);
+  const passwordRecovery = useAppStore((s) => s.passwordRecovery);
   const worker = useCurrentWorker();
   const pathname = usePathname();
 
@@ -18,8 +20,9 @@ export default function DesktopLayout() {
   // No identity (signed out, and not in local dev mode) → require sign-in.
   if (!worker) return <Redirect href="/sign-in" />;
 
-  // Invited workers must set a password before using the app.
-  if (authWorker?.status === 'invited') {
+  // Invited workers (setting up) and recovery-link sessions (resetting) both
+  // need the password screen before anything else.
+  if (authWorker?.status === 'invited' || passwordRecovery) {
     return <Redirect href="/set-password" />;
   }
 
@@ -38,6 +41,7 @@ export default function DesktopLayout() {
   return (
     <SidebarShell navItems={DESKTOP_NAV[role]}>
       <Slot />
+      <NotificationToaster />
     </SidebarShell>
   );
 }

@@ -11,13 +11,19 @@ import {
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import {
+  jobsForProjectManager,
+  useAppStore,
+  useCurrentRole,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
 
 /** Project Manager → Jobs: a card per job; open one to edit its flashing material. */
 export default function PmJobsScreen() {
   const role = useCurrentRole();
+  const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
@@ -26,13 +32,13 @@ export default function PmJobsScreen() {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [viewJob, setViewJob] = useState<Job | null>(null);
 
-  // Show every job, Active first.
+  // A PM sees ONLY the jobs they're assigned to, Active first.
   const sortedJobs = useMemo(
     () =>
-      [...jobs].sort((a, b) =>
+      (me ? jobsForProjectManager(jobs, me.id) : []).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
-    [jobs]
+    [jobs, me]
   );
 
   // "On the calendar" = the jobcard has a row in `assignments`.
@@ -56,7 +62,7 @@ export default function PmJobsScreen() {
 
         {sortedJobs.length === 0 ? (
           <Text style={styles.emptyText}>
-            No jobs yet — the Operator creates jobs.
+            No jobs assigned to you yet — the Operator assigns PMs to jobs.
           </Text>
         ) : (
           <View style={styles.cardStack}>
@@ -70,6 +76,9 @@ export default function PmJobsScreen() {
                   setExpandedJobId((id) => (id === job.id ? null : job.id))
                 }
                 onViewJobcards={() => setViewJob(job)}
+                onCommitLocation={(location) =>
+                  updateJob(job.id, { location })
+                }
                 onCommitFlashing={(flashingMaterial) =>
                   updateJob(job.id, { flashingMaterial })
                 }
@@ -96,6 +105,7 @@ function JobRow({
   expanded,
   onToggle,
   onViewJobcards,
+  onCommitLocation,
   onCommitFlashing,
 }: {
   job: Job;
@@ -103,6 +113,7 @@ function JobRow({
   expanded: boolean;
   onToggle: () => void;
   onViewJobcards: () => void;
+  onCommitLocation: (value: string) => void;
   onCommitFlashing: (value: string | undefined) => void;
 }) {
   return (
@@ -145,6 +156,9 @@ function JobRow({
 
       {expanded && (
         <View style={styles.jobCardBody}>
+          <Text style={styles.fieldLabel}>Jobsite address</Text>
+          <AddressCell job={job} onCommit={onCommitLocation} />
+
           <Text style={styles.fieldLabel}>Window Opening Flashing Material</Text>
           <FlashingCell job={job} onCommit={onCommitFlashing} />
           <Text style={styles.fieldHint}>
@@ -153,6 +167,33 @@ function JobRow({
           </Text>
         </View>
       )}
+    </View>
+  );
+}
+
+/** Inline editable jobsite address; commits on blur. */
+function AddressCell({
+  job,
+  onCommit,
+}: {
+  job: Job;
+  onCommit: (value: string) => void;
+}) {
+  const [text, setText] = useState(job.location ?? '');
+
+  const commit = () => onCommit(text.trim());
+
+  return (
+    <View style={styles.flashWrap}>
+      <TextInput
+        style={styles.flashInput}
+        value={text}
+        onChangeText={setText}
+        onBlur={commit}
+        onEndEditing={commit}
+        placeholder="123 Main St, Park City, UT"
+        placeholderTextColor={colors.textTertiary}
+      />
     </View>
   );
 }

@@ -77,6 +77,13 @@ export interface Job {
    * value at creation time. Optional until specified.
    */
   flashingMaterial?: string;
+  /**
+   * Project Managers assigned to this job (worker ids, role `project_manager`).
+   * The Operator sets this; a job may have more than one PM. A PM sees ONLY the
+   * jobs they're in here — and, transitively, only those jobs' jobcards. Empty/
+   * unset means no PM is assigned yet (no PM can see it).
+   */
+  pmIds?: string[];
 }
 
 /** Status of a unit of work (a Jobcard) as it moves through the field. */
@@ -314,4 +321,36 @@ export interface QbtConfig {
   baseUrl: string;
   /** When true, a timecard is pushed to QBT as soon as it is logged. */
   autoSync: boolean;
+}
+
+// --- Notifications ----------------------------------------------------------
+
+/**
+ * Kind of a notification — drives the icon/copy and lets recipients filter.
+ * Add a new member here as more ping triggers are built (the system is generic;
+ * `jobcard_now` is the first rule: a PM marks a jobcard "Now" → ping schedulers).
+ */
+export type NotificationType = 'jobcard_now';
+
+/**
+ * A targeted ping for a single worker. Created by whatever action warrants it
+ * (e.g. the store dispatches one to every scheduler when a jobcard becomes
+ * "Now") and delivered to the recipient's session — live via Supabase realtime
+ * in production, or straight through the in-memory store in local dev.
+ */
+export interface AppNotification {
+  id: string;
+  /** The worker this notification is for. */
+  recipientId: string;
+  type: NotificationType;
+  /** Short headline shown in the toast and the panel row. */
+  title: string;
+  /** Supporting line with the relevant details. */
+  body: string;
+  /** Type-specific payload, e.g. `{ jobcardId }` for a 'jobcard_now'. */
+  data?: Record<string, unknown>;
+  /** False until the recipient opens/acknowledges it (drives the unread badge). */
+  read: boolean;
+  /** ISO datetime the notification was created. */
+  createdAt: string;
 }

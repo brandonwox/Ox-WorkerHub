@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -10,14 +10,18 @@ export function JobcardRow({
   jobcard,
   jobName,
   scheduled,
+  onPress,
 }: {
   jobcard: Jobcard;
   jobName: string;
   scheduled: boolean;
+  /** When provided, the row becomes pressable (e.g. the PM tapping to edit). */
+  onPress?: () => void;
 }) {
   const meta = priorityMeta(jobcard.priority);
-  return (
-    <View style={styles.row}>
+
+  const content = (
+    <>
       <View style={styles.main}>
         <Text style={styles.title} numberOfLines={1}>
           {jobcard.title}
@@ -56,7 +60,18 @@ export function JobcardRow({
           {scheduled ? 'On calendar' : 'Not on calendar'}
         </Text>
       </View>
-    </View>
+    </>
+  );
+
+  if (!onPress) return <View style={styles.row}>{content}</View>;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      onPress={onPress}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -71,6 +86,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   main: {
     flex: 1,

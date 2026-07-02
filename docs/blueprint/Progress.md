@@ -265,3 +265,20 @@ during 7d.
   the DB `on delete cascade` locally (drops the job's jobcards + their schedule
   assignments); new backend `deleteJob`. Gated by the existing operator-only `/jobs`
   route and the `jobs_delete` RLS policy (operator-only).
+- **2026-06-18 — Notifications system (header bell + targeted pings).** A generic,
+  per-worker notification system (not in the original blueprint). New type
+  `AppNotification` + `NotificationType`; store slice `notifications` with
+  `pushNotification` / `receiveNotification` / `markNotificationRead` /
+  `markAllNotificationsRead` and the `useMyNotifications` / `useUnreadNotificationCount`
+  hooks. **First rule:** when a PM creates or edits a jobcard to priority **"Now"**,
+  the store pings every `scheduler` (transition-only on edit). Delivery: in backend
+  mode one `notifications` row is inserted per recipient and streamed to the
+  recipient's session over **Supabase realtime**; in local dev all recipients' rows
+  live in the one in-memory store and the UI filters by the viewed worker. UI:
+  `NotificationBell` (top-bar bell + unread badge + dropdown panel, in `SidebarShell`)
+  and `NotificationToaster` (mounted in the desktop `_layout`; plays a Web-Audio ping
+  via `utils/sound.ts` and slides a toast in/out for each fresh arrival). New migration
+  `20260618160000_notifications.sql` (table + recipient-scoped RLS + realtime publication);
+  new client module `integrations/supabase/notifications.ts`. **Awaiting user:**
+  `supabase db push` to apply the migration (and confirm realtime is enabled for the
+  table).

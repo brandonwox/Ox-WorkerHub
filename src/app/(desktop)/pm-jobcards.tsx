@@ -9,26 +9,38 @@ import {
   NewJobcardInput,
 } from '@/components/desktop/CreateJobcardModal';
 import {
+  EditJobcardModal,
+  JobcardChanges,
+} from '@/components/desktop/EditJobcardModal';
+import {
   JobcardFilters,
   ScheduleFilter,
 } from '@/components/desktop/JobcardFilters';
 import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { Toast } from '@/components/Toast';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import {
+  jobsForProjectManager,
+  useAppStore,
+  useCurrentRole,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { PRIORITY_PRESETS } from '@/types';
+import { Jobcard, PRIORITY_PRESETS } from '@/types';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
 /** Project Manager → Jobcards: every jobcard, its calendar status, and creation. */
 export default function PmJobcardsScreen() {
   const role = useCurrentRole();
-  const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const me = useCurrentWorker();
+  const allJobs = useAppStore((s) => s.jobs);
+  const allJobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
   const addJobcard = useAppStore((s) => s.addJobcard);
+  const updateJobcard = useAppStore((s) => s.updateJobcard);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Jobcard | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // Filters / sort (all stack).
@@ -37,10 +49,32 @@ export default function PmJobcardsScreen() {
   const [schedule, setSchedule] = useState<ScheduleFilter>('all');
   const [groupByJob, setGroupByJob] = useState(false);
 
+  // A PM works only within their own jobs — and, transitively, only the jobcards
+  // that hang off those jobs. Scope both here so every count/filter below sees
+  // just this PM's slice.
+  const jobs = useMemo(
+    () => (me ? jobsForProjectManager(allJobs, me.id) : []),
+    [allJobs, me]
+  );
+  const myJobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
+  const jobcards = useMemo(
+    () => allJobcards.filter((c) => c.jobId != null && myJobIds.has(c.jobId)),
+    [allJobcards, myJobIds]
+  );
+
   const activeJobs = useMemo(
     () => jobs.filter((j) => j.status === 'Active'),
     [jobs]
   );
+
+  // The edit form offers active jobs plus the card's own parent (which may be
+  // archived) so an edit never silently drops an archived-job parent.
+  const editJobOptions = useMemo(() => {
+    if (!editing?.jobId) return activeJobs;
+    if (activeJobs.some((j) => j.id === editing.jobId)) return activeJobs;
+    const parent = jobs.find((j) => j.id === editing.jobId);
+    return parent ? [parent, ...activeJobs] : activeJobs;
+  }, [editing, activeJobs, jobs]);
 
   // "On the calendar" = the jobcard has a row in `assignments` (Scheduler placed it).
   const scheduledIds = useMemo(
@@ -141,6 +175,11 @@ export default function PmJobcardsScreen() {
     setToast(`Jobcard "${input.title}" created`);
   };
 
+  const handleEditSave = (id: string, changes: JobcardChanges) => {
+    updateJobcard(id, changes);
+    setToast(`Jobcard "${changes.title}" updated`);
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -199,6 +238,7 @@ export default function PmJobcardsScreen() {
                       jobcard={card}
                       jobName={group.name}
                       scheduled={scheduledIds.has(card.id)}
+                      onPress={() => setEditing(card)}
                     />
                   ))}
                 </View>
@@ -213,6 +253,7 @@ export default function PmJobcardsScreen() {
                 jobcard={card}
                 jobName={jobNameFor(card.jobId)}
                 scheduled={scheduledIds.has(card.id)}
+                onPress={() => setEditing(card)}
               />
             ))}
           </View>
@@ -226,6 +267,13 @@ export default function PmJobcardsScreen() {
         jobs={activeJobs}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
+      />
+
+      <EditJobcardModal
+        jobcard={editing}
+        jobs={editJobOptions}
+        onClose={() => setEditing(null)}
+        onSave={handleEditSave}
       />
     </View>
   );

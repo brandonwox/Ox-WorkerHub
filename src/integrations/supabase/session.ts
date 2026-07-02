@@ -18,6 +18,7 @@ import { isSupabaseConfigured } from './config';
 export function useSupabaseSession(): void {
   const setAuthWorker = useAppStore((s) => s.setAuthWorker);
   const setAuthResolved = useAppStore((s) => s.setAuthResolved);
+  const setPasswordRecovery = useAppStore((s) => s.setPasswordRecovery);
   const loadBackendData = useAppStore((s) => s.loadBackendData);
   const clearData = useAppStore((s) => s.clearData);
 
@@ -51,13 +52,36 @@ export function useSupabaseSession(): void {
     // Resolve any persisted session on launch.
     fetchCurrentWorker().then((worker) => apply(worker));
 
-    // React only to actual sign-in / sign-out. We deliberately ignore
-    // USER_UPDATED and TOKEN_REFRESHED: re-fetching the worker on those would
-    // (a) clobber the optimistic 'active' flip right after a worker sets their
-    // password (USER_UPDATED reads the row before the status write commits), and
-    // (b) needlessly reload all backend data on every hourly token refresh.
+    // React only to actual sign-in / sign-out / password-recovery. We
+    // deliberately ignore USER_UPDATED and TOKEN_REFRESHED: re-fetching the
+    // worker on those would (a) clobber the optimistic 'active' flip right after
+    // a worker sets their password (USER_UPDATED reads the row before the status
+    // write commits), and (b) needlessly reload all backend data on every hourly
+    // token refresh.
     const unsubscribe = onAuthChange(async (event, session) => {
+      // A recovery link establishes a session (arrives as PASSWORD_RECOVERY, or
+      // as SIGNED_IN on some platforms). Flag it so the layouts route to the
+      // password-reset screen instead of dropping the user on their home page.
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+        const worker = session ? await fetchCurrentWorker() : null;
+        apply(worker);
+        return;
+      }
       if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') return;
+      // Leaving a session clears any pending recovery state.
+      if (event === 'SIGNED_OUT') setPasswordRecovery(false);
+      // supabase-js can re-fire SIGNED_IN for an already-active session (e.g.
+      // on tab refocus). Re-applying would replace authWorker with a fresh
+      // object, re-fetch every collection, and tear down + reopen the realtime
+      // channels for no reason — skip when this user is already signed in.
+      if (
+        event === 'SIGNED_IN' &&
+        session?.user.id &&
+        useAppStore.getState().authWorker?.id === session.user.id
+      ) {
+        return;
+      }
       const worker = session ? await fetchCurrentWorker() : null;
       apply(worker);
     });
@@ -66,5 +90,5 @@ export function useSupabaseSession(): void {
       active = false;
       unsubscribe();
     };
-  }, [setAuthWorker, setAuthResolved, loadBackendData, clearData]);
+  }, [setAuthWorker, setAuthResolved, setPasswordRecovery, loadBackendData, clearData]);
 }

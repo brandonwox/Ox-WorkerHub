@@ -75,21 +75,27 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
             </Pressable>
           </View>
 
-          <FormInput
-            label="Name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Jane Doe"
-            autoCapitalize="words"
-          />
-          <FormInput
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="jane@ox-glass.com"
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <FormInput
+                label="Name"
+                value={name}
+                onChangeText={setName}
+                placeholder="Jane Doe"
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.col}>
+              <FormInput
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="jane@ox-glass.com"
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -147,7 +153,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 560,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -164,6 +170,14 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 20,
+  },
+  // Two-column row for paired fields on the wide desktop layout.
+  row: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  col: {
+    flex: 1,
   },
   error: {
     color: colors.danger,

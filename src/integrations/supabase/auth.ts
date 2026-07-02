@@ -34,6 +34,23 @@ export async function getSession(): Promise<Session | null> {
   return data.session;
 }
 
+/**
+ * Push the current session's JWT to the Realtime socket.
+ *
+ * supabase-js sets this automatically on SIGNED_IN and TOKEN_REFRESHED, but NOT
+ * on INITIAL_SESSION — the event fired when a session is restored from storage
+ * on a cold load (a page refresh, or reopening the app). Without the JWT the
+ * Realtime connection authenticates as `anon`, so every RLS-protected
+ * `postgres_changes` subscription silently receives nothing (notifications never
+ * ping, backlogs never update live). Call this right before opening channels so
+ * live updates work for a restored session, not just a fresh sign-in.
+ */
+export async function syncRealtimeAuth(): Promise<void> {
+  const supabase = getSupabase();
+  const { data } = await supabase.auth.getSession();
+  await supabase.realtime.setAuth(data.session?.access_token ?? null);
+}
+
 /** Subscribe to auth changes; returns an unsubscribe function. */
 export function onAuthChange(
   callback: (event: AuthChangeEvent, session: Session | null) => void

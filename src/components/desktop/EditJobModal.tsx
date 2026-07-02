@@ -4,20 +4,22 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
+import { PmPicker } from '@/components/desktop/PmPicker';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job, JobStatus } from '@/types';
+import { Job, JobStatus, Worker } from '@/types';
 
 export interface JobChanges {
   name: string;
-  location: string;
   qbtJobcodeId?: string;
-  flashingMaterial?: string;
   status: JobStatus;
+  pmIds: string[];
 }
 
 interface Props {
   /** The job being edited, or null when the modal is closed. */
   job: Job | null;
+  /** Roster of project managers the Operator can assign to this job. */
+  projectManagers: Worker[];
   onClose: () => void;
   onSave: (id: string, changes: JobChanges) => void;
   onDelete: (id: string) => void;
@@ -28,12 +30,17 @@ const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
   { value: 'Archived', label: 'Archived' },
 ];
 
-export function EditJobModal({ job, onClose, onSave, onDelete }: Props) {
+export function EditJobModal({
+  job,
+  projectManagers,
+  onClose,
+  onSave,
+  onDelete,
+}: Props) {
   const [name, setName] = useState('');
-  const [location, setLocation] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
-  const [flashingMaterial, setFlashingMaterial] = useState('');
   const [status, setStatus] = useState<JobStatus>('Active');
+  const [pmIds, setPmIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -41,10 +48,9 @@ export function EditJobModal({ job, onClose, onSave, onDelete }: Props) {
   useEffect(() => {
     if (!job) return;
     setName(job.name);
-    setLocation(job.location);
     setQbtJobcodeId(job.qbtJobcodeId ?? '');
-    setFlashingMaterial(job.flashingMaterial ?? '');
     setStatus(job.status);
+    setPmIds(job.pmIds ?? []);
     setError(null);
     setConfirmDelete(false);
   }, [job]);
@@ -55,16 +61,12 @@ export function EditJobModal({ job, onClose, onSave, onDelete }: Props) {
       setError('Job name is required.');
       return;
     }
-    if (!location.trim()) {
-      setError('Job location is required.');
-      return;
-    }
+    // Address and flashing material are managed by the Project Manager.
     onSave(job.id, {
       name: name.trim(),
-      location: location.trim(),
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
-      flashingMaterial: flashingMaterial.trim() || undefined,
       status,
+      pmIds,
     });
     onClose();
   };
@@ -103,34 +105,42 @@ export function EditJobModal({ job, onClose, onSave, onDelete }: Props) {
             placeholder="Snyderville Commercial Complex"
             autoCapitalize="words"
           />
-          <FormInput
-            label="Location / address"
-            value={location}
-            onChangeText={setLocation}
-            placeholder="123 Main St, Park City, UT"
-          />
-          <FormInput
-            label="QuickBooks Time jobcode ID"
-            value={qbtJobcodeId}
-            onChangeText={setQbtJobcodeId}
-            placeholder="e.g. 90112 — maps hours to QBT"
-            autoCapitalize="none"
-          />
-          <FormInput
-            label="Window Opening Flashing Material (site-wide)"
-            value={flashingMaterial}
-            onChangeText={setFlashingMaterial}
-            placeholder="e.g. Clear Anodized Aluminum — optional"
-          />
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <FormInput
+                label="QuickBooks Time jobcode ID"
+                value={qbtJobcodeId}
+                onChangeText={setQbtJobcodeId}
+                placeholder="e.g. 90112 — maps hours to QBT"
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={[styles.field, styles.col]}>
+              <Text style={styles.fieldLabel}>Status</Text>
+              <InlineSelect
+                value={status}
+                options={STATUS_OPTIONS}
+                onChange={setStatus}
+                minWidth={200}
+              />
+            </View>
+          </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Status</Text>
-            <InlineSelect
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={setStatus}
-              minWidth={200}
+            <Text style={styles.fieldLabel}>Project managers</Text>
+            <PmPicker
+              projectManagers={projectManagers}
+              selected={pmIds}
+              onToggle={(id) =>
+                setPmIds((ids) =>
+                  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
+                )
+              }
             />
+            <Text style={styles.fieldHint}>
+              Assigned PMs see this job and its jobcards. You can pick more than
+              one.
+            </Text>
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -191,7 +201,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 680,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -209,6 +219,15 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 20,
   },
+  // Two-column row for paired fields on the wide desktop layout.
+  row: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    zIndex: 10,
+  },
+  col: {
+    flex: 1,
+  },
   field: {
     gap: spacing.xs + 2,
     zIndex: 10,
@@ -217,6 +236,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  fieldHint: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
   },
   error: {
     color: colors.danger,
