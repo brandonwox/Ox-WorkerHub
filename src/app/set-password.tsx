@@ -96,8 +96,8 @@ export default function SetPasswordScreen() {
         </Text>
         <Text style={styles.subtitle}>
           {isReset
-            ? 'Choose a new password for your Ox WorkerHub account.'
-            : `${worker.name ? `Welcome, ${worker.name}. ` : ''}Choose a password to finish setting up your Ox WorkerHub account.`}
+            ? 'Choose a new password for your WorkerHub account.'
+            : `${worker.name ? `Welcome, ${worker.name}. ` : ''}Choose a password to finish setting up your WorkerHub account.`}
         </Text>
 
         <View style={styles.card}>

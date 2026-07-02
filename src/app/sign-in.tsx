@@ -1,4 +1,5 @@
-import { Feather } from '@expo/vector-icons';
+import { AntDesign, Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Redirect, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
-import { signIn } from '@/integrations/supabase';
+import { signIn, signInWithGoogle } from '@/integrations/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 
@@ -42,6 +43,22 @@ export default function SignInScreen() {
     // true so the button stays disabled through that brief gap.
   };
 
+  const submitGoogle = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: googleError } = await signInWithGoogle();
+    if (googleError) {
+      setBusy(false);
+      setError(googleError.message);
+      return;
+    }
+    // On web this navigates away to Google; on native the auth listener flips
+    // authWorker once the callback lands. Release the button anyway so a
+    // cancelled native flow (which resolves with no error and no session)
+    // doesn't leave the form stuck disabled.
+    setBusy(false);
+  };
+
   // Local development only: load the in-memory mock seed and enter the app as
   // the Developer. This block is compiled out of production builds (__DEV__ is
   // false), so it can never appear on the deployed website.
@@ -63,10 +80,12 @@ export default function SignInScreen() {
     >
       <View style={styles.content}>
         <View style={styles.brand}>
-          <View style={styles.logoMark}>
-            <Feather name="box" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.brandName}>Ox WorkerHub</Text>
+          <Image
+            source={require('../../assets/images/ox-logo.png')}
+            style={styles.logoMark}
+            contentFit="contain"
+          />
+          <Text style={styles.brandName}>WorkerHub</Text>
           <Text style={styles.brandTagline}>
             Sign in with your worker account.
           </Text>
@@ -103,6 +122,24 @@ export default function SignInScreen() {
             <Text style={styles.buttonText}>
               {busy ? 'Signing in…' : 'Sign in'}
             </Text>
+          </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.googleButton,
+              (busy || pressed) && styles.buttonDim,
+            ]}
+            onPress={submitGoogle}
+            disabled={busy}
+          >
+            <AntDesign name="google" size={16} color={colors.textPrimary} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
           </Pressable>
 
           {router.canGoBack() ? (
@@ -146,14 +183,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   logoMark: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.lg,
-    backgroundColor: colors.primaryDim,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 72,
+    height: 72,
     marginBottom: spacing.xs,
   },
   brandName: {
@@ -194,6 +225,37 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 16,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  googleButtonText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
   },
   cancel: {
     color: colors.textSecondary,

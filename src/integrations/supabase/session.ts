@@ -1,10 +1,25 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 
 import { useAppStore } from '@/store/useAppStore';
 import { Worker } from '@/types';
 
 import { fetchCurrentWorker, onAuthChange } from './auth';
 import { isSupabaseConfigured } from './config';
+
+/**
+ * Whether this page load came from a Supabase password-recovery link. Captured
+ * at module load — before expo-router's initial navigation can rewrite the URL
+ * and strip the auth fragment. The PASSWORD_RECOVERY event alone is not enough:
+ * it never fires when the hash was consumed/stripped before the listener is in
+ * place (e.g. a persisted session restores first), which silently dropped users
+ * on their home page instead of the reset screen.
+ */
+const launchedFromRecoveryLink =
+  Platform.OS === 'web' &&
+  typeof window !== 'undefined' &&
+  (window.location.hash.includes('type=recovery') ||
+    window.location.search.includes('type=recovery'));
 
 /**
  * Syncs the Supabase auth session into the store. When signed in, the resolved
@@ -30,6 +45,10 @@ export function useSupabaseSession(): void {
       return;
     }
     let active = true;
+
+    // Route to the reset screen even if the PASSWORD_RECOVERY event never
+    // reaches the listener below (see launchedFromRecoveryLink).
+    if (launchedFromRecoveryLink) setPasswordRecovery(true);
 
     const apply = async (worker: Worker | null) => {
       if (!active) return;

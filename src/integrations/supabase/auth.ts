@@ -1,4 +1,7 @@
 import { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 
 import { AppRole, Worker, WorkerStatus } from '@/types';
 
@@ -17,6 +20,58 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   return getSupabase().auth.signOut();
+}
+
+/**
+ * Sign in with Google via Supabase OAuth.
+ *
+ * Web: full-page redirect to Google; Supabase lands back on the site with the
+ * session in the URL, which the client consumes (detectSessionInUrl) and the
+ * auth listener picks up like any other sign-in.
+ *
+ * Native: open Google in an auth-session browser, catch the oxworkerhub://
+ * deep-link callback, and install the returned tokens as the session.
+ *
+ * Resolves `{ error: null }` when the user simply cancels the browser flow.
+ */
+export async function signInWithGoogle(): Promise<{
+  error: { message: string } | null;
+}> {
+  const supabase = getSupabase();
+
+  if (Platform.OS === 'web') {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    return { error };
+  }
+
+  const redirectTo = Linking.createURL('/');
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo, skipBrowserRedirect: true },
+  });
+  if (error || !data?.url) {
+    return { error: error ?? { message: 'Could not start Google sign-in.' } };
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success') return { error: null };
+
+  // Tokens come back in the callback URL fragment (implicit flow).
+  const fragment = result.url.split('#')[1] ?? result.url.split('?')[1] ?? '';
+  const params = new URLSearchParams(fragment);
+  const access_token = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if (!access_token || !refresh_token) {
+    return { error: { message: 'Google sign-in did not return a session.' } };
+  }
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+  return { error: sessionError };
 }
 
 /**

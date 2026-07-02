@@ -4,6 +4,10 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+ask the office some important questions that will determine the flow of Ox WorkerHub:
+- How does job assignment work? (How do they decide the pm for a new job)
+- 
+
 project mananger role -> jobcards page -> clicking on a jobcard should open a large details view of the jobcard that the pm can use to edit any details of the jobcard. (double check that if the jobcard is updated to "Now" priority, the scheduler will be pinged.)
 
 the scheduler doesn't need to see the flashing material. (the only thing the scheduler needs to see on their version of the jobcards is the jobcard title and the parent job.) (HOWEVER. If they are viewing the expanded details of the jobcard, they should see all jobcard details.)
