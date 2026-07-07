@@ -26,7 +26,8 @@ export type DesktopHref =
   | '/operator-people'
   | '/operator-timesheets'
   | '/field-super-jobcards'
-  | '/field-super-jobs';
+  | '/field-super-jobs'
+  | '/field-super-calendar';
 
 export interface DesktopNavItem {
   href: DesktopHref;
@@ -47,6 +48,7 @@ export const DESKTOP_NAV: Record<DesktopRole, DesktopNavItem[]> = {
     // Super as "Jobs".
     { href: '/field-super-jobs', label: 'Jobs', icon: 'briefcase' },
     { href: '/field-super-jobcards', label: 'Jobcards', icon: 'clipboard' },
+    { href: '/field-super-calendar', label: 'Calendar', icon: 'calendar' },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
@@ -86,6 +88,7 @@ export function desktopAccessibleHrefs(role: DesktopRole): DesktopHref[] {
       '/operator-timesheets',
       '/field-super-jobcards',
       '/field-super-jobs',
+      '/field-super-calendar',
     ];
   }
   return DESKTOP_NAV[role].map((item) => item.href);

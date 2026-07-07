@@ -13,7 +13,6 @@ import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { AddWorkerModal, NewWorkerInput } from '@/components/desktop/AddWorkerModal';
 import { EditWorkerModal, WorkerChanges } from '@/components/desktop/EditWorkerModal';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
-import { Toast } from '@/components/Toast';
 import { inviteWorker } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
@@ -43,10 +42,10 @@ export default function PeopleScreen() {
   const setWorkerRate = useAppStore((s) => s.setWorkerRate);
   const updateWorker = useAppStore((s) => s.updateWorker);
   const removeWorker = useAppStore((s) => s.removeWorker);
+  const flash = useAppStore((s) => s.flash);
 
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   if (role !== 'operator') return <AccessDenied />;
 
@@ -65,9 +64,9 @@ export default function PeopleScreen() {
           tradeRole,
         });
         addWorker(worker); // reflect in the roster (until 7d reads from the DB)
-        setToast(`Invite sent to ${input.email}`);
+        flash(`Invite sent to ${input.email}`, 'success');
       } catch (e) {
-        setToast(e instanceof Error ? e.message : 'Could not send invite.');
+        flash(e instanceof Error ? e.message : 'Could not send invite.', 'warning');
       }
       return;
     }
@@ -81,18 +80,18 @@ export default function PeopleScreen() {
       hourlyRate: input.hourlyRate,
       tradeRole,
     });
-    setToast(`Invite sent to ${input.email} (local)`);
+    flash(`Invite sent to ${input.email} (local)`, 'success');
   };
 
   const handleSave = (id: string, changes: WorkerChanges) => {
     updateWorker(id, changes);
-    setToast(`${changes.name} updated`);
+    flash(`${changes.name} updated`, 'success');
   };
 
   const handleDelete = (id: string) => {
     const name = workers.find((w) => w.id === id)?.name ?? 'Worker';
     removeWorker(id);
-    setToast(`${name} removed`);
+    flash(`${name} removed`, 'success');
   };
 
   return (
@@ -132,8 +131,6 @@ export default function PeopleScreen() {
           );
         })}
       </ScrollView>
-
-      <Toast message={toast} onDone={() => setToast(null)} />
 
       <AddWorkerModal
         visible={addOpen}

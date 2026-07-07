@@ -243,6 +243,9 @@ interface QbtState {
   approvedThrough?: string;
 }
 
+/** Visual tone of a sidebar flash message. */
+export type FlashTone = 'success' | 'info' | 'warning';
+
 interface AppState {
   /** Full roster across all roles. Empty until a real sign-in (or local dev mode). */
   workers: Worker[];
@@ -306,10 +309,24 @@ interface AppState {
    */
   savedTick: number;
 
+  /**
+   * Transient system message shown in the desktop sidebar footer (bottom-left).
+   * This is the single channel for every "system" toast — "Changes Saved",
+   * "Assigned … to …", validation nudges, etc. — so they always land in one
+   * consistent spot and never render behind the calendar or other content.
+   */
+  flashMessage: string | null;
+  /** Tone of the current flash, driving its icon and accent color. */
+  flashTone: FlashTone;
+  /** Bumped on every `flash()` so repeating the same text still re-triggers. */
+  flashTick: number;
+
   /** Developer-only "View as": impersonate a role for the UI (or null for none). */
   setViewAs: (userId: string | null) => void;
   /** Bump `savedTick` — called by the write helper after a successful DB write. */
   signalSaved: () => void;
+  /** Flash a transient system message in the desktop sidebar footer. */
+  flash: (message: string, tone?: FlashTone) => void;
   /** Set/clear the real signed-in worker (Supabase auth bootstrap). */
   setAuthWorker: (worker: Worker | null) => void;
   /** Mark the initial Supabase session lookup as complete. */
@@ -486,6 +503,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   logs: [],
   notifications: [],
   savedTick: 0,
+  flashMessage: null,
+  flashTone: 'success',
+  flashTick: 0,
   devMode: false,
   authResolved: false,
   passwordRecovery: false,
@@ -501,7 +521,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setViewAs: (userId) => set({ viewAsUserId: userId }),
 
-  signalSaved: () => set((state) => ({ savedTick: state.savedTick + 1 })),
+  signalSaved: () => {
+    set((state) => ({ savedTick: state.savedTick + 1 }));
+    get().flash('Changes Saved', 'success');
+  },
+
+  flash: (message, tone = 'info') =>
+    set((state) => ({
+      flashMessage: message,
+      flashTone: tone,
+      flashTick: state.flashTick + 1,
+    })),
 
   setAuthWorker: (worker) => set({ authWorker: worker }),
 

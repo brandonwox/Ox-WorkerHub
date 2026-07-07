@@ -4,8 +4,31 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
-improve ui/ux:
-- the header bar doesn't need to have a separate bg color from the main bg color and it doesnt need a separator line.
+make sure jobcards placed assigned for multiple crews is actually assigned to each of those crews. (if a jobcard is taken of the calendar or moved, it should be removed from all crews, even if the scheduler was only viewing from a single crew calendar.)
+
+calendar views: when assigning crews the calendar borders should not change colors.
+
+when assigning multiple crews the style shouldn't be blue, it should be gray. and in the jobcard where it says "Placing -- {crew name(s)}" it should also be gray, but the specific crew names should be their crew colors.
+
+scheduler calendar: clicking on a jobcard in the calendar should open the jobcard details in a popup modal. but it should also open a second modal to the right of the other. The second modal is a calendar modal for the jobcard with options to change the assigned crews.
+
+scheduler: crew pills: rather than have to click through a cycle off -> on -> assigning -> off. can we instead just make so the crew pills are just a toggle on and off pill to see the crew calendars and separate the assinging functionality directly below the crew pill row. on the left of the row should be an input field. when click it opens a dropdown menu of all the crews. the scheduler can 
+
+calendar (scheduler): make the days in the month calendar a little larger. and when 
+
+add a "False Start" button the installer can click at the bottom of a jobcard to mark it as a false start. This will ping the field super in charge of the jobcard to let them know the jobcard was marked as a false start.
+
+Priority of jobcards should be a range. It should have a start date and a finish date. In the Work Requests view, the displayed priority should still be the start date, but when hovering over it, it should display the start date and the finish date.
+
+jobcard creation: field super is required to click either "Yes" or "No" for an option called "Pickup Required". if they select "Yes", then the field super must type into a new text field to specify where the pickup location is.
+
+field super cannot create a jobcard if they have not specified a "Window Opening Flashing Material" and a "Jobsite address" for the parent job.
+
+the backlog should be expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
+
+when a popup modal (e.g. to create a jobcard) appears it adds an overlay that darkens the rest of the screen, can you get rid of that and instead just add a slight dropshadow to the popup modal?
+
+in the scheduler role's notifications: when they get the message "Priority "Now" jobcard" can we change it to "New Priority Jobcard". 
 
 on the sign in page i should be able to hit enter to sign in (rather than having to click the sign in button with the mouse)
 
@@ -27,7 +50,7 @@ in supabase -> authentication -> users -> send password reset email -> when the 
 
 change the "Archived" job status to "Finished".
 
-Field Super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for.
+Field Super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
 
 installers can set the completion status of a jobcard to "Issues", "In-Progress", or "Complete". If the installer sets the status to "Issues", the jobcard will be highlighted in red and the Field Super will be notified. If the installer sets the status to "Issues", the installer must write at least 1 issue in the issue field.
 

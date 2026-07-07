@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
+import { withAlpha } from '@/utils/crewColors';
 import { priorityColor, priorityRank } from '@/utils/priority';
 
 interface Props {
@@ -12,6 +13,17 @@ interface Props {
   jobNameFor: (jobId?: string) => string;
   placingCardId: string | null;
   onTogglePlacing: (cardId: string) => void;
+  /** Open the jobcard to view / edit its details. */
+  onOpenCard: (card: Jobcard) => void;
+  /**
+   * Whether the "Schedule" (activate calendar placement) button is shown. Field
+   * Supers view the same board but can't assign work to crews, so it's hidden.
+   */
+  canSchedule?: boolean;
+  /** Name of the crew a placed card is being assigned to (the assign target). */
+  activeCrewName?: string;
+  /** Color of the active crew, used to tint the selected/placing card. */
+  activeCrewColor?: string;
 }
 
 /** Right-column pool of unassigned jobcards waiting for a crew + date. */
@@ -20,6 +32,10 @@ export function Backlog({
   jobNameFor,
   placingCardId,
   onTogglePlacing,
+  onOpenCard,
+  canSchedule = true,
+  activeCrewName,
+  activeCrewColor,
 }: Props) {
   // Highest priority first; within a priority, the card that has been waiting
   // longest first. There's no created-at timestamp, so the target `date` is the
@@ -37,34 +53,42 @@ export function Backlog({
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Text style={styles.title}>Backlog</Text>
+        <Text style={styles.title}>Work Requests</Text>
         <View style={styles.countPill}>
           <Text style={styles.countText}>{cards.length}</Text>
         </View>
       </View>
       <Text style={styles.hint}>
-        Select a card, then click a calendar day to assign it.
+        {canSchedule
+          ? 'Open a request to view details, or Schedule it onto the calendar.'
+          : 'Open a request to view or edit its details.'}
       </Text>
 
       <ScrollView contentContainerStyle={styles.list}>
         {cards.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="check-circle" size={24} color={colors.success} />
-            <Text style={styles.emptyText}>Backlog clear — everything assigned.</Text>
+            <Text style={styles.emptyText}>
+              No open work requests — everything is scheduled.
+            </Text>
           </View>
         ) : (
           sorted.map((card) => {
             const selected = placingCardId === card.id;
             const accent = priorityColor(card.priority);
+            // When placing, tint the card with the crew being assigned to.
+            const crewTint = activeCrewColor ?? colors.primary;
             return (
-              <Pressable
+              <View
                 key={card.id}
-                style={({ pressed }) => [
+                style={[
                   styles.card,
                   selected && styles.cardSelected,
-                  pressed && styles.pressed,
+                  selected && {
+                    borderColor: crewTint,
+                    backgroundColor: withAlpha(crewTint, 0.14),
+                  },
                 ]}
-                onPress={() => onTogglePlacing(card.id)}
               >
                 <View style={styles.cardTop}>
                   <Text style={styles.cardTitle} numberOfLines={1}>
@@ -84,13 +108,46 @@ export function Backlog({
                 <Text style={styles.cardJob} numberOfLines={1}>
                   {jobNameFor(card.jobId)}
                 </Text>
-                {selected && (
-                  <View style={styles.selectedRow}>
-                    <Feather name="crosshair" size={12} color={colors.primary} />
-                    <Text style={styles.selectedText}>Placing — pick a day</Text>
-                  </View>
-                )}
-              </Pressable>
+
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => onOpenCard(card)}
+                  >
+                    <Feather name="edit-2" size={13} color={colors.textPrimary} />
+                    <Text style={styles.actionText}>Open</Text>
+                  </Pressable>
+                  {canSchedule && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.actionBtn,
+                        styles.scheduleBtn,
+                        selected && styles.scheduleBtnActive,
+                        selected && {
+                          backgroundColor: withAlpha(crewTint, 0.18),
+                          borderColor: crewTint,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                      onPress={() => onTogglePlacing(card.id)}
+                    >
+                      <Feather
+                        name={selected ? 'crosshair' : 'calendar'}
+                        size={13}
+                        color={colors.textPrimary}
+                      />
+                      <Text style={styles.actionText}>
+                        {selected
+                          ? `Placing — ${activeCrewName ?? 'pick a day'}`
+                          : 'Schedule'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
             );
           })
         )}
@@ -205,15 +262,35 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
   },
-  selectedRow: {
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    marginTop: 2,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  selectedText: {
-    color: colors.primary,
+  scheduleBtn: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  scheduleBtnActive: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  actionText: {
+    color: colors.textPrimary,
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: 12,
   },
 });

@@ -5,7 +5,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
 import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
-import { Toast } from '@/components/Toast';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
@@ -17,10 +16,10 @@ export default function JobsScreen() {
   const addJob = useAppStore((s) => s.addJob);
   const updateJob = useAppStore((s) => s.updateJob);
   const removeJob = useAppStore((s) => s.removeJob);
+  const flash = useAppStore((s) => s.flash);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   const fieldSupers = useMemo(
     () => workers.filter((w) => w.role === 'field_super'),
@@ -31,18 +30,18 @@ export default function JobsScreen() {
 
   const handleCreate = (input: NewJobInput) => {
     addJob(input);
-    setToast(`Job "${input.name}" created`);
+    flash(`Job "${input.name}" created`, 'success');
   };
 
   const handleSave = (id: string, changes: JobChanges) => {
     updateJob(id, changes);
-    setToast(`Job "${changes.name}" updated`);
+    flash(`Job "${changes.name}" updated`, 'success');
   };
 
   const handleDelete = (id: string) => {
     const name = jobs.find((j) => j.id === id)?.name ?? 'Job';
     removeJob(id);
-    setToast(`Job "${name}" deleted`);
+    flash(`Job "${name}" deleted`, 'success');
   };
 
   return (
@@ -68,8 +67,6 @@ export default function JobsScreen() {
           ))}
         </View>
       </ScrollView>
-
-      <Toast message={toast} onDone={() => setToast(null)} />
 
       <CreateJobModal
         visible={createOpen}

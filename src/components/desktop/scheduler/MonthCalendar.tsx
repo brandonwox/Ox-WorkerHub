@@ -20,21 +20,19 @@ interface Props {
   month: Date;
   onPrevMonth: () => void;
   onNextMonth: () => void;
-  /** The crew a placed card is assigned to (the assign target). */
-  activeCrew: Crew | null;
+  /** The crews a placed card is assigned to (the assign targets). */
+  activeCrews: Crew[];
   /** Assignments already filtered to the visible (toggled-on) crews. */
   visibleAssignments: ScheduleAssignment[];
   jobcards: Jobcard[];
   /** Distinct color for a crew id, used to tint that crew's cards. */
   colorForCrew: (crewId: string) => string;
-  /** Dates a Daily Crew pulls one of the active crew's members away (yyyy-MM-dd). */
-  overrideDates: Set<string>;
-  /** Dates a member would be double-booked across crews (yyyy-MM-dd). */
-  doubleBookedDates: Set<string>;
-  /** True when a backlog card is selected and waiting to be placed. */
+  /** True when a work request is selected and waiting to be placed. */
   placing: boolean;
   onAssignToDate: (date: string) => void;
   onUnassign: (assignmentId: string) => void;
+  /** Whether placed cards can be removed from the calendar (Scheduler only). */
+  canUnassign?: boolean;
 }
 
 /** Month grid showing the visible crews' assignments per day, colored by crew. */
@@ -42,19 +40,25 @@ export function MonthCalendar({
   month,
   onPrevMonth,
   onNextMonth,
-  activeCrew,
+  activeCrews,
   visibleAssignments,
   jobcards,
   colorForCrew,
-  overrideDates,
-  doubleBookedDates,
   placing,
   onAssignToDate,
   onUnassign,
+  canUnassign = true,
 }: Props) {
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart); // 0 (Sun) … 6 (Sat)
+
+  // Placing cues take on the active crew's color so the whole flow reads as
+  // "assigning to this crew". With one target we use its color; with several
+  // (multi-assign) or none we fall back to the neutral primary.
+  const activeColor =
+    activeCrews.length === 1 ? colorForCrew(activeCrews[0].id) : colors.primary;
+  const activeNames = activeCrews.map((c) => c.name).join(', ');
 
   const cardById = (id: string) => jobcards.find((c) => c.id === id);
 
@@ -63,9 +67,14 @@ export function MonthCalendar({
       <View style={styles.header}>
         <View>
           <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
-          <Text style={styles.viewing}>
-            {activeCrew
-              ? `Assigning to ${activeCrew.name}`
+          <Text
+            style={[
+              styles.viewing,
+              activeCrews.length > 0 && { color: activeColor },
+            ]}
+          >
+            {activeCrews.length > 0
+              ? `Assigning to ${activeNames}`
               : 'No active crew — tap one to assign'}
           </Text>
         </View>
@@ -88,11 +97,11 @@ export function MonthCalendar({
       </View>
 
       {placing && (
-        <View style={styles.placingBanner}>
-          <Feather name="crosshair" size={14} color={colors.primary} />
+        <View style={[styles.placingBanner, { backgroundColor: withAlpha(activeColor, 0.18) }]}>
+          <Feather name="crosshair" size={14} color={activeColor} />
           <Text style={styles.placingText}>
             Click a day to assign the selected jobcard
-            {activeCrew ? ` to ${activeCrew.name}` : ''}.
+            {activeCrews.length > 0 ? ` to ${activeNames}` : ''}.
           </Text>
         </View>
       )}
@@ -115,16 +124,13 @@ export function MonthCalendar({
           const dayAssignments = visibleAssignments.filter(
             (a) => a.date === dateStr
           );
-          const isOverride = overrideDates.has(dateStr);
-          const isConflict = doubleBookedDates.has(dateStr);
 
           return (
             <Pressable
               key={dateStr}
               style={[
                 styles.cell,
-                isConflict && styles.cellConflict,
-                placing && styles.cellPlacing,
+                placing && { borderColor: activeColor },
               ]}
               onPress={placing ? () => onAssignToDate(dateStr) : undefined}
             >
@@ -134,11 +140,6 @@ export function MonthCalendar({
                 >
                   {format(dayDate, 'd')}
                 </Text>
-                {isOverride && (
-                  <View style={styles.overrideChip}>
-                    <Text style={styles.overrideText}>Daily</Text>
-                  </View>
-                )}
               </View>
 
               <View style={styles.cellCards}>
@@ -166,13 +167,19 @@ export function MonthCalendar({
                       <Text style={styles.placedTitle} numberOfLines={1}>
                         {card.title}
                       </Text>
-                      <Pressable
-                        onPress={() => onUnassign(a.id)}
-                        hitSlop={6}
-                        style={({ pressed }) => pressed && styles.pressed}
-                      >
-                        <Feather name="x" size={12} color={colors.textTertiary} />
-                      </Pressable>
+                      {canUnassign && (
+                        <Pressable
+                          onPress={() => onUnassign(a.id)}
+                          hitSlop={6}
+                          style={({ pressed }) => pressed && styles.pressed}
+                        >
+                          <Feather
+                            name="x"
+                            size={12}
+                            color={colors.textTertiary}
+                          />
+                        </Pressable>
+                      )}
                     </View>
                   );
                 })}
@@ -271,16 +278,8 @@ const styles = StyleSheet.create({
     minHeight: 92,
     padding: spacing.xs,
     borderWidth: 1,
-    borderColor: 'transparent',
-    borderRadius: radii.sm,
-  },
-  cellConflict: {
-    borderColor: colors.warning,
-    backgroundColor: colors.warningDim,
-  },
-  cellPlacing: {
     borderColor: colors.border,
-    borderStyle: 'dashed',
+    borderRadius: radii.sm,
   },
   cellHead: {
     flexDirection: 'row',
@@ -295,19 +294,6 @@ const styles = StyleSheet.create({
   dayNumToday: {
     color: colors.textPrimary,
     fontFamily: fonts.bold,
-  },
-  overrideChip: {
-    backgroundColor: colors.warningDim,
-    borderRadius: radii.sm,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  overrideText: {
-    color: colors.warning,
-    fontFamily: fonts.semiBold,
-    fontSize: 9,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   cellCards: {
     gap: 3,

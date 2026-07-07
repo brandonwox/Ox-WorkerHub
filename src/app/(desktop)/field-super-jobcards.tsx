@@ -17,7 +17,6 @@ import {
   ScheduleFilter,
 } from '@/components/desktop/JobcardFilters';
 import { JobcardRow } from '@/components/desktop/JobcardRow';
-import { Toast } from '@/components/Toast';
 import {
   jobsForFieldSuper,
   useAppStore,
@@ -39,10 +38,10 @@ export default function FieldSuperJobcardsScreen() {
   const addJobcard = useAppStore((s) => s.addJobcard);
   const updateJobcard = useAppStore((s) => s.updateJobcard);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
+  const flash = useAppStore((s) => s.flash);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Jobcard | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   // Filters / sort (all stack).
   const [search, setSearch] = useState('');
@@ -173,18 +172,18 @@ export default function FieldSuperJobcardsScreen() {
       notes: input.notes,
       details: { generalContractor: '', managerName: '', managerPhone: '' },
     });
-    setToast(`Jobcard "${input.title}" created`);
+    flash(`Jobcard "${input.title}" created`, 'success');
   };
 
   const handleEditSave = (id: string, changes: JobcardChanges) => {
     updateJobcard(id, changes);
-    setToast(`Jobcard "${changes.title}" updated`);
+    flash(`Jobcard "${changes.title}" updated`, 'success');
   };
 
   const handleDelete = (id: string) => {
     const title = editing?.title;
     deleteJobcard(id);
-    setToast(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted');
+    flash(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted', 'success');
   };
 
   return (
@@ -266,8 +265,6 @@ export default function FieldSuperJobcardsScreen() {
           </View>
         )}
       </ScrollView>
-
-      <Toast message={toast} onDone={() => setToast(null)} />
 
       <CreateJobcardModal
         visible={createOpen}
