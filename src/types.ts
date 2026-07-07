@@ -7,7 +7,7 @@ export type AppRole =
   | 'installer'
   | 'scheduler'
   | 'operator'
-  | 'project_manager'
+  | 'field_super'
   | 'developer';
 
 /** Account lifecycle. `invited` until the person accepts their email invite. */
@@ -73,30 +73,31 @@ export interface Job {
   qbtJobcodeId?: string;
   /**
    * Site-wide flashing material spec. Set by the Operator on create and editable
-   * by the Project Manager (their one writable Job field). Jobcards snapshot this
+   * by the Field Super (their one writable Job field). Jobcards snapshot this
    * value at creation time. Optional until specified.
    */
   flashingMaterial?: string;
   /**
-   * Project Managers assigned to this job (worker ids, role `project_manager`).
-   * The Operator sets this; a job may have more than one PM. A PM sees ONLY the
-   * jobs they're in here — and, transitively, only those jobs' jobcards. Empty/
-   * unset means no PM is assigned yet (no PM can see it).
+   * Field Supers assigned to this job (worker ids, role `field_super`).
+   * The Operator sets this; a job may have more than one Field Super. A Field
+   * Super sees ONLY the jobs they're in here — and, transitively, only those
+   * jobs' jobcards. Empty/unset means no Field Super is assigned yet (nobody can
+   * see it).
    */
-  pmIds?: string[];
+  fieldSuperIds?: string[];
 }
 
 /** Status of a unit of work (a Jobcard) as it moves through the field. */
 export type JobcardStatus = 'Upcoming' | 'In Progress' | 'Finished';
 
 /**
- * PM-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort).
- * Free text so the PM can pick a preset ({@link PRIORITY_PRESETS}) or type a
+ * Field-Super-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort).
+ * Free text so the Field Super can pick a preset ({@link PRIORITY_PRESETS}) or type a
  * custom value — older cards may still carry legacy 'Low' | 'Medium' | 'High'.
  */
 export type JobcardPriority = string;
 
-/** The preset priorities the PM picks from (a custom string is also allowed). */
+/** The preset priorities the Field Super picks from (a custom string is also allowed). */
 export const PRIORITY_PRESETS = [
   'Now',
   'Tomorrow',
@@ -126,7 +127,7 @@ export const READINESS_PRESETS = ['Now', 'Soon', 'Over 2 Weeks'] as const;
 
 /**
  * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
- * Project Manager creates them; the Scheduler assigns them to crews; installers
+ * Field Super creates them; the Scheduler assigns them to crews; installers
  * perform the work. (Formerly the app's `Job` type — it has always been the
  * field work item.)
  */
@@ -148,7 +149,7 @@ export interface Jobcard {
   endTime?: string;
   status: JobcardStatus;
   priorityOrder: number;
-  /** PM-assigned priority. A {@link PRIORITY_PRESETS} value or a custom string. */
+  /** Field-Super-assigned priority. A {@link PRIORITY_PRESETS} value or a custom string. */
   priority: JobcardPriority;
   /**
    * Trades this card covers (Windows, Mirrors, …). At least one is chosen at
@@ -157,7 +158,7 @@ export interface Jobcard {
   scopes?: JobScope[];
   /**
    * Discrete tasks the installers must complete. Each must be ≥15 chars; a card
-   * cannot be created without at least one. PM-authored.
+   * cannot be created without at least one. Field-Super-authored.
    */
   tasks?: string[];
   /**
@@ -167,14 +168,14 @@ export interface Jobcard {
   readiness?: string;
   /**
    * Window Opening Flashing Material. Defaults to the parent Job's value at
-   * creation time but the PM may customize it per card (a snapshot, not a live
+   * creation time but the Field Super may customize it per card (a snapshot, not a live
    * link — so later Job edits don't silently mutate existing cards). Only
    * meaningful when the 'Windows' scope is selected.
    */
   flashingMaterial?: string;
-  /** Task-specific / additional materials needed (free text, optional). PM-authored. */
+  /** Task-specific / additional materials needed (free text, optional). Field-Super-authored. */
   materials?: string;
-  /** Free-form PM notes captured at the bottom of the creation form. */
+  /** Free-form Field Super notes captured at the bottom of the creation form. */
   notes?: string;
   /** @deprecated Superseded by {@link scopes} + {@link tasks}. Kept for legacy data. */
   scopeOfWork?: string;
@@ -327,10 +328,12 @@ export interface QbtConfig {
 
 /**
  * Kind of a notification — drives the icon/copy and lets recipients filter.
- * Add a new member here as more ping triggers are built (the system is generic;
- * `jobcard_now` is the first rule: a PM marks a jobcard "Now" → ping schedulers).
+ * Add a new member here as more ping triggers are built (the system is generic).
+ *  - `jobcard_now`: a Field Super marks a jobcard "Now" → ping schedulers.
+ *  - `schedule_change`: an installer's schedule for TODAY changed (a card added,
+ *    removed, re-prioritized, or edited) → ping that installer.
  */
-export type NotificationType = 'jobcard_now';
+export type NotificationType = 'jobcard_now' | 'schedule_change';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it

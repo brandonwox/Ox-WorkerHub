@@ -5,26 +5,27 @@ import { colors, fonts, radii, spacing } from '@/theme';
 import { Worker } from '@/types';
 
 interface Props {
-  /** Roster of project-manager workers to choose from. */
-  projectManagers: Worker[];
-  /** Currently selected PM ids. */
+  /** Roster of field-super workers to choose from. */
+  fieldSupers: Worker[];
+  /** Currently selected Field Super ids. */
   selected: string[];
   onToggle: (id: string) => void;
 }
 
 /**
- * Chip multi-select for assigning Project Managers to a job. Mirrors the crew
- * installer-chips picker; a job may have any number of PMs (including none).
+ * Chip multi-select for assigning Field Supers to a job. Mirrors the crew
+ * installer-chips picker; a job may have any number of Field Supers (including
+ * none).
  */
-export function PmPicker({ projectManagers, selected, onToggle }: Props) {
-  if (projectManagers.length === 0) {
+export function FieldSuperPicker({ fieldSupers, selected, onToggle }: Props) {
+  if (fieldSupers.length === 0) {
     return (
-      <Text style={styles.muted}>No project managers on the roster.</Text>
+      <Text style={styles.muted}>No field supers on the roster.</Text>
     );
   }
   return (
     <View style={styles.chips}>
-      {projectManagers.map((w) => {
+      {fieldSupers.map((w) => {
         const active = selected.includes(w.id);
         return (
           <Pressable

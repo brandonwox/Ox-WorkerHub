@@ -22,8 +22,8 @@ export default function JobsScreen() {
   const [editing, setEditing] = useState<Job | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const projectManagers = useMemo(
-    () => workers.filter((w) => w.role === 'project_manager'),
+  const fieldSupers = useMemo(
+    () => workers.filter((w) => w.role === 'field_super'),
     [workers]
   );
 
@@ -73,14 +73,14 @@ export default function JobsScreen() {
 
       <CreateJobModal
         visible={createOpen}
-        projectManagers={projectManagers}
+        fieldSupers={fieldSupers}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
       />
 
       <EditJobModal
         job={editing}
-        projectManagers={projectManagers}
+        fieldSupers={fieldSupers}
         onClose={() => setEditing(null)}
         onSave={handleSave}
         onDelete={handleDelete}
@@ -93,7 +93,7 @@ export default function JobsScreen() {
 function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
   const archived = job.status === 'Archived';
   const unmapped = !job.qbtJobcodeId;
-  const pmCount = job.pmIds?.length ?? 0;
+  const fieldSuperCount = job.fieldSuperIds?.length ?? 0;
 
   return (
     <View style={styles.card}>
@@ -127,13 +127,14 @@ function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
         </View>
         <View style={styles.detailRow}>
           <Feather name="user" size={14} color={colors.textTertiary} />
-          {pmCount === 0 ? (
+          {fieldSuperCount === 0 ? (
             <Text style={[styles.detailValue, styles.unmapped]}>
-              No PM assigned
+              No Field Super assigned
             </Text>
           ) : (
             <Text style={styles.detailValue} numberOfLines={1}>
-              {pmCount} {pmCount === 1 ? 'PM' : 'PMs'} assigned
+              {fieldSuperCount}{' '}
+              {fieldSuperCount === 1 ? 'Field Super' : 'Field Supers'} assigned
             </Text>
           )}
         </View>

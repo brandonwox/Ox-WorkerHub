@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
-import { PmPicker } from '@/components/desktop/PmPicker';
+import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Worker } from '@/types';
 
@@ -11,32 +11,32 @@ export interface NewJobInput {
   name: string;
   location: string;
   qbtJobcodeId?: string;
-  pmIds: string[];
+  fieldSuperIds: string[];
 }
 
 interface Props {
   visible: boolean;
-  /** Roster of project managers the Operator can assign to this job. */
-  projectManagers: Worker[];
+  /** Roster of field supers the Operator can assign to this job. */
+  fieldSupers: Worker[];
   onClose: () => void;
   onSubmit: (job: NewJobInput) => void;
 }
 
 export function CreateJobModal({
   visible,
-  projectManagers,
+  fieldSupers,
   onClose,
   onSubmit,
 }: Props) {
   const [name, setName] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
-  const [pmIds, setPmIds] = useState<string[]>([]);
+  const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setName('');
     setQbtJobcodeId('');
-    setPmIds([]);
+    setFieldSuperIds([]);
     setError(null);
   };
 
@@ -50,12 +50,12 @@ export function CreateJobModal({
       setError('Job name is required.');
       return;
     }
-    // Address is set by the Project Manager, not the Operator.
+    // Address is set by the Field Super, not the Operator.
     onSubmit({
       name: name.trim(),
       location: '',
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
-      pmIds,
+      fieldSuperIds,
     });
     close();
   };
@@ -88,19 +88,19 @@ export function CreateJobModal({
           />
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Project managers</Text>
-            <PmPicker
-              projectManagers={projectManagers}
-              selected={pmIds}
+            <Text style={styles.fieldLabel}>Field supers</Text>
+            <FieldSuperPicker
+              fieldSupers={fieldSupers}
+              selected={fieldSuperIds}
               onToggle={(id) =>
-                setPmIds((ids) =>
+                setFieldSuperIds((ids) =>
                   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
                 )
               }
             />
             <Text style={styles.fieldHint}>
-              Assigned PMs see this job and its jobcards. You can pick more than
-              one.
+              Assigned field supers see this job and its jobcards. You can pick
+              more than one.
             </Text>
           </View>
 

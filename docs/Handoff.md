@@ -40,7 +40,7 @@ on web (Expo static) and native.
   - **Real mode** = *signed in*. The store is **hydrated from Supabase**, and every
     change **writes through to the database**. The switcher is hidden (only the
     Developer can impersonate).
-- **Roles:** `operator | project_manager | scheduler | installer | developer`. The
+- **Roles:** `operator | field_super | scheduler | installer | developer`. The
   `developer` role is special — it's the *only* role allowed to use the dev switcher.
 
 ### Identity model (how "who am I" works)
@@ -58,7 +58,7 @@ on web (Expo static) and native.
   `materials`, `scopeOfWork`, inherited `flashingMaterial`, `fieldNotes`); **Crews**
   (`Crew`, `DailyCrew`, `ScheduleAssignment`) with Daily-overrides-Permanent
   resolution selectors.
-- **Role screens:** Project Manager dashboard (jobcard creation), Scheduler
+- **Role screens:** Field Super dashboard (jobcard creation), Scheduler
   dashboard (crew management + month calendar + backlog + assignment), Installer
   crew-based agenda + jobcard detail (flashing/materials/scope/priority + shared
   field notes), Operator Job-flashing + jobcode-resolution.
@@ -72,7 +72,7 @@ on web (Expo static) and native.
 - **Supabase backend (Step 7):**
   - Migration `supabase/migrations/20260614201808_initial_schema.sql` — all tables,
     `app_role` enum, a `private.current_app_role()` SECURITY-DEFINER helper, RLS on
-    every table, integrity triggers (installer-only crews, PM-flashing-only,
+    every table, integrity triggers (installer-only crews, Field-Super-flashing-only,
     installer-status/notes-only, operator-role/rate-only), and explicit GRANTs.
   - Client lib `src/integrations/supabase/` — **lazy** client (`getSupabase()`),
     auth helpers, session bootstrap (`useSupabaseSession` in the root layout),
@@ -158,7 +158,7 @@ User**. Then add their app row (copy the new user's UUID from the Users list):
 ```sql
 insert into public.workers (id, name, email, role, status)
 values ('<user-uuid>', 'Full Name', 'person@ox-glass.com', 'operator', 'active');
--- role: operator | project_manager | scheduler | installer | developer
+-- role: operator | field_super | scheduler | installer | developer
 ```
 
 **Set/reset a password for an existing user (the dashboard has no field for this):**
@@ -191,7 +191,7 @@ policy to fix.
   (RLS/network) it won't persist and logs to the console. So "it vanished on reload"
   → check the console.
 - **RLS requires the signed-in user's role to match the action.** A real operator
-  only has operator screens; to test scheduler/PM/installer *persistence* you need
+  only has operator screens; to test scheduler/Field Super/installer *persistence* you need
   real users with those roles and must sign in as each (only the Developer can
   impersonate, and that path doesn't persist).
 - **Secrets:** the **anon key** is in `app.json` and is safe to commit (RLS protects

@@ -1,7 +1,7 @@
 # Step 1 — Domain Model Foundation (Flashing Material + Jobcard Task Fields)
 
 **Goal:** Extend the data model so a **Job** carries a site-wide
-`flashingMaterial`, and a **Jobcard** carries the PM-authored task fields the
+`flashingMaterial`, and a **Jobcard** carries the Field-Super-authored task fields the
 blueprint requires (priority, materials, scope) plus an **inherited** copy of the
 parent Job's flashing material and a shared field-notes field. This is pure
 data-layer work — no new screens. Everything in Steps 3–6 depends on it.
@@ -17,7 +17,7 @@ data-layer work — no new screens. Everything in Steps 3–6 depends on it.
 `src/types.ts` already has `Job`, `Jobcard`, `Worker`, `TimesheetLog`. The
 `Jobcard` has `title`, `address`, `date`, `status`, `priorityOrder`,
 `assignedInstallerId` (temporary), and a `details` object. It has **no**
-flashing, materials, scope, or PM-priority fields. `Job` has `name`, `location`,
+flashing, materials, scope, or Field-Super-priority fields. `Job` has `name`, `location`,
 `status`, `qbtJobcodeId` — **no** flashing field.
 
 The store (`src/store/useAppStore.ts`) has `addJob` / `updateJob` /
@@ -30,11 +30,11 @@ The store (`src/store/useAppStore.ts`) has `addJob` / `updateJob` /
 
 ### 1. Types — `src/types.ts`
 
-**Add a Jobcard priority enum** (PM-set, distinct from the existing
+**Add a Jobcard priority enum** (Field-Super-set, distinct from the existing
 `priorityOrder`, which stays as the intra-day sort key):
 
 ```ts
-/** PM-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort). */
+/** Field-Super-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort). */
 export type JobcardPriority = 'Low' | 'Medium' | 'High';
 ```
 
@@ -45,7 +45,7 @@ export interface Job {
   // ...existing fields...
   /**
    * Site-wide flashing material spec. Set by the Operator on create and editable
-   * by the Project Manager (their one writable Job field). Jobcards snapshot this
+   * by the Field Super (their one writable Job field). Jobcards snapshot this
    * value at creation time. Optional until specified.
    */
   flashingMaterial?: string;
@@ -58,16 +58,16 @@ export interface Job {
 export interface Jobcard {
   // ...existing fields (keep priorityOrder, assignedInstallerId, details)...
 
-  /** PM-assigned priority. Defaults to 'Medium'. */
+  /** Field-Super-assigned priority. Defaults to 'Medium'. */
   priority: JobcardPriority;
   /**
    * Flashing material inherited from the parent Job AT CREATION TIME (a snapshot,
    * not a live link — so later Job edits don't silently mutate existing cards).
    */
   flashingMaterial?: string;
-  /** Task-specific / additional materials needed (free text). PM-authored. */
+  /** Task-specific / additional materials needed (free text). Field-Super-authored. */
   materials?: string;
-  /** Scope of work / what's required on this card (free text). PM-authored. */
+  /** Scope of work / what's required on this card (free text). Field-Super-authored. */
   scopeOfWork?: string;
   /**
    * Shared field notes updated by installers on site. Because a Jobcard is a
@@ -79,7 +79,7 @@ export interface Jobcard {
 ```
 
 > Keep `jobId` as-is (optional in the type for legacy/seed migration), but **all
-> PM-created Jobcards must set it** (enforced in Step 3). Keep `priorityOrder`,
+> Field-Super-created Jobcards must set it** (enforced in Step 3). Keep `priorityOrder`,
 > `assignedInstallerId`, and `details` untouched — other code still reads them.
 
 ### 2. Store — `src/store/useAppStore.ts`
@@ -121,7 +121,7 @@ Implementation notes for `addJobcard`:
   `job-2`) and leave others blank to show the unset state.
 - Give every seeded **Jobcard** a `priority` (mix of `'Low' | 'Medium' | 'High'`)
   and, where the parent Job has flashing, a matching `flashingMaterial` snapshot.
-  Add `materials` / `scopeOfWork` to a few so the PM/installer views have content.
+  Add `materials` / `scopeOfWork` to a few so the Field Super/installer views have content.
 - The existing `mockJobcards.map(...)` that injects `jobId` and
   `assignedInstallerId` is the natural place to also inject default `priority`
   and the inherited `flashingMaterial` (look it up from `mockJobs` by the mapped

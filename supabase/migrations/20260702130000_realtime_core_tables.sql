@@ -2,7 +2,7 @@
 --
 -- The app opens one realtime channel over these tables (see
 -- integrations/supabase/data.ts -> subscribeAllData) so a change one session
--- makes — e.g. a Project Manager creating a jobcard — streams into every other
+-- makes — e.g. a Field Super creating a jobcard — streams into every other
 -- signed-in session's lists without a manual refresh. Previously only the
 -- `notifications` table was published, so cross-session data changes were
 -- invisible until the recipient reloaded the page.
@@ -19,7 +19,7 @@ begin
   foreach t in array array[
     'workers',
     'jobs',
-    'job_pms',
+    'job_field_supers',
     'jobcards',
     'crews',
     'crew_members',

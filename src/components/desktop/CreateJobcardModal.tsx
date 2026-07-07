@@ -22,7 +22,7 @@ import {
 } from '@/types';
 import { useTypewriter } from '@/utils/useTypewriter';
 
-/** Payload the PM screen hands to `addJobcard`. */
+/** Payload the Field Super screen hands to `addJobcard`. */
 export interface NewJobcardInput {
   jobId: string;
   title: string;
@@ -63,13 +63,13 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
   const [title, setTitle] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [tasks, setTasks] = useState<string[]>(['']);
-  // The first task mirrors the title until the PM edits it directly — they're
-  // usually the same thing, so we save the PM re-typing it.
+  // The first task mirrors the title until the Field Super edits it directly —
+  // they're usually the same thing, so we save the Field Super re-typing it.
   const [taskLinked, setTaskLinked] = useState(true);
   const [readiness, setReadiness] = useState('');
   const [readyConfirmed, setReadyConfirmed] = useState(false);
   const [priority, setPriority] = useState('');
-  // Window Opening Flashing Material: tracks the parent Job until the PM edits it.
+  // Window Opening Flashing Material: tracks the parent Job until the Field Super edits it.
   const [flashing, setFlashing] = useState('');
   const [flashingTouched, setFlashingTouched] = useState(false);
   const [materials, setMaterials] = useState('');

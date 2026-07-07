@@ -5,7 +5,7 @@ import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-nat
 import { useAppStore, useMyNotifications } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { AppNotification } from '@/types';
-import { playNotificationSound } from '@/utils/sound';
+import { installAudioUnlock, playNotificationSound } from '@/utils/sound';
 
 // react-native-web has no native animation module; opt out there (the animation
 // still runs JS-side) to avoid the "useNativeDriver is not supported" warning.
@@ -28,6 +28,12 @@ export function NotificationToaster() {
   const shownIds = useRef<Set<string>>(new Set());
   const initialized = useRef(false);
   const [active, setActive] = useState<AppNotification[]>([]);
+
+  // Prime the audio context on the first user gesture so pings aren't muted by
+  // the browser's autoplay policy when a notification arrives later.
+  useEffect(() => {
+    installAudioUnlock();
+  }, []);
 
   useEffect(() => {
     // First pass: treat everything already present as seen — these are history,

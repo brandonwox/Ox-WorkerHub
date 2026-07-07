@@ -1,6 +1,6 @@
-# Step 3 — Project Manager Dashboard (Jobcard Creation)
+# Step 3 — Field Super Dashboard (Jobcard Creation)
 
-**Goal:** Replace the PM placeholder with a working dashboard where a Project
+**Goal:** Replace the Field Super placeholder with a working dashboard where a Project
 Manager edits a Job's `flashingMaterial` (their one writable Job field) and
 **creates Jobcards** against a parent Job — with flashing **auto-fetched** from
 the Job — then releases them into the Scheduler's **Unassigned backlog**.
@@ -13,22 +13,22 @@ the Job — then releases them into the Scheduler's **Unassigned backlog**.
 
 ## Current state
 
-`src/app/(desktop)/pm.tsx` is a placeholder ("Jobcard creation coming soon"). The
-desktop nav already routes `project_manager → /pm` (`src/roles.ts`,
-`DESKTOP_NAV.project_manager`). The store has `jobs`, `addJobcard`, `updateJob`
-(after Step 1). No PM UI exists.
+`src/app/(desktop)/field-super-jobcards.tsx` is a placeholder ("Jobcard creation coming soon"). The
+desktop nav already routes `field_super → /field-super-jobcards` (`src/roles.ts`,
+`DESKTOP_NAV.field_super`). The store has `jobs`, `addJobcard`, `updateJob`
+(after Step 1). No Field Super UI exists.
 
 ---
 
-## What the PM screen must do (from blueprint §2.B)
+## What the Field Super screen must do (from blueprint §2.B)
 
 1. **Pick an active Job** from the global list and **create a Jobcard** for it.
 2. **Auto-fetch flashing:** when the parent Job is selected, the form
    automatically applies that Job's `flashingMaterial` to the new card (read-only
-   preview — the PM doesn't retype it). `addJobcard` snapshots it (Step 1).
+   preview — the Field Super doesn't retype it). `addJobcard` snapshots it (Step 1).
 3. Set task-specific fields: **priority**, **materials**, **scope of work / work
    required**, optional **title**, optional **scheduled date**.
-4. **Partial Job access:** the PM can UPDATE a Job's `flashingMaterial` only.
+4. **Partial Job access:** the Field Super can UPDATE a Job's `flashingMaterial` only.
    They must **not** be able to edit `qbtJobcodeId`, name, location, or status.
 5. On create, the Jobcard enters the global **Unassigned backlog** (any Jobcard
    with no `ScheduleAssignment` is "unassigned" — see Step 2/Step 4). No extra
@@ -38,24 +38,24 @@ desktop nav already routes `project_manager → /pm` (`src/roles.ts`,
 
 ## Build
 
-### Screen — `src/app/(desktop)/pm.tsx`
+### Screen — `src/app/(desktop)/field-super-jobcards.tsx`
 
-Gate first: `const role = useCurrentRole(); if (role !== 'project_manager') return <AccessDenied />;`
+Gate first: `const role = useCurrentRole(); if (role !== 'field_super') return <AccessDenied />;`
 
 Layout (reuse the `jobs.tsx` table/section conventions; wrap in `ScrollView`,
 `maxWidth` ~1100):
 
 - **Header row:** title/subtitle (e.g. "N jobcards · M unassigned") + a primary
   **"Create jobcard"** button (same pill style as `jobs.tsx`'s "Create job").
-- **Section A — Jobs & flashing (PM-editable):** a compact list/table of active
+- **Section A — Jobs & flashing (Field-Super-editable):** a compact list/table of active
   Jobs showing name, location, and an **inline-editable `flashingMaterial`** field
   (commit on blur, like `JobcodeCell` in `jobs.tsx`, calling
   `updateJob(job.id, { flashingMaterial })`). Read-only for everything else. Only
-  show `status === 'Active'` jobs (PMs scope active work).
+  show `status === 'Active'` jobs (Field Supers scope active work).
 - **Section B — Jobcards backlog:** list of existing jobcards (newest first),
   each showing title, parent Job name, priority badge, and an
   **Assigned / Unassigned** indicator (unassigned = no row in `assignments` for
-  that jobcard). This gives the PM feedback that their card reached the backlog.
+  that jobcard). This gives the Field Super feedback that their card reached the backlog.
 
 ### Create-Jobcard modal — `src/components/desktop/CreateJobcardModal.tsx` (new)
 
@@ -91,16 +91,16 @@ addJobcard({
 pass flashing from the form; let the store inherit it (single source of the
 inheritance rule). Show a `Toast` ("Jobcard created") and close on success.
 
-> The `details` GC/manager fields aren't in the blueprint's PM inputs; pass empty
+> The `details` GC/manager fields aren't in the blueprint's Field Super inputs; pass empty
 > strings (the installer detail screen already tolerates them). Don't add them to
-> the PM form unless the user later asks.
+> the Field Super form unless the user later asks.
 
 ---
 
 ## RBAC / constraints
 
 - Wrong role → `<AccessDenied />`.
-- PM may write **only** `Job.flashingMaterial` — never expose `qbtJobcodeId`,
+- Field Super may write **only** `Job.flashingMaterial` — never expose `qbtJobcodeId`,
   name, location, or status as editable on this screen.
 - "Unassigned backlog" is derived (no assignment row), not a stored flag. Don't
   add a status field for it.
@@ -108,16 +108,16 @@ inheritance rule). Show a `Toast` ("Jobcard created") and close on success.
 
 ## Files touched / created
 
-- `src/app/(desktop)/pm.tsx` — full PM dashboard (replaces placeholder).
+- `src/app/(desktop)/field-super-jobcards.tsx` — full Field Super dashboard (replaces placeholder).
 - `src/components/desktop/CreateJobcardModal.tsx` — **new**.
 - (Reuse `FormInput`, `InlineSelect`, `Toast`, `AccessDenied`; no store changes if
   Step 1 added `addJobcard`/`updateJob`.)
 
 ## Definition of Done
 
-- [ ] PM role renders the dashboard; other roles get `<AccessDenied />`.
+- [ ] Field Super role renders the dashboard; other roles get `<AccessDenied />`.
 - [ ] Selecting a parent Job auto-shows its flashing; created card snapshots it.
 - [ ] Priority/materials/scope persist on the created Jobcard.
-- [ ] PM can edit a Job's `flashingMaterial` inline and nothing else on the Job.
+- [ ] Field Super can edit a Job's `flashingMaterial` inline and nothing else on the Job.
 - [ ] New cards show as "Unassigned" until Step 4 assigns them.
 - [ ] `npx tsc --noEmit` clean; no new lint errors.

@@ -4,7 +4,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
-import { PmPicker } from '@/components/desktop/PmPicker';
+import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job, JobStatus, Worker } from '@/types';
 
@@ -12,14 +12,14 @@ export interface JobChanges {
   name: string;
   qbtJobcodeId?: string;
   status: JobStatus;
-  pmIds: string[];
+  fieldSuperIds: string[];
 }
 
 interface Props {
   /** The job being edited, or null when the modal is closed. */
   job: Job | null;
-  /** Roster of project managers the Operator can assign to this job. */
-  projectManagers: Worker[];
+  /** Roster of field supers the Operator can assign to this job. */
+  fieldSupers: Worker[];
   onClose: () => void;
   onSave: (id: string, changes: JobChanges) => void;
   onDelete: (id: string) => void;
@@ -32,7 +32,7 @@ const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
 
 export function EditJobModal({
   job,
-  projectManagers,
+  fieldSupers,
   onClose,
   onSave,
   onDelete,
@@ -40,7 +40,7 @@ export function EditJobModal({
   const [name, setName] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
   const [status, setStatus] = useState<JobStatus>('Active');
-  const [pmIds, setPmIds] = useState<string[]>([]);
+  const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -50,7 +50,7 @@ export function EditJobModal({
     setName(job.name);
     setQbtJobcodeId(job.qbtJobcodeId ?? '');
     setStatus(job.status);
-    setPmIds(job.pmIds ?? []);
+    setFieldSuperIds(job.fieldSuperIds ?? []);
     setError(null);
     setConfirmDelete(false);
   }, [job]);
@@ -61,12 +61,12 @@ export function EditJobModal({
       setError('Job name is required.');
       return;
     }
-    // Address and flashing material are managed by the Project Manager.
+    // Address and flashing material are managed by the Field Super.
     onSave(job.id, {
       name: name.trim(),
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
       status,
-      pmIds,
+      fieldSuperIds,
     });
     onClose();
   };
@@ -127,19 +127,19 @@ export function EditJobModal({
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Project managers</Text>
-            <PmPicker
-              projectManagers={projectManagers}
-              selected={pmIds}
+            <Text style={styles.fieldLabel}>Field supers</Text>
+            <FieldSuperPicker
+              fieldSupers={fieldSupers}
+              selected={fieldSuperIds}
               onToggle={(id) =>
-                setPmIds((ids) =>
+                setFieldSuperIds((ids) =>
                   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
                 )
               }
             />
             <Text style={styles.fieldHint}>
-              Assigned PMs see this job and its jobcards. You can pick more than
-              one.
+              Assigned field supers see this job and its jobcards. You can pick
+              more than one.
             </Text>
           </View>
 

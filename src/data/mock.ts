@@ -55,24 +55,25 @@ export const mockWorkers: Worker[] = [
     status: 'active',
   },
   {
-    id: 'w-pm',
+    id: 'w-fs',
     name: 'Derek Nolan',
     email: 'derek@ox-glass.com',
     phone: '(555) 640-3312',
-    role: 'project_manager',
-    tradeRole: 'Project Manager',
+    role: 'field_super',
+    tradeRole: 'Field Super',
     hourlyRate: 0,
     status: 'active',
   },
   {
-    // A second PM so the "each PM sees only their own jobs" rule is testable via
-    // the dev "View as" switcher (Derek and Alicia share job-1, differ elsewhere).
-    id: 'w-pm2',
+    // A second Field Super so the "each Field Super sees only their own jobs"
+    // rule is testable via the dev "View as" switcher (Derek and Alicia share
+    // job-1, differ elsewhere).
+    id: 'w-fs2',
     name: 'Alicia Gomez',
     email: 'alicia@ox-glass.com',
     phone: '(555) 771-2093',
-    role: 'project_manager',
-    tradeRole: 'Project Manager',
+    role: 'field_super',
+    tradeRole: 'Field Super',
     hourlyRate: 0,
     status: 'active',
   },
@@ -243,9 +244,9 @@ const seededJobcards: Jobcard[] = [
 /**
  * Jobsites/projects the Operator owns. Jobcards (below) hang off these.
  *
- * `pmIds` are the assigned Project Managers: Derek (w-pm) and Alicia (w-pm2)
- * share job-1 (exercises the multi-PM case) and otherwise cover different jobs,
- * so switching between them shows each a distinct slice.
+ * `fieldSuperIds` are the assigned Field Supers: Derek (w-fs) and Alicia (w-fs2)
+ * share job-1 (exercises the multi-Field-Super case) and otherwise cover
+ * different jobs, so switching between them shows each a distinct slice.
  */
 export const mockJobs: Job[] = [
   {
@@ -255,7 +256,7 @@ export const mockJobs: Job[] = [
     status: 'Active',
     qbtJobcodeId: '90112',
     flashingMaterial: 'Clear Anodized Aluminum',
-    pmIds: ['w-pm', 'w-pm2'],
+    fieldSuperIds: ['w-fs', 'w-fs2'],
   },
   {
     id: 'job-2',
@@ -264,7 +265,7 @@ export const mockJobs: Job[] = [
     status: 'Active',
     qbtJobcodeId: '90113',
     flashingMaterial: 'Stainless Steel (Brushed)',
-    pmIds: ['w-pm'],
+    fieldSuperIds: ['w-fs'],
   },
   {
     id: 'job-3',
@@ -272,7 +273,7 @@ export const mockJobs: Job[] = [
     location: '88 Oakdale Ave, Evanston, IL',
     status: 'Active',
     // Not yet mapped to a QBT jobcode — shows the unmapped state in the table.
-    pmIds: ['w-pm'],
+    fieldSuperIds: ['w-fs'],
   },
   {
     id: 'job-4',
@@ -280,7 +281,7 @@ export const mockJobs: Job[] = [
     location: '500 N Michigan Ave, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90120',
-    pmIds: ['w-pm2'],
+    fieldSuperIds: ['w-fs2'],
   },
   {
     id: 'job-5',
@@ -288,7 +289,7 @@ export const mockJobs: Job[] = [
     location: '740 N Rush St, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90131',
-    pmIds: ['w-pm2'],
+    fieldSuperIds: ['w-fs2'],
   },
   {
     id: 'job-6',
@@ -296,7 +297,7 @@ export const mockJobs: Job[] = [
     location: '1255 S Prairie Ave, Chicago, IL',
     status: 'Archived',
     qbtJobcodeId: '88004',
-    pmIds: ['w-pm'],
+    fieldSuperIds: ['w-fs'],
   },
 ];
 

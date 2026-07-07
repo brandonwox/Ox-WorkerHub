@@ -35,9 +35,9 @@ interface JobRow {
   flashing_material: string | null;
 }
 
-interface JobPmRow {
+interface JobFieldSuperRow {
   job_id: string;
-  pm_id: string;
+  field_super_id: string;
 }
 
 interface JobcardRow {
@@ -183,7 +183,7 @@ export async function fetchAllData(): Promise<BackendData> {
   const [
     workersR,
     jobsR,
-    jobPmsR,
+    jobFieldSupersR,
     jobcardsR,
     crewsR,
     crewMembersR,
@@ -194,7 +194,7 @@ export async function fetchAllData(): Promise<BackendData> {
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
-    sb.from('job_pms').select('*'),
+    sb.from('job_field_supers').select('*'),
     sb.from('jobcards').select('*'),
     sb.from('crews').select('*'),
     sb.from('crew_members').select('*'),
@@ -207,7 +207,7 @@ export async function fetchAllData(): Promise<BackendData> {
   const firstError =
     workersR.error ??
     jobsR.error ??
-    jobPmsR.error ??
+    jobFieldSupersR.error ??
     jobcardsR.error ??
     crewsR.error ??
     crewMembersR.error ??
@@ -217,13 +217,14 @@ export async function fetchAllData(): Promise<BackendData> {
     timesheetsR.error;
   if (firstError) throw new Error(firstError.message);
 
-  // Group PM assignments by job so each Job carries its own pmIds list.
-  const jobPms = (jobPmsR.data ?? []) as JobPmRow[];
-  const pmIdsByJob = new Map<string, string[]>();
-  for (const { job_id, pm_id } of jobPms) {
-    const list = pmIdsByJob.get(job_id);
-    if (list) list.push(pm_id);
-    else pmIdsByJob.set(job_id, [pm_id]);
+  // Group Field Super assignments by job so each Job carries its own
+  // fieldSuperIds list.
+  const jobFieldSupers = (jobFieldSupersR.data ?? []) as JobFieldSuperRow[];
+  const fieldSuperIdsByJob = new Map<string, string[]>();
+  for (const { job_id, field_super_id } of jobFieldSupers) {
+    const list = fieldSuperIdsByJob.get(job_id);
+    if (list) list.push(field_super_id);
+    else fieldSuperIdsByJob.set(job_id, [field_super_id]);
   }
 
   const crewMembers = (crewMembersR.data ?? []) as CrewMemberRow[];
@@ -253,7 +254,7 @@ export async function fetchAllData(): Promise<BackendData> {
     ),
     jobs: ((jobsR.data ?? []) as JobRow[]).map((r) => ({
       ...rowToJob(r),
-      pmIds: pmIdsByJob.get(r.id) ?? [],
+      fieldSuperIds: fieldSuperIdsByJob.get(r.id) ?? [],
     })),
     jobcards: ((jobcardsR.data ?? []) as JobcardRow[]).map(rowToJobcard),
     crews,
@@ -285,13 +286,15 @@ function jobToRow(job: Job) {
 
 export async function insertJob(job: Job): Promise<void> {
   check((await getSupabase().from('jobs').insert(jobToRow(job))).error);
-  // PM assignments live in the job_pms join table, not on the jobs row.
-  await setJobPms(job.id, job.pmIds ?? []);
+  // Field Super assignments live in the job_field_supers join table, not on the
+  // jobs row.
+  await setJobFieldSupers(job.id, job.fieldSuperIds ?? []);
 }
 export async function updateJob(job: Job): Promise<void> {
-  // Note: PM assignments are NOT written here. They go through setJobPms so a
-  // non-operator update (e.g. a PM editing flashing material) never touches the
-  // operator-only job_pms table. See useAppStore.updateJob.
+  // Note: Field Super assignments are NOT written here. They go through
+  // setJobFieldSupers so a non-operator update (e.g. a Field Super editing
+  // flashing material) never touches the operator-only job_field_supers table.
+  // See useAppStore.updateJob.
   check(
     (await getSupabase().from('jobs').update(jobToRow(job)).eq('id', job.id))
       .error
@@ -301,16 +304,27 @@ export async function deleteJob(id: string): Promise<void> {
   check((await getSupabase().from('jobs').delete().eq('id', id)).error);
 }
 
-/** Replace a job's PM assignments (operator-only; mirrors crew member replace). */
-export async function setJobPms(jobId: string, pmIds: string[]): Promise<void> {
+/**
+ * Replace a job's Field Super assignments (operator-only; mirrors crew member
+ * replace).
+ */
+export async function setJobFieldSupers(
+  jobId: string,
+  fieldSuperIds: string[]
+): Promise<void> {
   const sb = getSupabase();
-  check((await sb.from('job_pms').delete().eq('job_id', jobId)).error);
-  if (pmIds.length) {
+  check((await sb.from('job_field_supers').delete().eq('job_id', jobId)).error);
+  if (fieldSuperIds.length) {
     check(
       (
         await sb
-          .from('job_pms')
-          .insert(pmIds.map((pm_id) => ({ job_id: jobId, pm_id })))
+          .from('job_field_supers')
+          .insert(
+            fieldSuperIds.map((field_super_id) => ({
+              job_id: jobId,
+              field_super_id,
+            }))
+          )
       ).error
     );
   }
@@ -352,6 +366,9 @@ export async function updateJobcard(card: Jobcard): Promise<void> {
         .eq('id', card.id)
     ).error
   );
+}
+export async function deleteJobcard(id: string): Promise<void> {
+  check((await getSupabase().from('jobcards').delete().eq('id', id)).error);
 }
 
 /**
@@ -519,7 +536,7 @@ export async function markTimesheetsSentRemote(): Promise<void> {
 
 /**
  * The collaborative tables whose changes any session needs to see live. When a
- * PM creates a jobcard or the Operator adds a worker, every other signed-in
+ * Field Super creates a jobcard or the Operator adds a worker, every other signed-in
  * session should reflect it without a manual refresh. (Notifications have their
  * own recipient-scoped channel in ./notifications and are intentionally omitted
  * here.) These tables must also be members of the `supabase_realtime`
@@ -528,7 +545,7 @@ export async function markTimesheetsSentRemote(): Promise<void> {
 const REALTIME_TABLES = [
   'workers',
   'jobs',
-  'job_pms',
+  'job_field_supers',
   'jobcards',
   'crews',
   'crew_members',
@@ -547,7 +564,7 @@ let dataChannel: RealtimeChannel | null = null;
  * for each one. Realtime evaluates each table's SELECT RLS policy, so a session
  * only ever receives rows it is allowed to read. `onChange` fires once per row
  * event; callers should debounce a refetch since one logical change can emit
- * several events (e.g. a job plus its job_pms rows). Idempotent: replaces any
+ * several events (e.g. a job plus its job_field_supers rows). Idempotent: replaces any
  * prior subscription.
  */
 export function subscribeAllData(onChange: () => void): void {

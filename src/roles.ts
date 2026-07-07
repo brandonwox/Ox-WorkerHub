@@ -7,7 +7,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   installer: 'Installer',
   scheduler: 'Scheduler',
   operator: 'Operator',
-  project_manager: 'Project Manager',
+  field_super: 'Field Super',
   developer: 'Developer',
 };
 
@@ -16,7 +16,8 @@ export type DesktopRole = Exclude<AppRole, 'installer'>;
 
 /**
  * Every page is role-prefixed so each route is owned by exactly one role
- * (e.g. the Operator's Jobs lives at /operator-jobs, the PM's at /pm-jobs).
+ * (e.g. the Operator's Jobs lives at /operator-jobs, the Field Super's at
+ * /field-super-jobs).
  * Universal routes (/sign-in, /set-password, the /job/[id] modal) are not listed.
  */
 export type DesktopHref =
@@ -24,8 +25,8 @@ export type DesktopHref =
   | '/operator-jobs'
   | '/operator-people'
   | '/operator-timesheets'
-  | '/pm-jobcards'
-  | '/pm-jobs';
+  | '/field-super-jobcards'
+  | '/field-super-jobs';
 
 export interface DesktopNavItem {
   href: DesktopHref;
@@ -41,10 +42,11 @@ export const DESKTOP_NAV: Record<DesktopRole, DesktopNavItem[]> = {
     { href: '/operator-timesheets', label: 'Timesheets', icon: 'file-text' },
   ],
   scheduler: [{ href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' }],
-  project_manager: [
-    // Distinct route from the Operator's '/operator-jobs', shown to the PM as "Jobs".
-    { href: '/pm-jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/pm-jobcards', label: 'Jobcards', icon: 'clipboard' },
+  field_super: [
+    // Distinct route from the Operator's '/operator-jobs', shown to the Field
+    // Super as "Jobs".
+    { href: '/field-super-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/field-super-jobcards', label: 'Jobcards', icon: 'clipboard' },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
@@ -58,8 +60,8 @@ export function roleHomeHref(role: AppRole): '/' | DesktopHref {
       return '/operator-jobs';
     case 'scheduler':
       return '/scheduler-calendar';
-    case 'project_manager':
-      return '/pm-jobcards';
+    case 'field_super':
+      return '/field-super-jobcards';
     case 'developer':
       return '/operator-jobs';
     default:
@@ -82,8 +84,8 @@ export function desktopAccessibleHrefs(role: DesktopRole): DesktopHref[] {
       '/operator-jobs',
       '/operator-people',
       '/operator-timesheets',
-      '/pm-jobcards',
-      '/pm-jobs',
+      '/field-super-jobcards',
+      '/field-super-jobs',
     ];
   }
   return DESKTOP_NAV[role].map((item) => item.href);
@@ -92,7 +94,7 @@ export function desktopAccessibleHrefs(role: DesktopRole): DesktopHref[] {
 /**
  * Whether `role` may view `pathname`. Matches a nav href exactly or as a path
  * prefix (so `/operator-jobs/123` still counts as that section), while keeping
- * distinct routes like `/operator-jobs` and `/pm-jobs` apart.
+ * distinct routes like `/operator-jobs` and `/field-super-jobs` apart.
  */
 export function roleCanAccessPath(role: DesktopRole, pathname: string): boolean {
   return desktopAccessibleHrefs(role).some(

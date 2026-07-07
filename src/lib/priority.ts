@@ -15,7 +15,7 @@ const SOON: PriorityMeta = { bg: colors.warningDim, fg: colors.warning };
 const NORMAL: PriorityMeta = { bg: colors.primaryDim, fg: colors.primary };
 
 // Known presets (and legacy Low/Medium/High) map to a color; anything custom
-// the PM types falls back to neutral.
+// the Field Super types falls back to neutral.
 const META: Record<string, PriorityMeta> = {
   Now: URGENT,
   Tomorrow: SOON,

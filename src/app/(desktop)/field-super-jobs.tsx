@@ -12,7 +12,7 @@ import {
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
 import {
-  jobsForProjectManager,
+  jobsForFieldSuper,
   useAppStore,
   useCurrentRole,
   useCurrentWorker,
@@ -20,8 +20,8 @@ import {
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
 
-/** Project Manager → Jobs: a card per job; open one to edit its flashing material. */
-export default function PmJobsScreen() {
+/** Field Super → Jobs: a card per job; open one to edit its flashing material. */
+export default function FieldSuperJobsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
@@ -32,10 +32,10 @@ export default function PmJobsScreen() {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [viewJob, setViewJob] = useState<Job | null>(null);
 
-  // A PM sees ONLY the jobs they're assigned to, Active first.
+  // A Field Super sees ONLY the jobs they're assigned to, Active first.
   const sortedJobs = useMemo(
     () =>
-      (me ? jobsForProjectManager(jobs, me.id) : []).sort((a, b) =>
+      (me ? jobsForFieldSuper(jobs, me.id) : []).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
     [jobs, me]
@@ -47,7 +47,7 @@ export default function PmJobsScreen() {
     [assignments]
   );
 
-  if (role !== 'project_manager') return <AccessDenied />;
+  if (role !== 'field_super') return <AccessDenied />;
 
   const jobcardCountFor = (jobId: string) =>
     jobcards.filter((c) => c.jobId === jobId).length;
@@ -62,7 +62,8 @@ export default function PmJobsScreen() {
 
         {sortedJobs.length === 0 ? (
           <Text style={styles.emptyText}>
-            No jobs assigned to you yet — the Operator assigns PMs to jobs.
+            No jobs assigned to you yet — the Operator assigns Field Supers to
+            jobs.
           </Text>
         ) : (
           <View style={styles.cardStack}>

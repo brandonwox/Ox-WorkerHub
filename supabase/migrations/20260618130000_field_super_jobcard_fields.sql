@@ -1,9 +1,9 @@
--- Project Manager jobcard-creation overhaul.
+-- Field Super jobcard-creation overhaul.
 --
--- The PM's Create-Jobcard form gained structured fields: a multi-select of
--- trade scopes, a list of discrete tasks, a "ready for installers" readiness
--- value, and a free-form notes field. Priority also became free text (the PM
--- picks a preset like 'Now' / 'This Week' or types a custom value), so the
+-- The Field Super's Create-Jobcard form gained structured fields: a multi-select
+-- of trade scopes, a list of discrete tasks, a "ready for installers" readiness
+-- value, and a free-form notes field. Priority also became free text (the Field
+-- Super picks a preset like 'Now' / 'This Week' or types a custom value), so the
 -- original Low/Medium/High CHECK constraint no longer holds.
 
 -- --- New columns -----------------------------------------------------------
@@ -18,7 +18,7 @@ alter table public.jobcards
 alter table public.jobcards drop constraint if exists jobcards_priority_check;
 alter table public.jobcards alter column priority set default 'This Week';
 
--- --- Keep installers locked out of the new PM-owned columns ----------------
+-- --- Keep installers locked out of the new Field-Super-owned columns --------
 -- Installers may still only change status / field_notes; extend the guard to
 -- cover the new columns so an installer update can't touch them.
 create or replace function private.guard_jobcard_installer_update()

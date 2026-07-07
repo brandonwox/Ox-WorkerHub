@@ -19,7 +19,7 @@ import {
 import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { Toast } from '@/components/Toast';
 import {
-  jobsForProjectManager,
+  jobsForFieldSuper,
   useAppStore,
   useCurrentRole,
   useCurrentWorker,
@@ -29,8 +29,8 @@ import { Jobcard, PRIORITY_PRESETS } from '@/types';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
-/** Project Manager → Jobcards: every jobcard, its calendar status, and creation. */
-export default function PmJobcardsScreen() {
+/** Field Super → Jobcards: every jobcard, its calendar status, and creation. */
+export default function FieldSuperJobcardsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const allJobs = useAppStore((s) => s.jobs);
@@ -38,6 +38,7 @@ export default function PmJobcardsScreen() {
   const assignments = useAppStore((s) => s.assignments);
   const addJobcard = useAppStore((s) => s.addJobcard);
   const updateJobcard = useAppStore((s) => s.updateJobcard);
+  const deleteJobcard = useAppStore((s) => s.deleteJobcard);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Jobcard | null>(null);
@@ -49,11 +50,11 @@ export default function PmJobcardsScreen() {
   const [schedule, setSchedule] = useState<ScheduleFilter>('all');
   const [groupByJob, setGroupByJob] = useState(false);
 
-  // A PM works only within their own jobs — and, transitively, only the jobcards
-  // that hang off those jobs. Scope both here so every count/filter below sees
-  // just this PM's slice.
+  // A Field Super works only within their own jobs — and, transitively, only the
+  // jobcards that hang off those jobs. Scope both here so every count/filter
+  // below sees just this Field Super's slice.
   const jobs = useMemo(
-    () => (me ? jobsForProjectManager(allJobs, me.id) : []),
+    () => (me ? jobsForFieldSuper(allJobs, me.id) : []),
     [allJobs, me]
   );
   const myJobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
@@ -148,7 +149,7 @@ export default function PmJobcardsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupByJob, filtered, nameById]);
 
-  if (role !== 'project_manager') return <AccessDenied />;
+  if (role !== 'field_super') return <AccessDenied />;
 
   const togglePriority = (p: string) =>
     setSelectedPriorities((prev) =>
@@ -178,6 +179,12 @@ export default function PmJobcardsScreen() {
   const handleEditSave = (id: string, changes: JobcardChanges) => {
     updateJobcard(id, changes);
     setToast(`Jobcard "${changes.title}" updated`);
+  };
+
+  const handleDelete = (id: string) => {
+    const title = editing?.title;
+    deleteJobcard(id);
+    setToast(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted');
   };
 
   return (
@@ -274,6 +281,7 @@ export default function PmJobcardsScreen() {
         jobs={editJobOptions}
         onClose={() => setEditing(null)}
         onSave={handleEditSave}
+        onDelete={handleDelete}
       />
     </View>
   );

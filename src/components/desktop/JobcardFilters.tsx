@@ -27,7 +27,7 @@ interface Props {
   onToggleGroup: () => void;
 }
 
-/** Single-row filter/sort toolbar for the PM Jobcards view (desktop). */
+/** Single-row filter/sort toolbar for the Field Super Jobcards view (desktop). */
 export function JobcardFilters({
   search,
   onSearch,

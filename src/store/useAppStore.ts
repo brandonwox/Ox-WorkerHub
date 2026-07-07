@@ -80,6 +80,98 @@ function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
   });
 }
 
+/** Local calendar day as yyyy-MM-dd — the same key schedules/assignments use. */
+function todayStr(): string {
+  return format(new Date(), 'yyyy-MM-dd');
+}
+
+/**
+ * Installers whose ACTIVE crew on `date` is `crewId` — the people who actually
+ * see that crew's cards that day (Daily-crew overrides applied). This is the
+ * audience for any change to `crewId`'s board on `date`.
+ */
+function installersOnActiveCrewForDate(
+  state: { workers: Worker[]; crews: Crew[]; dailyCrews: DailyCrew[] },
+  crewId: string,
+  date: string
+): string[] {
+  return state.workers
+    .filter(
+      (w) => w.role === 'installer' && activeCrewIdFor(state, w.id, date) === crewId
+    )
+    .map((w) => w.id);
+}
+
+/**
+ * Installers who have `jobcardId` on TODAY's board — the union of the audiences
+ * of every crew the card is assigned to today. Used when a card itself is edited
+ * (priority/content) so only people scheduled on it today are pinged.
+ */
+function todaysInstallerAudienceForCard(
+  state: {
+    workers: Worker[];
+    crews: Crew[];
+    dailyCrews: DailyCrew[];
+    assignments: ScheduleAssignment[];
+  },
+  jobcardId: string
+): string[] {
+  const today = todayStr();
+  const crewIds = new Set(
+    state.assignments
+      .filter((a) => a.jobcardId === jobcardId && a.date === today)
+      .map((a) => a.crewId)
+  );
+  const ids = new Set<string>();
+  for (const crewId of crewIds) {
+    for (const id of installersOnActiveCrewForDate(state, crewId, today)) {
+      ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Ping each installer whose today-schedule changed with a "Your schedule has
+ * changed" toast. `detail` is the trailing clause (e.g. "has been taken off your
+ * calendar today"), giving a body like "Front glazing — has been taken off…".
+ * A no-op when nobody is affected. Callers gate on the change being for TODAY —
+ * a change to any other day is intentionally silent.
+ */
+function notifyScheduleChange(
+  get: () => AppState,
+  installerIds: string[],
+  card: Jobcard,
+  detail: string
+): void {
+  if (installerIds.length === 0) return;
+  const jobName = card.jobId
+    ? get().jobs.find((j) => j.id === card.jobId)?.name
+    : undefined;
+  get().pushNotification({
+    recipientIds: installerIds,
+    type: 'schedule_change',
+    title: 'Your schedule has changed',
+    body: `${card.title}${jobName ? ` · ${jobName}` : ''} ${detail}`,
+    data: { jobcardId: card.id },
+  });
+}
+
+/** Jobcard fields an installer sees on their card — an edit to any pings "updated". */
+const INSTALLER_VISIBLE_FIELDS: (keyof Jobcard)[] = [
+  'title',
+  'address',
+  'date',
+  'startTime',
+  'endTime',
+  'scopes',
+  'tasks',
+  'readiness',
+  'flashingMaterial',
+  'materials',
+  'notes',
+];
+
 /**
  * Fire-and-forget a Supabase write; surface failures without breaking the UI.
  * Logged as an error (not a warning) so a rejected write — e.g. an RLS policy
@@ -233,7 +325,7 @@ interface AppState {
   /**
    * Re-read the core collections from Supabase without touching the auth session
    * or the notifications channel. Driven by the realtime data subscription so a
-   * change another session makes (e.g. a PM creating a jobcard) streams into this
+   * change another session makes (e.g. a Field Super creating a jobcard) streams into this
    * session's lists.
    */
   refreshBackendData: () => Promise<void>;
@@ -278,6 +370,8 @@ interface AppState {
     }
   ) => Jobcard;
   updateJobcard: (id: string, changes: Partial<Jobcard>) => void;
+  /** Delete a Jobcard and any schedule assignments pointing at it. */
+  deleteJobcard: (id: string) => void;
   /** Installer-facing: append/replace shared field notes on a Jobcard. */
   updateJobcardNotes: (id: string, fieldNotes: string) => void;
   setJobcardStatus: (jobcardId: string, status: JobcardStatus) => void;
@@ -473,7 +567,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Live-sync the core collections: any change another session makes streams
     // in so this session's lists (e.g. the scheduler's backlog) update without a
     // manual refresh. Debounced because one logical change can emit several row
-    // events (e.g. a job plus its job_pms rows).
+    // events (e.g. a job plus its job_field_supers rows).
     backend.subscribeAllData(() => {
       if (dataRefreshTimer) clearTimeout(dataRefreshTimer);
       dataRefreshTimer = setTimeout(() => {
@@ -614,7 +708,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: job.id ?? (isBackend ? uuid() : `job-${nextJobId++}`),
     };
     set((state) => ({ jobs: [created, ...state.jobs] }));
-    // insertJob writes both the job row and its PM assignments (job_pms).
+    // insertJob writes both the job row and its Field Super assignments
+    // (job_field_supers).
     if (isBackend) write(backend.insertJob(created));
     return created;
   },
@@ -629,13 +724,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) {
-      // Job-column edits go to the jobs table. The PM-assignment join table is a
-      // separate, operator-only write, so only touch it when pmIds is actually
-      // part of this edit — a PM saving flashing material must not hit job_pms
-      // (they have no write grant there).
+      // Job-column edits go to the jobs table. The Field-Super-assignment join
+      // table is a separate, operator-only write, so only touch it when
+      // fieldSuperIds is actually part of this edit — a Field Super saving
+      // flashing material must not hit job_field_supers (they have no write
+      // grant there).
       write(backend.updateJob(updated));
-      if ('pmIds' in changes) {
-        write(backend.setJobPms(id, updated.pmIds ?? []));
+      if ('fieldSuperIds' in changes) {
+        write(backend.setJobFieldSupers(id, updated.fieldSuperIds ?? []));
       }
     }
   },
@@ -663,8 +759,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   addJobcard: (card) => {
     const state = get();
     // Default the card's flashing material to the parent Job's value, snapshotted
-    // at creation time (a later Job edit must not mutate existing cards). The PM
-    // may pass an explicit override, which wins over the inherited value.
+    // at creation time (a later Job edit must not mutate existing cards). The
+    // Field Super may pass an explicit override, which wins over the inherited value.
     const parentJob = card.jobId
       ? state.jobs.find((job) => job.id === card.jobId)
       : undefined;
@@ -692,6 +788,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateJobcard: (id, changes) => {
+    const before = get().jobcards.find((c) => c.id === id);
     let updated: Jobcard | undefined;
     let wasNow = false;
     set((state) => ({
@@ -708,6 +805,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (updated && updated.priority === 'Now' && !wasNow) {
       notifyNowJobcard(get, updated);
     }
+    // Ping installers who have this card on TODAY's board about the edit. A
+    // priority change takes precedence over a generic content edit so we send
+    // one clear message, not two. (Nothing fires if it's on nobody's board today.)
+    if (before && updated) {
+      const audience = todaysInstallerAudienceForCard(get(), id);
+      if (audience.length > 0) {
+        const priorityChanged =
+          'priority' in changes && before.priority !== updated.priority;
+        const contentChanged = INSTALLER_VISIBLE_FIELDS.some(
+          (k) =>
+            k in changes &&
+            JSON.stringify(before[k]) !== JSON.stringify(updated![k])
+        );
+        if (priorityChanged) {
+          notifyScheduleChange(
+            get,
+            audience,
+            updated,
+            `has changed priority to ${updated.priority}`
+          );
+        } else if (contentChanged) {
+          notifyScheduleChange(get, audience, updated, 'has been updated');
+        }
+      }
+    }
+  },
+
+  deleteJobcard: (id) => {
+    set((state) => ({
+      // Mirror the DB cascade locally: drop the card, then any schedule
+      // assignments that pointed at it.
+      jobcards: state.jobcards.filter((card) => card.id !== id),
+      assignments: state.assignments.filter((a) => a.jobcardId !== id),
+    }));
+    // The DB cascades assignments server-side; we only fire the card delete.
+    if (backendActive(get())) write(backend.deleteJobcard(id));
   },
 
   updateJobcardNotes: (id, fieldNotes) => {
@@ -825,14 +958,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ assignments: [...state.assignments, created] });
     if (isBackend) write(backend.insertAssignment(created));
+    // A card joining TODAY's board pings that crew's installers. A future-dated
+    // assignment is silent (only same-day changes notify).
+    if (date === todayStr()) {
+      const card = state.jobcards.find((c) => c.id === jobcardId);
+      if (card) {
+        notifyScheduleChange(
+          get,
+          installersOnActiveCrewForDate(state, crewId, date),
+          card,
+          'has been added to your calendar today'
+        );
+      }
+    }
     return created;
   },
 
   unassignJobcard: (assignmentId) => {
-    set((state) => ({
+    const state = get();
+    const removed = state.assignments.find((a) => a.id === assignmentId);
+    set({
       assignments: state.assignments.filter((a) => a.id !== assignmentId),
-    }));
-    if (backendActive(get())) write(backend.deleteAssignment(assignmentId));
+    });
+    if (backendActive(state)) write(backend.deleteAssignment(assignmentId));
+    // Removing a card from TODAY's board pings the affected installers. Resolve
+    // the audience against pre-removal state (the assignment still exists there).
+    if (removed && removed.date === todayStr()) {
+      const card = state.jobcards.find((c) => c.id === removed.jobcardId);
+      if (card) {
+        notifyScheduleChange(
+          get,
+          installersOnActiveCrewForDate(state, removed.crewId, removed.date),
+          card,
+          'has been taken off your calendar today'
+        );
+      }
+    }
   },
 
   clockIn: (ref) =>
@@ -1132,13 +1293,13 @@ export function activeCrewIdFor(
 }
 
 /**
- * The jobs a Project Manager may see: only those they're assigned to via
- * {@link Job.pmIds}. A job with no PMs is visible to nobody. Used by both PM
- * screens so "own jobs only" (and, transitively, "own jobcards only") is
- * enforced in one place.
+ * The jobs a Field Super may see: only those they're assigned to via
+ * {@link Job.fieldSuperIds}. A job with no Field Supers is visible to nobody.
+ * Used by both Field Super screens so "own jobs only" (and, transitively, "own
+ * jobcards only") is enforced in one place.
  */
-export function jobsForProjectManager(jobs: Job[], pmId: string): Job[] {
-  return jobs.filter((job) => job.pmIds?.includes(pmId));
+export function jobsForFieldSuper(jobs: Job[], fieldSuperId: string): Job[] {
+  return jobs.filter((job) => job.fieldSuperIds?.includes(fieldSuperId));
 }
 
 /** Jobcard ids assigned to a given crew on a given date. */

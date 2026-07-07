@@ -32,7 +32,7 @@ self-contained work order: read it, implement it, confirm it type-checks, move o
 | Entity | What it is | Owner / creator | Lives in |
 |---|---|---|---|
 | **Job** | A jobsite/project. Site-wide settings incl. `qbtJobcodeId` and `flashingMaterial`. | Operator | `jobs[]` |
-| **Jobcard** | A task/ticket on a Job. Inherits flashing from its parent Job. | Project Manager | `jobcards[]` |
+| **Jobcard** | A task/ticket on a Job. Inherits flashing from its parent Job. | Field Super | `jobcards[]` |
 | **Worker** | A person, defined by `role`. Installers have an `hourlyRate`. | Operator | `workers[]` |
 | **Crew** | The scheduling container. **Installers only.** Permanent + dated Daily overrides. | Scheduler | `crews[]` / `dailyCrews[]` *(new)* |
 | **Timesheet** (`TimesheetLog`) | Hours logged by an installer. **No in-app approval or status** — auto-sent to QBT by the weekly sweep, which stamps each one **"Sent to QBT"** or **"Failed to send"**; the payroll manager reviews/approves them **inside QuickBooks Time**. | Installer | `logs[]` |
@@ -43,7 +43,7 @@ that site. Work is assigned to **Crews**, never to individual installers.
 ### The two lifecycles (the whole app, end to end)
 
 **Work lifecycle:**
-Operator creates **Job** (maps `qbtJobcodeId`) → PM sets the Job's
+Operator creates **Job** (maps `qbtJobcodeId`) → Field Super sets the Job's
 `flashingMaterial`, then creates a **Jobcard** (flashing auto-inherited; adds
 priority/materials/scope) → Jobcard lands in the **Unassigned backlog** →
 Scheduler assigns it to a **Crew** on a **date** → Installer on that crew sees it
@@ -62,7 +62,7 @@ hours and their send result.
 
 ## Role-Based Access Control (RBAC) matrix
 
-| Capability | Operator | Project Manager | Scheduler | Installer |
+| Capability | Operator | Field Super | Scheduler | Installer |
 |---|:--:|:--:|:--:|:--:|
 | Create / edit / archive **Jobs** | ✅ | — | — | — |
 | Map `qbtJobcodeId` on a Job | ✅ | ❌ | — | — |
@@ -86,7 +86,7 @@ wrong role — same pattern already used in `jobs.tsx`, `people.tsx`, `review.ts
 
 **Built and working — do not rebuild:**
 
-- **Foundation:** `AppRole` (`installer | scheduler | operator | project_manager`),
+- **Foundation:** `AppRole` (`installer | scheduler | operator | field_super`),
   `workers[]` roster + `currentUserId`, dev-only "View as" role switcher
   (`DevRoleSwitcher`), routing split — Installer = mobile tabs `src/app/(installer)/`,
   desktop roles = sidebar console `src/app/(desktop)/` (nav in `src/roles.ts`).
@@ -106,7 +106,7 @@ wrong role — same pattern already used in `jobs.tsx`, `people.tsx`, `review.ts
 
 **Placeholders — to be built by these steps:**
 
-- **Project Manager** dashboard — `src/app/(desktop)/pm.tsx` (currently a
+- **Field Super** dashboard — `src/app/(desktop)/field-super-jobcards.tsx` (currently a
   "Not functional yet" notice).
 - **Scheduler** dashboard — `src/app/(desktop)/schedule.tsx` (placeholder board).
 
@@ -130,7 +130,7 @@ Step 7 maps them onto Supabase for when it's unblocked.
 |---|---|---|
 | 1 | `Step-1-Domain-Model-Foundation.md` | Flashing material + Jobcard task fields; inheritance; types/store/mock |
 | 2 | `Step-2-Crews-And-Scheduling-Data-Model.md` | `Crew` / `DailyCrew` / `ScheduleAssignment` + store slice + resolution selectors |
-| 3 | `Step-3-Project-Manager-Dashboard.md` | PM screen: create Jobcards (auto-inherit flashing), edit Job flashing, push to backlog |
+| 3 | `Step-3-Field-Super-Dashboard.md` | Field Super screen: create Jobcards (auto-inherit flashing), edit Job flashing, push to backlog |
 | 4 | `Step-4-Scheduler-Dashboard.md` | Crew management + split-screen calendar/backlog + assignment |
 | 5 | `Step-5-Installer-Crew-Agenda.md` | Crew-based daily agenda; show flashing/materials; shared field notes |
 | 6 | `Step-6-Operator-And-Financial-Sync.md` | Operator gap-closure (Job flashing) + timesheet→Job→QBT jobcode bundling |

@@ -15,7 +15,7 @@ export function JobcardRow({
   jobcard: Jobcard;
   jobName: string;
   scheduled: boolean;
-  /** When provided, the row becomes pressable (e.g. the PM tapping to edit). */
+  /** When provided, the row becomes pressable (e.g. the Field Super tapping to edit). */
   onPress?: () => void;
 }) {
   const meta = priorityMeta(jobcard.priority);

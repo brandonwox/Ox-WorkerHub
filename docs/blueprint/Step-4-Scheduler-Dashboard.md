@@ -99,7 +99,7 @@ idempotent for the same `(jobcardId, crewId, date)` (Step 2).
 ### Manage-crews modal
 
 - List crews; for each, an installer multi-select. **The picker lists only
-  `workers` with `role === 'installer'`** — never PMs/operators/schedulers
+  `workers` with `role === 'installer'`** — never Field Supers/operators/schedulers
   (blueprint hard constraint). Use `workers.filter(w => w.role === 'installer')`.
 - Create a new permanent crew (name + installers).
 - Create a **Daily Crew**: name + date + installers (subset of installers); this

@@ -1,7 +1,7 @@
 -- Notifications — targeted pings to specific workers.
 --
 -- A notification belongs to exactly one recipient (a worker). Whatever action
--- warrants a ping inserts the row (e.g. a project_manager marking a jobcard
+-- warrants a ping inserts the row (e.g. a field_super marking a jobcard
 -- "Now" inserts one notification per scheduler); the recipient's session picks
 -- it up over Supabase realtime and surfaces a toast + unread badge.
 --
@@ -43,7 +43,7 @@ create policy notifications_delete on public.notifications
   using (recipient_id = (select auth.uid()));
 
 -- Any authenticated worker may create a notification targeted at another worker
--- (e.g. a PM pinging the scheduler about a "Now" jobcard). The app owns the
+-- (e.g. a Field Super pinging the scheduler about a "Now" jobcard). The app owns the
 -- recipient logic; RLS just requires a logged-in author.
 create policy notifications_insert on public.notifications
   for insert to authenticated

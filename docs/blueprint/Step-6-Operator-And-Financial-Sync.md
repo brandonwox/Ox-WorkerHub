@@ -42,7 +42,7 @@ So this step is **three targeted changes**, not a rebuild.
 ## Change 1 — Expose Job `flashingMaterial` to the Operator
 
 The Operator owns the Job and creates it; they should be able to set the site-wide
-flashing too (the PM can also edit it — Step 3).
+flashing too (the Field Super can also edit it — Step 3).
 
 - **Create Job modal** (`src/components/desktop/CreateJobModal.tsx`): add a
   `FormInput` for **"Flashing material (site-wide)"** (optional), and include
@@ -50,7 +50,7 @@ flashing too (the PM can also edit it — Step 3).
 - **Jobs table** (`(desktop)/jobs.tsx`): add an inline-editable flashing cell
   (same `JobcodeCell`-style commit-on-blur) calling
   `updateJob(job.id, { flashingMaterial })`, OR show it read-only if you prefer to
-  keep editing in the PM screen. At minimum it must be **settable at create time**.
+  keep editing in the Field Super screen. At minimum it must be **settable at create time**.
 
 This is the only Operator UI gap. People and Timesheets need no changes.
 
@@ -157,7 +157,7 @@ QuickBooks Time (payroll manager), never in this app.
 - **No in-app approval or status.** Nothing in the app approves a timesheet; a
   fresh log shows no badge. Status appears only after the sweep, as the send
   result. Approval is QuickBooks Time's job.
-- Operator may edit `qbtJobcodeId`; PM may not (keep that field off the PM screen).
+- Operator may edit `qbtJobcodeId`; Field Super may not (keep that field off the Field Super screen).
 
 ## Files touched
 

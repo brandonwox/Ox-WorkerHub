@@ -10,13 +10,9 @@ import {
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Crew, Jobcard, JobcardPriority, ScheduleAssignment } from '@/types';
-
-const PRIORITY_DOT: Record<JobcardPriority, string> = {
-  Low: colors.textTertiary,
-  Medium: colors.primary,
-  High: colors.danger,
-};
+import { Crew, Jobcard, ScheduleAssignment } from '@/types';
+import { withAlpha } from '@/utils/crewColors';
+import { priorityColor } from '@/utils/priority';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -24,11 +20,14 @@ interface Props {
   month: Date;
   onPrevMonth: () => void;
   onNextMonth: () => void;
-  viewingCrew: Crew | null;
-  /** Assignments already filtered to the viewed crew. */
-  assignmentsForCrew: ScheduleAssignment[];
+  /** The crew a placed card is assigned to (the assign target). */
+  activeCrew: Crew | null;
+  /** Assignments already filtered to the visible (toggled-on) crews. */
+  visibleAssignments: ScheduleAssignment[];
   jobcards: Jobcard[];
-  /** Dates a Daily Crew pulls one of this crew's members away (yyyy-MM-dd). */
+  /** Distinct color for a crew id, used to tint that crew's cards. */
+  colorForCrew: (crewId: string) => string;
+  /** Dates a Daily Crew pulls one of the active crew's members away (yyyy-MM-dd). */
   overrideDates: Set<string>;
   /** Dates a member would be double-booked across crews (yyyy-MM-dd). */
   doubleBookedDates: Set<string>;
@@ -38,14 +37,15 @@ interface Props {
   onUnassign: (assignmentId: string) => void;
 }
 
-/** Month grid showing the viewed crew's assignments per day. */
+/** Month grid showing the visible crews' assignments per day, colored by crew. */
 export function MonthCalendar({
   month,
   onPrevMonth,
   onNextMonth,
-  viewingCrew,
-  assignmentsForCrew,
+  activeCrew,
+  visibleAssignments,
   jobcards,
+  colorForCrew,
   overrideDates,
   doubleBookedDates,
   placing,
@@ -64,7 +64,9 @@ export function MonthCalendar({
         <View>
           <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
           <Text style={styles.viewing}>
-            {viewingCrew ? `Viewing ${viewingCrew.name}` : 'No crew selected'}
+            {activeCrew
+              ? `Assigning to ${activeCrew.name}`
+              : 'No active crew — tap one to assign'}
           </Text>
         </View>
         <View style={styles.navBtns}>
@@ -90,7 +92,7 @@ export function MonthCalendar({
           <Feather name="crosshair" size={14} color={colors.primary} />
           <Text style={styles.placingText}>
             Click a day to assign the selected jobcard
-            {viewingCrew ? ` to ${viewingCrew.name}` : ''}.
+            {activeCrew ? ` to ${activeCrew.name}` : ''}.
           </Text>
         </View>
       )}
@@ -110,7 +112,7 @@ export function MonthCalendar({
 
         {days.map((dayDate) => {
           const dateStr = format(dayDate, 'yyyy-MM-dd');
-          const dayAssignments = assignmentsForCrew.filter(
+          const dayAssignments = visibleAssignments.filter(
             (a) => a.date === dateStr
           );
           const isOverride = overrideDates.has(dateStr);
@@ -143,12 +145,22 @@ export function MonthCalendar({
                 {dayAssignments.map((a) => {
                   const card = cardById(a.jobcardId);
                   if (!card) return null;
+                  const crewColor = colorForCrew(a.crewId);
                   return (
-                    <View key={a.id} style={styles.placed}>
+                    <View
+                      key={a.id}
+                      style={[
+                        styles.placed,
+                        {
+                          backgroundColor: withAlpha(crewColor, 0.18),
+                          borderColor: withAlpha(crewColor, 0.55),
+                        },
+                      ]}
+                    >
                       <View
                         style={[
                           styles.placedDot,
-                          { backgroundColor: PRIORITY_DOT[card.priority] },
+                          { backgroundColor: priorityColor(card.priority) },
                         ]}
                       />
                       <Text style={styles.placedTitle} numberOfLines={1}>
@@ -307,6 +319,8 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: colors.surfaceLight,
     borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: 'transparent',
     paddingHorizontal: 4,
     paddingVertical: 3,
   },

@@ -21,6 +21,7 @@ import { AppNotification, NotificationType } from '@/types';
 /** Feather glyph per notification type. */
 const TYPE_ICON: Record<NotificationType, keyof typeof Feather.glyphMap> = {
   jobcard_now: 'alert-circle',
+  schedule_change: 'calendar',
 };
 
 function timeAgo(iso: string): string {

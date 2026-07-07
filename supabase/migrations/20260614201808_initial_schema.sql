@@ -14,7 +14,7 @@
 -- Enums
 -- ===========================================================================
 create type public.app_role as enum
-  ('installer', 'scheduler', 'operator', 'project_manager');
+  ('installer', 'scheduler', 'operator', 'field_super');
 
 -- ===========================================================================
 -- Private schema — helpers that bypass RLS without being reachable via the API.
@@ -186,29 +186,29 @@ create trigger workers_guard_role_rate
   before update on public.workers
   for each row execute function private.guard_worker_role_rate();
 
--- A project manager may edit only flashing_material on a job.
-create or replace function private.guard_job_pm_update()
+-- A field super may edit only flashing_material on a job.
+create or replace function private.guard_job_field_super_update()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 begin
-  if private.current_app_role() = 'project_manager' then
+  if private.current_app_role() = 'field_super' then
     if new.name is distinct from old.name
        or new.location is distinct from old.location
        or new.status is distinct from old.status
        or new.qbt_jobcode_id is distinct from old.qbt_jobcode_id then
-      raise exception 'Project managers may only edit flashing_material on a job';
+      raise exception 'Field supers may only edit flashing_material on a job';
     end if;
   end if;
   return new;
 end;
 $$;
 
-create trigger jobs_guard_pm_update
+create trigger jobs_guard_field_super_update
   before update on public.jobs
-  for each row execute function private.guard_job_pm_update();
+  for each row execute function private.guard_job_field_super_update();
 
 -- An installer may change only status / field_notes on a jobcard.
 create or replace function private.guard_jobcard_installer_update()
@@ -296,10 +296,10 @@ create policy jobs_update_operator on public.jobs
   for update to authenticated
   using ((select private.current_app_role()) = 'operator')
   with check ((select private.current_app_role()) = 'operator');
-create policy jobs_update_pm on public.jobs
+create policy jobs_update_field_super on public.jobs
   for update to authenticated
-  using ((select private.current_app_role()) = 'project_manager')
-  with check ((select private.current_app_role()) = 'project_manager'); -- columns limited by trigger
+  using ((select private.current_app_role()) = 'field_super')
+  with check ((select private.current_app_role()) = 'field_super'); -- columns limited by trigger
 create policy jobs_delete on public.jobs
   for delete to authenticated
   using ((select private.current_app_role()) = 'operator');
@@ -309,18 +309,18 @@ create policy jobcards_select on public.jobcards
   for select to authenticated using (true);
 create policy jobcards_insert on public.jobcards
   for insert to authenticated
-  with check ((select private.current_app_role()) = 'project_manager');
-create policy jobcards_update_pm on public.jobcards
+  with check ((select private.current_app_role()) = 'field_super');
+create policy jobcards_update_field_super on public.jobcards
   for update to authenticated
-  using ((select private.current_app_role()) = 'project_manager')
-  with check ((select private.current_app_role()) = 'project_manager');
+  using ((select private.current_app_role()) = 'field_super')
+  with check ((select private.current_app_role()) = 'field_super');
 create policy jobcards_update_installer on public.jobcards
   for update to authenticated
   using ((select private.current_app_role()) = 'installer')
   with check ((select private.current_app_role()) = 'installer'); -- columns limited by trigger
 create policy jobcards_delete on public.jobcards
   for delete to authenticated
-  using ((select private.current_app_role()) = 'project_manager');
+  using ((select private.current_app_role()) = 'field_super');
 
 -- --- crews / daily crews / members / assignments (scheduler writes) --------
 create policy crews_read on public.crews

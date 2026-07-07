@@ -16,7 +16,7 @@
 | 0 | Overview & conventions | 📘 Reference (not a build step) |
 | 1 | Domain Model Foundation | ✅ Done |
 | 2 | Crews & Scheduling Data Model | ✅ Done |
-| 3 | Project Manager Dashboard | ✅ Done |
+| 3 | Field Super Dashboard | ✅ Done |
 | 4 | Scheduler Dashboard | ✅ Done |
 | 5 | Installer Crew Agenda | ✅ Done |
 | 6 | Operator Gap-Closure & Financial Sync | ✅ Done |
@@ -60,11 +60,11 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 r
 
 ---
 
-## Step 3 — Project Manager Dashboard ✅
+## Step 3 — Field Super Dashboard ✅
 
 **Done**
-- `src/app/(desktop)/pm.tsx` rebuilt (placeholder replaced): role-gated to
-  `project_manager`; header with "N jobcards · M unassigned" + "Create jobcard".
+- `src/app/(desktop)/field-super-jobcards.tsx` rebuilt (placeholder replaced): role-gated to
+  `field_super`; header with "N jobcards · M unassigned" + "Create jobcard".
 - Section A — active Jobs table with inline-editable `flashingMaterial`
   (commit-on-blur → `updateJob`); nothing else on the Job is editable.
 - Section B — jobcards backlog (newest first): title, parent Job name, priority
@@ -164,7 +164,7 @@ runs all live deploy commands (`supabase db push`, `functions deploy`,
   `jobs`, `jobcards`, `crews`+`crew_members`, `daily_crews`+`daily_crew_members`,
   `schedule_assignments`, `timesheets`), `app_role` enum, a `private`
   `current_app_role()` SECURITY-DEFINER helper, installer-only crew triggers,
-  PM-flashing-only / installer-status-notes-only / operator-role-rate guards,
+  Field-Super-flashing-only / installer-status-notes-only / operator-role-rate guards,
   explicit GRANTs (new tables aren't auto-exposed since 2026-04-28), and RLS on
   every table.
 - Client library: `src/integrations/supabase/{config,client,auth,index}.ts`
@@ -270,7 +270,7 @@ during 7d.
   `AppNotification` + `NotificationType`; store slice `notifications` with
   `pushNotification` / `receiveNotification` / `markNotificationRead` /
   `markAllNotificationsRead` and the `useMyNotifications` / `useUnreadNotificationCount`
-  hooks. **First rule:** when a PM creates or edits a jobcard to priority **"Now"**,
+  hooks. **First rule:** when a Field Super creates or edits a jobcard to priority **"Now"**,
   the store pings every `scheduler` (transition-only on edit). Delivery: in backend
   mode one `notifications` row is inserted per recipient and streamed to the
   recipient's session over **Supabase realtime**; in local dev all recipients' rows

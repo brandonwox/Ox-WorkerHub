@@ -43,8 +43,8 @@ to QuickBooks Time. Wiring was parked at the user's request pending keys.
 | Store collection | Table | Key columns | RLS sketch |
 |---|---|---|---|
 | `workers[]` | `workers` | id, name, email, phone, role, trade_role, hourly_rate, status | All authed can read names/roles; `hourly_rate` readable only by self + operator; only operator writes role/rate. |
-| `jobs[]` | `jobs` | id, name, location, status, qbt_jobcode_id, flashing_material | Operator full write; PM may update **only** `flashing_material`; others read. |
-| `jobcards[]` | `jobcards` | id, job_id, title, address, date, status, priority, priority_order, flashing_material, materials, scope_of_work, field_notes, details | PM insert/update; installers update `status`/`field_notes` for cards assigned to their crew; scheduler reads. |
+| `jobs[]` | `jobs` | id, name, location, status, qbt_jobcode_id, flashing_material | Operator full write; Field Super may update **only** `flashing_material`; others read. |
+| `jobcards[]` | `jobcards` | id, job_id, title, address, date, status, priority, priority_order, flashing_material, materials, scope_of_work, field_notes, details | Field Super insert/update; installers update `status`/`field_notes` for cards assigned to their crew; scheduler reads. |
 | `crews[]` | `crews` | id, name | Scheduler write; others read. |
 | crew membership | `crew_members` | crew_id, installer_id | Scheduler write; **CHECK/trigger: installer_id must reference a worker with role='installer'.** |
 | `dailyCrews[]` | `daily_crews` (+ `daily_crew_members`) | id, date, name (+ members) | Scheduler write. Installers only. |

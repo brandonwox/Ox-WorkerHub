@@ -1,7 +1,7 @@
 -- Give the Operator write access to jobcards, crews, and scheduling.
 --
 -- The initial schema (20260614201808_initial_schema.sql) split every write
--- policy strictly by role: only a project_manager may write jobcards, and only
+-- policy strictly by role: only a field_super may write jobcards, and only
 -- a scheduler may write crews / daily crews / their members / assignments. In
 -- practice the Operator is the owner/admin and does ALL of this work, so every
 -- such write was being rejected by RLS. Because the store fires these writes
@@ -11,11 +11,11 @@
 --
 -- Operators already have full write access to jobs and workers; this extends the
 -- same admin reach to the remaining collections. The role-specific policies stay
--- in place (RLS permissive policies are OR'd), so a project_manager / scheduler
+-- in place (RLS permissive policies are OR'd), so a field_super / scheduler
 -- keeps exactly the access they had — the Operator is simply added alongside.
 --
 -- The existing column-guard triggers (guard_jobcard_installer_update, etc.) only
--- restrict installers/PMs, so an Operator update passes them untouched.
+-- restrict installers/field supers, so an Operator update passes them untouched.
 
 -- --- jobcards (Operator: full write) --------------------------------------
 create policy jobcards_insert_operator on public.jobcards

@@ -16,7 +16,7 @@ const ALLOWED_ROLES = [
   'installer',
   'scheduler',
   'operator',
-  'project_manager',
+  'field_super',
   'developer',
 ] as const;
 

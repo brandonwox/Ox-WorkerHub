@@ -22,7 +22,7 @@ import {
   READINESS_PRESETS,
 } from '@/types';
 
-/** Fields the PM may edit on an existing jobcard. */
+/** Fields the Field Super may edit on an existing jobcard. */
 export interface JobcardChanges {
   jobId: string;
   address: string;
@@ -44,6 +44,7 @@ interface Props {
   jobs: Job[];
   onClose: () => void;
   onSave: (id: string, changes: JobcardChanges) => void;
+  onDelete: (id: string) => void;
 }
 
 const MIN_TASK_LEN = 15;
@@ -52,7 +53,13 @@ const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
 const PRIORITY_OPTIONS = PRIORITY_PRESETS.map((p) => ({ value: p, label: p }));
 
-export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
+export function EditJobcardModal({
+  jobcard,
+  jobs,
+  onClose,
+  onSave,
+  onDelete,
+}: Props) {
   const [jobId, setJobId] = useState('');
   const [title, setTitle] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
@@ -64,6 +71,7 @@ export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
   const [materials, setMaterials] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Re-seed the form whenever a different jobcard is opened.
   useEffect(() => {
@@ -74,13 +82,14 @@ export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
     setTasks(jobcard.tasks && jobcard.tasks.length > 0 ? jobcard.tasks : ['']);
     setReadiness(jobcard.readiness ?? '');
     // A card already marked "Now" was confirmed when created — keep it confirmed
-    // so the PM isn't forced to re-check it on every edit.
+    // so the Field Super isn't forced to re-check it on every edit.
     setReadyConfirmed(jobcard.readiness === 'Now');
     setPriority(jobcard.priority ?? '');
     setFlashing(jobcard.flashingMaterial ?? '');
     setMaterials(jobcard.materials ?? '');
     setNotes(jobcard.notes ?? '');
     setError(null);
+    setConfirmDelete(false);
   }, [jobcard]);
 
   const jobOptions = useMemo(
@@ -151,6 +160,17 @@ export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
         : undefined,
       notes: notes.trim() || undefined,
     });
+    onClose();
+  };
+
+  const remove = () => {
+    if (!jobcard) return;
+    // Two-tap confirm — the first tap arms the button, the second deletes.
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    onDelete(jobcard.id);
     onClose();
   };
 
@@ -324,6 +344,31 @@ export function EditJobcardModal({ jobcard, jobs, onClose, onSave }: Props) {
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </ScrollView>
 
+          <Pressable
+            style={({ pressed }) => [
+              styles.deleteButton,
+              confirmDelete && styles.deleteButtonConfirm,
+              pressed && styles.pressed,
+            ]}
+            onPress={remove}
+          >
+            <Feather
+              name="trash-2"
+              size={15}
+              color={confirmDelete ? colors.textPrimary : colors.danger}
+            />
+            <Text
+              style={[
+                styles.deleteText,
+                confirmDelete && styles.deleteTextConfirm,
+              ]}
+            >
+              {confirmDelete
+                ? 'Tap again to delete this jobcard'
+                : 'Delete jobcard'}
+            </Text>
+          </Pressable>
+
           <View style={styles.actions}>
             <Pressable style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.cancelText}>Cancel</Text>
@@ -469,6 +514,30 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  deleteButtonConfirm: {
+    backgroundColor: colors.danger,
+  },
+  deleteText: {
+    color: colors.danger,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  deleteTextConfirm: {
+    color: colors.textPrimary,
+  },
+  pressed: {
+    opacity: 0.85,
   },
   actions: {
     flexDirection: 'row',
