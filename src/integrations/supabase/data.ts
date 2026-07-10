@@ -599,6 +599,18 @@ export async function uploadJobPhoto(
   localUri: string,
   storagePath: string
 ): Promise<void> {
+  // Storage must see the signed-in worker: with no session supabase-js silently
+  // falls back to the anon key and the server rejects the object with a bare
+  // "new row violates row-level security policy". Check up front (recovering
+  // via an explicit refresh when possible) so the queue logs the real problem.
+  const auth = getSupabase().auth;
+  let session = (await auth.getSession()).data.session;
+  if (!session) session = (await auth.refreshSession()).data.session;
+  if (!session) {
+    throw new Error(
+      'No auth session — photo upload would run as anon. Sign out and back in.'
+    );
+  }
   let body: Blob | ArrayBuffer;
   if (Platform.OS === 'web') {
     body = await (await fetch(localUri)).blob();
