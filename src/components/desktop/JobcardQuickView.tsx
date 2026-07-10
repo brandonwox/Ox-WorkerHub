@@ -605,7 +605,7 @@ export function JobcardQuickView({
               </View>
               {pendingReadinessNow && (
                 <ConfirmBar
-                  message="Mark ready NOW? Double-check the job and tasks are ready for installers to arrive."
+                  message="You confirm the job and tasks are ready?"
                   confirmLabel="It's ready"
                   onConfirm={confirmReadinessNow}
                   onCancel={() => setPendingReadinessNow(false)}

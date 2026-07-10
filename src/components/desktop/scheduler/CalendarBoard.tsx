@@ -295,6 +295,7 @@ export function CalendarBoard({ canAssign }: Props) {
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
             onUnassign={handleUnassign}
+            onOpenCard={setViewingId}
             canUnassign={canAssign}
           />
         </View>

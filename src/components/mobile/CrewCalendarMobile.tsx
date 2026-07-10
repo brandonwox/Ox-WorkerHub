@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { format, isToday } from 'date-fns';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -40,6 +41,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
   const jobs = useAppStore((s) => s.jobs);
   const assignJobcard = useAppStore((s) => s.assignJobcard);
   const unassignJobcard = useAppStore((s) => s.unassignJobcard);
+  const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [assignTarget, setAssignTarget] = useState<Crew | DailyCrew | null>(null);
@@ -147,7 +149,11 @@ export function CrewCalendarMobile({ canAssign }: Props) {
                     return (
                       <View key={assignment.id} style={styles.assignedRow}>
                         <View style={styles.assignedCard}>
-                          <MobileJobcardItem jobcard={card} jobName={jobNameFor(card)} />
+                          <MobileJobcardItem
+                            jobcard={card}
+                            jobName={jobNameFor(card)}
+                            onPress={() => router.push(`/job/${card.id}`)}
+                          />
                         </View>
                         {canAssign && (
                           <Pressable

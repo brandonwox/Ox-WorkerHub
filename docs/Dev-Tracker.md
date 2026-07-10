@@ -4,11 +4,23 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+jobcard view on web: 
+1. the priority "Now" should be color coded to be red.
+2. the color of the rounded square at the top left should reflect the color of the crew the jobcard is assigned to. if not assigned to a crew, the rounded square should be gray and have a slash through it. hovering over the rounded square should show the assigned crew. clicking the square allows you to change the crew the jobcard is assigned to (the date the jobcard is scheduled on does not change, only the assigned crew.)
+3. move the created on date to the very bottom of the jobcard info (center aligned). Keep the row in the jobcard for the date, only now it should only show the date the jobcard is scheduled for. and it shouldn't show "On Calendar" since it'll just show the date instead. It should show "Not on calendar" if the jobcard is not on the calendar. but get rid of the pill (custom bg color and border)
+
+jobcard -> clicking delete icon shows the delete confirmation. the delete confirmation should go away when the user clicks elsewhere, or if they do not click it after 4 seconds.
+
+installers on mobile (and elsewhere) -> jobcards -> if a dropdown is open and the user clicks elsewhere the dropdown should go away.
+
+workers on mobile: clicking into an editable text input pulls up the keyboard, but when the keyboard is open I can't scroll down enough to see the bottom of what i need to see. (this is a problem for installers viewing jobcards, and possibly elsewhere.)
+
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
 2. The finance manager should have a jobs tab.
 3. each job card in the finance-manager-jobs tab should show the total assigned labor budget for the job. It should also show how much of the labor budget has been paid out.
-4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job.
+4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job. and those numbers should show up for the finance manager.
+5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
 
 each task created in the jobcard by the scheduler/field super should be a task that the installers have to check off on their phone. (installer roles -> mobile view -> jobcard -> show each task in a list. each task can be checked off as completed or issues can be created for each task.) (move the issues list, rather than a separate row in the jobcard, the issues list should be per task, issues can be added per task.)
 

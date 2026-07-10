@@ -31,6 +31,8 @@ interface Props {
   placing: boolean;
   onAssignToDate: (date: string) => void;
   onUnassign: (assignmentId: string) => void;
+  /** Open a placed jobcard (same quick view the Jobcards pages use). */
+  onOpenCard: (jobcardId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
   canUnassign?: boolean;
 }
@@ -47,6 +49,7 @@ export function MonthCalendar({
   placing,
   onAssignToDate,
   onUnassign,
+  onOpenCard,
   canUnassign = true,
 }: Props) {
   const monthStart = startOfMonth(month);
@@ -152,14 +155,20 @@ export function MonthCalendar({
                   if (!card) return null;
                   const crewColor = colorForCrew(a.crewId);
                   return (
-                    <View
+                    <Pressable
                       key={a.id}
-                      style={[
+                      onPress={
+                        placing
+                          ? () => onAssignToDate(dateStr)
+                          : () => onOpenCard(card.id)
+                      }
+                      style={({ pressed }) => [
                         styles.placed,
                         {
                           backgroundColor: withAlpha(crewColor, 0.18),
                           borderColor: withAlpha(crewColor, 0.55),
                         },
+                        pressed && styles.pressed,
                       ]}
                     >
                       <View
@@ -184,7 +193,7 @@ export function MonthCalendar({
                           />
                         </Pressable>
                       )}
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
