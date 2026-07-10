@@ -127,7 +127,7 @@ const seededJobcards: Jobcard[] = [
     date: day(0),
     startTime: at(0, 7),
     endTime: at(0, 11, 30),
-    status: 'In Progress',
+    status: 'Made Progress',
     priorityOrder: 1,
     priority: 'High',
     scopeOfWork:
@@ -146,7 +146,7 @@ const seededJobcards: Jobcard[] = [
     date: day(0),
     startTime: at(0, 12, 30),
     endTime: at(0, 16),
-    status: 'Upcoming',
+    status: 'Untouched',
     priorityOrder: 2,
     priority: 'Medium',
     scopeOfWork: 'Replace cracked curtain-wall units on Tower B, floors 4–6.',
@@ -163,7 +163,7 @@ const seededJobcards: Jobcard[] = [
     address: '88 Oakdale Ave, Evanston, IL',
     date: day(0),
     // No time window assigned — worker fits this in around their other jobs.
-    status: 'Upcoming',
+    status: 'Untouched',
     priorityOrder: 3,
     priority: 'Low',
     details: {
@@ -197,7 +197,7 @@ const seededJobcards: Jobcard[] = [
     date: day(1),
     startTime: at(1, 7, 30),
     endTime: at(1, 13),
-    status: 'Upcoming',
+    status: 'Untouched',
     priorityOrder: 1,
     priority: 'High',
     scopeOfWork: 'Mount lobby mirror wall; level and anchor to substrate.',
@@ -213,7 +213,7 @@ const seededJobcards: Jobcard[] = [
     address: '1255 S Prairie Ave, Chicago, IL',
     date: day(1),
     // No time window assigned.
-    status: 'Upcoming',
+    status: 'Untouched',
     priorityOrder: 2,
     priority: 'Low',
     details: {
@@ -230,7 +230,7 @@ const seededJobcards: Jobcard[] = [
     date: day(2),
     startTime: at(2, 8),
     endTime: at(2, 12),
-    status: 'Upcoming',
+    status: 'Untouched',
     priorityOrder: 1,
     priority: 'Medium',
     details: {

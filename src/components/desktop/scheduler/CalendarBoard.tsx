@@ -3,16 +3,13 @@ import { addMonths, format, parseISO, subMonths } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {
-  EditJobcardModal,
-  JobcardChanges,
-} from '@/components/desktop/EditJobcardModal';
+import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
 import { Backlog } from '@/components/desktop/scheduler/Backlog';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Crew, DailyCrew, Jobcard } from '@/types';
+import { Crew, DailyCrew } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 
 interface Props {
@@ -36,7 +33,6 @@ export function CalendarBoard({ canAssign }: Props) {
   const jobs = useAppStore((s) => s.jobs);
   const assignJobcard = useAppStore((s) => s.assignJobcard);
   const unassignJobcard = useAppStore((s) => s.unassignJobcard);
-  const updateJobcard = useAppStore((s) => s.updateJobcard);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const flash = useAppStore((s) => s.flash);
 
@@ -51,7 +47,7 @@ export function CalendarBoard({ canAssign }: Props) {
   const [multiAssign, setMultiAssign] = useState(false);
   const [placingCardId, setPlacingCardId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
-  const [editing, setEditing] = useState<Jobcard | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
 
   // Permanent crews plus every Daily Crew (one-day overrides), so daily crews
@@ -178,19 +174,6 @@ export function CalendarBoard({ canAssign }: Props) {
     [assignments, hiddenCrewIds]
   );
 
-  // Active jobs plus the edited card's own parent (which may be archived) so an
-  // edit never silently drops an archived-job parent.
-  const activeJobs = useMemo(
-    () => jobs.filter((j) => j.status === 'Active'),
-    [jobs]
-  );
-  const editJobOptions = useMemo(() => {
-    if (!editing?.jobId) return activeJobs;
-    if (activeJobs.some((j) => j.id === editing.jobId)) return activeJobs;
-    const parent = jobs.find((j) => j.id === editing.jobId);
-    return parent ? [parent, ...activeJobs] : activeJobs;
-  }, [editing, activeJobs, jobs]);
-
   const assignToDate = (date: string) => {
     if (!placingCardId) return;
     if (activeCrews.length === 0) {
@@ -223,13 +206,8 @@ export function CalendarBoard({ canAssign }: Props) {
   const togglePlacing = (cardId: string) =>
     setPlacingCardId((prev) => (prev === cardId ? null : cardId));
 
-  const handleEditSave = (id: string, changes: JobcardChanges) => {
-    updateJobcard(id, changes);
-    flash(`Jobcard "${changes.title}" updated`, 'success');
-  };
-
   const handleDelete = (id: string) => {
-    const title = editing?.title;
+    const title = jobcards.find((c) => c.id === id)?.title;
     deleteJobcard(id);
     flash(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted', 'success');
   };
@@ -326,7 +304,7 @@ export function CalendarBoard({ canAssign }: Props) {
             jobNameFor={jobNameFor}
             placingCardId={placingCardId}
             onTogglePlacing={togglePlacing}
-            onOpenCard={setEditing}
+            onOpenCard={(card) => setViewingId(card.id)}
             canSchedule={canAssign}
             activeCrews={activeCrews.map((c) => ({
               id: c.id,
@@ -344,11 +322,13 @@ export function CalendarBoard({ canAssign }: Props) {
         />
       )}
 
-      <EditJobcardModal
-        jobcard={editing}
-        jobs={editJobOptions}
-        onClose={() => setEditing(null)}
-        onSave={handleEditSave}
+      <JobcardQuickView
+        jobcardId={viewingId}
+        jobs={jobs}
+        scheduled={
+          viewingId != null && assignments.some((a) => a.jobcardId === viewingId)
+        }
+        onClose={() => setViewingId(null)}
         onDelete={handleDelete}
       />
     </View>

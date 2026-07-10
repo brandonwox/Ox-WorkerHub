@@ -7,10 +7,7 @@ import {
   CreateJobcardModal,
   NewJobcardInput,
 } from '@/components/desktop/CreateJobcardModal';
-import {
-  EditJobcardModal,
-  JobcardChanges,
-} from '@/components/desktop/EditJobcardModal';
+import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
 import {
   JobcardFilters,
   ScheduleFilter,
@@ -19,7 +16,7 @@ import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Job, Jobcard, PRIORITY_PRESETS } from '@/types';
+import { Job, PRIORITY_PRESETS } from '@/types';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
@@ -37,12 +34,11 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
   const allJobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
   const addJobcard = useAppStore((s) => s.addJobcard);
-  const updateJobcard = useAppStore((s) => s.updateJobcard);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const flash = useAppStore((s) => s.flash);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<Jobcard | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [photosJob, setPhotosJob] = useState<Job | null>(null);
 
   // Filters / sort (all stack).
@@ -61,15 +57,6 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
     () => jobs.filter((j) => j.status === 'Active'),
     [jobs]
   );
-
-  // The edit form offers active jobs plus the card's own parent (which may be
-  // archived) so an edit never silently drops an archived-job parent.
-  const editJobOptions = useMemo(() => {
-    if (!editing?.jobId) return activeJobs;
-    if (activeJobs.some((j) => j.id === editing.jobId)) return activeJobs;
-    const parent = jobs.find((j) => j.id === editing.jobId);
-    return parent ? [parent, ...activeJobs] : activeJobs;
-  }, [editing, activeJobs, jobs]);
 
   // "On the calendar" = the jobcard has a row in `assignments` (Scheduler placed it).
   const scheduledIds = useMemo(
@@ -168,13 +155,8 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
     flash(`Jobcard "${input.title}" created`, 'success');
   };
 
-  const handleEditSave = (id: string, changes: JobcardChanges) => {
-    updateJobcard(id, changes);
-    flash(`Jobcard "${changes.title}" updated`, 'success');
-  };
-
   const handleDelete = (id: string) => {
-    const title = editing?.title;
+    const title = allJobcards.find((c) => c.id === id)?.title;
     deleteJobcard(id);
     flash(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted', 'success');
   };
@@ -256,7 +238,7 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
                       jobcard={card}
                       jobName={group.name}
                       scheduled={scheduledIds.has(card.id)}
-                      onPress={() => setEditing(card)}
+                      onPress={() => setViewingId(card.id)}
                     />
                   ))}
                 </View>
@@ -272,7 +254,7 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
                 jobcard={card}
                 jobName={jobNameFor(card.jobId)}
                 scheduled={scheduledIds.has(card.id)}
-                onPress={() => setEditing(card)}
+                onPress={() => setViewingId(card.id)}
               />
             ))}
           </View>
@@ -286,11 +268,11 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
         onSubmit={handleCreate}
       />
 
-      <EditJobcardModal
-        jobcard={editing}
-        jobs={editJobOptions}
-        onClose={() => setEditing(null)}
-        onSave={handleEditSave}
+      <JobcardQuickView
+        jobcardId={viewingId}
+        jobs={jobs}
+        scheduled={viewingId != null && scheduledIds.has(viewingId)}
+        onClose={() => setViewingId(null)}
         onDelete={handleDelete}
       />
 

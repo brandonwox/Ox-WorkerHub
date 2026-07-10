@@ -22,13 +22,14 @@ import { colors, fonts, radii, spacing } from '@/theme';
  * In-app camera for job photos. Stays open across shots so an installer can
  * document a whole site in one go: every capture saves instantly (into the
  * upload queue), the latest shot shows as a thumbnail bottom-left with a note
- * input beside it, and X closes the camera. `jobcardId` (optional) links every
- * photo taken in this session to that jobcard.
+ * input beside it, and X closes the camera. `jobcardId` / `issueId` (optional)
+ * link every photo taken in this session to that jobcard / issue.
  */
 export default function JobCameraScreen() {
-  const { jobId, jobcardId } = useLocalSearchParams<{
+  const { jobId, jobcardId, issueId } = useLocalSearchParams<{
     jobId: string;
     jobcardId?: string;
+    issueId?: string;
   }>();
   const router = useRouter();
   const job = useAppStore((s) => s.jobs.find((j) => j.id === jobId));
@@ -96,6 +97,7 @@ export default function JobCameraScreen() {
       const [photoId] = await addJobPhotos({
         jobId,
         jobcardId: jobcardId || undefined,
+        issueId: issueId || undefined,
         localUris: [compressed],
       });
       if (photoId) {

@@ -4,6 +4,8 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+each task created in the jobcard by the scheduler/field super should be a task that the installers have to check off on their phone. (installer roles -> mobile view -> jobcard -> show each task in a list. each task can be checked off as completed or issues can be created for each task.) (move the issues list, rather than a separate row in the jobcard, the issues list should be per task, issues can be added per task.)
+
 installer camera: add zoom buttons (0.5 if available on their device or 0.7, 1, 1.5, 3). The user should also be able to grab and drag the numbers to scroll through more defined zoom ranging from the most zoomed out their device works on, and all the way to 5x zoom in.
 
 photos on mobile: users on mobile should be able to pinch to zoom in/out on any photo while viewing it on mobile, no matter where they're viewing from.

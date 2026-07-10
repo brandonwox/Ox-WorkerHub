@@ -9,6 +9,8 @@ import {
   Jobcard,
   JobcardPriority,
   JobcardStatus,
+  JobIssue,
+  JobIssueStatus,
   JobPhoto,
   JobScope,
   JobStatus,
@@ -112,10 +114,23 @@ interface JobPhotoRow {
   id: string;
   job_id: string;
   jobcard_id: string | null;
+  issue_id: string | null;
   worker_id: string;
   storage_path: string;
   note: string | null;
   taken_at: string;
+}
+
+interface JobIssueRow {
+  id: string;
+  job_id: string;
+  jobcard_id: string | null;
+  worker_id: string;
+  description: string;
+  status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
 }
 
 // --- Mappers (row -> domain) -------------------------------------------------
@@ -196,11 +211,26 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
     id: r.id,
     jobId: r.job_id,
     jobcardId: r.jobcard_id ?? undefined,
+    issueId: r.issue_id ?? undefined,
     workerId: r.worker_id,
     storagePath: r.storage_path,
     url: jobPhotoUrl(r.storage_path),
     note: r.note ?? undefined,
     takenAt: r.taken_at,
+  };
+}
+
+function rowToJobIssue(r: JobIssueRow): JobIssue {
+  return {
+    id: r.id,
+    jobId: r.job_id,
+    jobcardId: r.jobcard_id ?? undefined,
+    workerId: r.worker_id,
+    description: r.description,
+    status: r.status as JobIssueStatus,
+    resolvedById: r.resolved_by ?? undefined,
+    resolvedAt: r.resolved_at ?? undefined,
+    createdAt: r.created_at,
   };
 }
 
@@ -215,6 +245,7 @@ export interface BackendData {
   assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
   jobPhotos: JobPhoto[];
+  jobIssues: JobIssue[];
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -233,6 +264,7 @@ export async function fetchAllData(): Promise<BackendData> {
     assignmentsR,
     timesheetsR,
     jobPhotosR,
+    jobIssuesR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -245,6 +277,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('schedule_assignments').select('*'),
     sb.from('timesheets').select('*'),
     sb.from('job_photos').select('*'),
+    sb.from('job_issues').select('*'),
   ]);
 
   const firstError =
@@ -263,6 +296,10 @@ export async function fetchAllData(): Promise<BackendData> {
   // yet still hydrates everything else (mirrors how notifications degrade).
   if (jobPhotosR.error) {
     console.warn('Job photos load failed; none shown.', jobPhotosR.error.message);
+  }
+  // Issues degrade the same way while their migration hasn't run yet.
+  if (jobIssuesR.error) {
+    console.warn('Job issues load failed; none shown.', jobIssuesR.error.message);
   }
 
   // Group Field Super assignments by job so each Job carries its own
@@ -312,6 +349,7 @@ export async function fetchAllData(): Promise<BackendData> {
     ),
     logs: ((timesheetsR.data ?? []) as TimesheetRow[]).map(rowToTimesheet),
     jobPhotos: ((jobPhotosR.data ?? []) as JobPhotoRow[]).map(rowToJobPhoto),
+    jobIssues: ((jobIssuesR.data ?? []) as JobIssueRow[]).map(rowToJobIssue),
   };
 }
 
@@ -639,6 +677,7 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
         id: photo.id,
         job_id: photo.jobId,
         jobcard_id: photo.jobcardId ?? null,
+        issue_id: photo.issueId ?? null,
         worker_id: photo.workerId,
         storage_path: photo.storagePath,
         note: photo.note ?? null,
@@ -646,6 +685,41 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
       })
     ).error
   );
+}
+
+// --- Job issues ----------------------------------------------------------------
+
+function jobIssueToRow(issue: JobIssue) {
+  return {
+    id: issue.id,
+    job_id: issue.jobId,
+    jobcard_id: issue.jobcardId ?? null,
+    worker_id: issue.workerId,
+    description: issue.description,
+    status: issue.status,
+    resolved_by: issue.resolvedById ?? null,
+    resolved_at: issue.resolvedAt ?? null,
+    created_at: issue.createdAt,
+  };
+}
+
+export async function insertJobIssue(issue: JobIssue): Promise<void> {
+  check((await getSupabase().from('job_issues').insert(jobIssueToRow(issue))).error);
+}
+
+export async function updateJobIssue(issue: JobIssue): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_issues')
+        .update(jobIssueToRow(issue))
+        .eq('id', issue.id)
+    ).error
+  );
+}
+
+export async function deleteJobIssue(id: string): Promise<void> {
+  check((await getSupabase().from('job_issues').delete().eq('id', id)).error);
 }
 
 export async function updateJobPhotoNote(
@@ -716,6 +790,7 @@ const REALTIME_TABLES = [
   'schedule_assignments',
   'timesheets',
   'job_photos',
+  'job_issues',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
+import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
@@ -21,19 +22,12 @@ import {
   DisplayPhoto,
   useJobcardPhotos,
 } from '@/components/photos/useJobPhotos';
+import { jobcardStatusColors } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { JobcardStatus } from '@/types';
+import { JOBCARD_STATUSES } from '@/types';
 import { formatJobWindow } from '@/utils/time';
-
-const STATUSES: JobcardStatus[] = ['Upcoming', 'In Progress', 'Finished'];
-
-const statusColors: Record<JobcardStatus, { bg: string; fg: string }> = {
-  Upcoming: { bg: colors.primaryDim, fg: colors.primary },
-  'In Progress': { bg: colors.warningDim, fg: colors.warning },
-  Finished: { bg: colors.successDim, fg: colors.success },
-};
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,7 +40,17 @@ export default function JobDetailsScreen() {
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
   const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
+  const addJobIssue = useAppStore((s) => s.addJobIssue);
+  const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobcardPhotos(job?.id);
+  // This card's issues, newest first (right under the + that created them).
+  const issues = useMemo(
+    () =>
+      jobIssues
+        .filter((issue) => issue.jobcardId === job?.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [jobIssues, job?.id]
+  );
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
   const [picking, setPicking] = useState(false);
@@ -64,22 +68,85 @@ export default function JobDetailsScreen() {
     );
   }
 
-  const palette = statusColors[job.status];
+  const palette =
+    jobcardStatusColors[job.status] ?? jobcardStatusColors.Untouched;
   const timeWindow = formatJobWindow(job.startTime, job.endTime);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.closeButton,
-            pressed && styles.closePressed,
-          ]}
-          hitSlop={12}
-          onPress={() => router.back()}
-        >
-          <Feather name="x" size={28} color={colors.textPrimary} />
-        </Pressable>
+        <View style={styles.topRow}>
+          <Pressable
+            style={({ pressed }) => [pressed && styles.closePressed]}
+            hitSlop={12}
+            onPress={() => router.back()}
+          >
+            <Feather name="x" size={28} color={colors.textPrimary} />
+          </Pressable>
+          <View ref={statusWrapRef} style={styles.statusWrap}>
+            <Pressable
+              style={[styles.statusPill, { backgroundColor: palette.bg }]}
+              onPress={() => setStatusMenuOpen((open) => !open)}
+            >
+              <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                {job.status}
+              </Text>
+              <Feather
+                name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
+                size={13}
+                color={palette.fg}
+              />
+            </Pressable>
+            <DropdownPortal
+              anchorRef={statusWrapRef}
+              open={statusMenuOpen}
+              onClose={() => setStatusMenuOpen(false)}
+              align="right"
+              minWidth={170}
+            >
+              <View style={styles.statusMenu}>
+                {JOBCARD_STATUSES.map((status) => {
+                  const active = job.status === status;
+                  return (
+                    <Pressable
+                      key={status}
+                      style={({ pressed }) => [
+                        styles.statusMenuItem,
+                        pressed && styles.statusMenuItemPressed,
+                      ]}
+                      onPress={() => {
+                        setJobcardStatus(job.id, status);
+                        setStatusMenuOpen(false);
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: jobcardStatusColors[status].fg },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.statusMenuText,
+                          active && styles.statusMenuTextActive,
+                        ]}
+                      >
+                        {status}
+                      </Text>
+                      {active && (
+                        <Feather
+                          name="check"
+                          size={14}
+                          color={colors.primary}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </DropdownPortal>
+          </View>
+        </View>
 
         <View style={styles.header}>
           {parentJob && (
@@ -95,72 +162,7 @@ export default function JobDetailsScreen() {
               <Text style={styles.parentJobLink}>{parentJob.name}</Text>
             </Pressable>
           )}
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>{job.title}</Text>
-            <View ref={statusWrapRef} style={styles.statusWrap}>
-              <Pressable
-                style={[styles.statusPill, { backgroundColor: palette.bg }]}
-                onPress={() => setStatusMenuOpen((open) => !open)}
-              >
-                <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                  {job.status}
-                </Text>
-                <Feather
-                  name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
-                  size={13}
-                  color={palette.fg}
-                />
-              </Pressable>
-              <DropdownPortal
-                anchorRef={statusWrapRef}
-                open={statusMenuOpen}
-                onClose={() => setStatusMenuOpen(false)}
-                align="right"
-                minWidth={150}
-              >
-                <View style={styles.statusMenu}>
-                  {STATUSES.map((status) => {
-                    const active = job.status === status;
-                    return (
-                      <Pressable
-                        key={status}
-                        style={({ pressed }) => [
-                          styles.statusMenuItem,
-                          pressed && styles.statusMenuItemPressed,
-                        ]}
-                        onPress={() => {
-                          setJobcardStatus(job.id, status);
-                          setStatusMenuOpen(false);
-                        }}
-                      >
-                        <View
-                          style={[
-                            styles.statusDot,
-                            { backgroundColor: statusColors[status].fg },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.statusMenuText,
-                            active && styles.statusMenuTextActive,
-                          ]}
-                        >
-                          {status}
-                        </Text>
-                        {active && (
-                          <Feather
-                            name="check"
-                            size={14}
-                            color={colors.primary}
-                          />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </DropdownPortal>
-            </View>
-          </View>
+          <Text style={styles.title}>{job.title}</Text>
         </View>
 
         <View style={styles.section}>
@@ -293,6 +295,51 @@ export default function JobDetailsScreen() {
             )}
           </View>
         )}
+
+        {/* Field issues raised on this card. Like photos, they belong to the
+            parent job (its page lists them all) — so legacy cards without a
+            parent can't raise one. */}
+        {job.jobId && (
+          <View style={styles.section}>
+            <View style={[styles.infoRow, styles.issuesHeaderRow]}>
+              <View style={styles.infoIcon}>
+                <Feather
+                  name="alert-triangle"
+                  size={16}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <View style={styles.infoText}>
+                <Text style={styles.infoLabel}>Issues</Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.addIssueButton,
+                  pressed && styles.closePressed,
+                ]}
+                hitSlop={8}
+                onPress={() =>
+                  addJobIssue({ jobId: job.jobId!, jobcardId: job.id })
+                }
+              >
+                <Feather name="plus" size={20} color={colors.primary} />
+              </Pressable>
+            </View>
+            {issues.map((issue) => (
+              <IssueCard
+                key={issue.id}
+                issue={issue}
+                editable
+                onPhotoPress={(photo, all) =>
+                  setViewer({
+                    photos: all,
+                    index: all.findIndex((p) => p.id === photo.id),
+                  })
+                }
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <PhotoViewerModal
@@ -345,32 +392,40 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-  closeButton: {
-    alignSelf: 'flex-start',
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: -spacing.sm,
+    zIndex: 10,
   },
   closePressed: {
     opacity: 0.6,
   },
   header: {
     gap: 2,
-    zIndex: 10,
   },
   parentJobLink: {
     color: colors.primary,
     fontFamily: fonts.medium,
     fontSize: 12,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
   title: {
-    flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 22,
+  },
+  issuesHeaderRow: {
+    alignItems: 'center',
+  },
+  addIssueButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusWrap: {
     position: 'relative',
@@ -383,7 +438,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    marginTop: 3,
   },
   statusPillText: {
     fontFamily: fonts.semiBold,

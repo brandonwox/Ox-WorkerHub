@@ -22,6 +22,7 @@ import {
   Job,
   Jobcard,
   JobcardStatus,
+  JobIssue,
   JobPhoto,
   JobStatus,
   NotificationType,
@@ -299,6 +300,8 @@ interface AppState {
   logs: TimesheetLog[];
   /** Jobsite photos hydrated from the backend (see also pendingPhotos). */
   jobPhotos: JobPhoto[];
+  /** Installer-raised field issues (children of jobs, linked to jobcards). */
+  jobIssues: JobIssue[];
   /**
    * Photos captured on THIS device still waiting to upload. Separate from
    * `jobPhotos` so a realtime refetch never wipes the queue; uploads retry
@@ -455,6 +458,7 @@ interface AppState {
   addJobPhotos: (input: {
     jobId: string;
     jobcardId?: string;
+    issueId?: string;
     localUris: string[];
   }) => Promise<string[]>;
   /** Set/replace the caption on a photo (pending or uploaded). Owner-only in the UI. */
@@ -470,6 +474,20 @@ interface AppState {
    * job shows it. Returns false when the upload failed.
    */
   setJobFlashingPhoto: (jobId: string, localUri: string) => Promise<boolean>;
+
+  // --- Job issues ---
+  /**
+   * Raise a new (empty) issue on a job from a jobcard's screen. Returns the
+   * created record so the UI can focus its description input, or null when
+   * signed out.
+   */
+  addJobIssue: (input: { jobId: string; jobcardId?: string }) => JobIssue | null;
+  /** Set/replace an issue's description (creator-only in the UI). */
+  updateJobIssueDescription: (id: string, description: string) => void;
+  /** Field Super: mark an issue resolved (or reopen it). */
+  setJobIssueResolved: (id: string, resolved: boolean) => void;
+  /** Delete an issue. Its photos survive as plain job photos. */
+  deleteJobIssue: (id: string) => void;
 
   // --- Timesheets → QuickBooks Time (Operator visibility) ---
   /**
@@ -516,6 +534,7 @@ let nextLogId = 100;
 let nextWorkerId = 100;
 let nextJobId = 100;
 let nextJobcardId = 100;
+let nextIssueId = 100;
 let nextCrewId = 100;
 let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
@@ -540,6 +559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   assignments: [],
   logs: [],
   jobPhotos: [],
+  jobIssues: [],
   pendingPhotos: [],
   notifications: [],
   savedTick: 0,
@@ -591,6 +611,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       assignments: seed.mockAssignments,
       logs: seed.mockLogs,
       jobPhotos: [],
+      jobIssues: [],
       pendingPhotos: [],
       devMode: true,
       devBaseUserId: seed.DEVELOPER_ID,
@@ -622,6 +643,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       assignments: data.assignments,
       logs: data.logs,
       jobPhotos: data.jobPhotos,
+      jobIssues: data.jobIssues,
     });
     // Resume photo uploads that were still queued when the app last closed
     // (their files were stashed in app storage). Restored entries are this
@@ -681,6 +703,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       assignments: data.assignments,
       logs: data.logs,
       jobPhotos: data.jobPhotos,
+      jobIssues: data.jobIssues,
     });
   },
 
@@ -706,6 +729,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Pending photo files/queue stay stashed on disk — they resume when
       // their owner signs back in (restorePendingPhotos filters by worker).
       jobPhotos: [],
+      jobIssues: [],
       pendingPhotos: [],
       notifications: [],
       devMode: false,
@@ -872,7 +896,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const created: Jobcard = {
       ...card,
       id: card.id ?? (isBackend ? uuid() : `jc-${nextJobcardId++}`),
-      status: card.status ?? 'Upcoming',
+      status: card.status ?? 'Untouched',
       priority: card.priority ?? 'Medium',
       priorityOrder: card.priorityOrder ?? maxOrderOnDate + 1,
       flashingMaterial:
@@ -1244,6 +1268,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           id,
           jobId: input.jobId,
           jobcardId: input.jobcardId,
+          issueId: input.issueId,
           workerId: me.id,
           localUri: stashed,
           takenAt: new Date().toISOString(),
@@ -1256,6 +1281,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           id,
           jobId: input.jobId,
           jobcardId: input.jobcardId,
+          issueId: input.issueId,
           workerId: me.id,
           storagePath: '',
           url: stashed,
@@ -1353,6 +1379,80 @@ export const useAppStore = create<AppState>((set, get) => ({
     // The replaced object is unreferenced now — clean it up best-effort.
     if (previousPath) void backend.removePhotoObject(previousPath);
     return true;
+  },
+
+  addJobIssue: (input) => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return null;
+    const isBackend = backendActive(state);
+    const created: JobIssue = {
+      id: isBackend ? uuid() : `iss-${nextIssueId++}`,
+      jobId: input.jobId,
+      jobcardId: input.jobcardId,
+      workerId: me.id,
+      description: '',
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    };
+    set({ jobIssues: [created, ...state.jobIssues] });
+    if (isBackend) write(backend.insertJobIssue(created));
+    return created;
+  },
+
+  updateJobIssueDescription: (id, description) => {
+    let updated: JobIssue | undefined;
+    set((state) => ({
+      jobIssues: state.jobIssues.map((issue) => {
+        if (issue.id !== id) return issue;
+        updated = { ...issue, description };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobIssue(updated));
+  },
+
+  setJobIssueResolved: (id, resolved) => {
+    const me = currentWorkerOf(get());
+    let updated: JobIssue | undefined;
+    set((state) => ({
+      jobIssues: state.jobIssues.map((issue) => {
+        if (issue.id !== id) return issue;
+        updated = resolved
+          ? {
+              ...issue,
+              status: 'resolved',
+              resolvedById: me?.id,
+              resolvedAt: new Date().toISOString(),
+            }
+          : {
+              ...issue,
+              status: 'open',
+              resolvedById: undefined,
+              resolvedAt: undefined,
+            };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobIssue(updated));
+  },
+
+  deleteJobIssue: (id) => {
+    set((state) => ({
+      jobIssues: state.jobIssues.filter((issue) => issue.id !== id),
+      // Mirror the DB's `on delete set null`: the issue's photos live on as
+      // plain job photos.
+      jobPhotos: state.jobPhotos.map((p) =>
+        p.issueId === id ? { ...p, issueId: undefined } : p
+      ),
+      pendingPhotos: state.pendingPhotos.map((p) =>
+        p.issueId === id ? { ...p, issueId: undefined } : p
+      ),
+    }));
+    // Keep the persisted queue in step so a restarted upload can't reference
+    // the deleted issue.
+    persistPendingPhotos(get().pendingPhotos);
+    if (backendActive(get())) write(backend.deleteJobIssue(id));
   },
 
   markTimesheetsSent: () => {
@@ -1542,6 +1642,7 @@ async function processPhotoQueue(): Promise<void> {
           id: current.id,
           jobId: current.jobId,
           jobcardId: current.jobcardId,
+          issueId: current.issueId,
           workerId: current.workerId,
           storagePath,
           url: backend.jobPhotoUrl(storagePath),

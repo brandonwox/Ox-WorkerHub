@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { useAppStore } from '@/store/useAppStore';
-import { PendingPhotoState } from '@/types';
+import { JobPhoto, PendingJobPhoto, PendingPhotoState } from '@/types';
 
 /**
  * One photo as the grid/viewer render it: an uploaded {@link import('@/types').JobPhoto}
@@ -12,6 +12,7 @@ export interface DisplayPhoto {
   id: string;
   jobId: string;
   jobcardId?: string;
+  issueId?: string;
   workerId: string;
   url: string;
   note?: string;
@@ -19,80 +20,96 @@ export interface DisplayPhoto {
   pending?: PendingPhotoState;
 }
 
+function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
+  return {
+    id: p.id,
+    jobId: p.jobId,
+    jobcardId: p.jobcardId,
+    issueId: p.issueId,
+    workerId: p.workerId,
+    url: p.url,
+    note: p.note,
+    takenAt: p.takenAt,
+  };
+}
+
+function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
+  return {
+    id: p.id,
+    jobId: p.jobId,
+    jobcardId: p.jobcardId,
+    issueId: p.issueId,
+    workerId: p.workerId,
+    url: p.localUri,
+    note: p.note,
+    takenAt: p.takenAt,
+    pending: p.state,
+  };
+}
+
+function newestFirst(photos: DisplayPhoto[]): DisplayPhoto[] {
+  return photos.sort((a, b) => b.takenAt.localeCompare(a.takenAt));
+}
+
 /**
  * Every photo of a job — uploaded ones plus this device's queued ones — newest
  * first. The two collections never overlap (a photo leaves the queue the moment
- * its row lands).
+ * its row lands). Photos attached to an issue are excluded: they render inside
+ * their issue's own gallery, not the general wall.
  */
 export function useJobPhotos(jobId: string | undefined): DisplayPhoto[] {
   const jobPhotos = useAppStore((s) => s.jobPhotos);
   const pendingPhotos = useAppStore((s) => s.pendingPhotos);
   return useMemo(() => {
     if (!jobId) return [];
-    const uploaded: DisplayPhoto[] = jobPhotos
-      .filter((p) => p.jobId === jobId)
-      .map((p) => ({
-        id: p.id,
-        jobId: p.jobId,
-        jobcardId: p.jobcardId,
-        workerId: p.workerId,
-        url: p.url,
-        note: p.note,
-        takenAt: p.takenAt,
-      }));
-    const pending: DisplayPhoto[] = pendingPhotos
-      .filter((p) => p.jobId === jobId)
-      .map((p) => ({
-        id: p.id,
-        jobId: p.jobId,
-        jobcardId: p.jobcardId,
-        workerId: p.workerId,
-        url: p.localUri,
-        note: p.note,
-        takenAt: p.takenAt,
-        pending: p.state,
-      }));
-    return [...uploaded, ...pending].sort((a, b) =>
-      b.takenAt.localeCompare(a.takenAt)
-    );
+    return newestFirst([
+      ...jobPhotos
+        .filter((p) => p.jobId === jobId && !p.issueId)
+        .map(uploadedToDisplay),
+      ...pendingPhotos
+        .filter((p) => p.jobId === jobId && !p.issueId)
+        .map(pendingToDisplay),
+    ]);
   }, [jobId, jobPhotos, pendingPhotos]);
 }
 
 /**
  * Every photo linked to one jobcard (the installer shots taken from its
- * screen), uploaded + this device's queued ones, newest first. Used by the
- * Field Super's jobcard view.
+ * screen), uploaded + this device's queued ones, newest first. Issue photos are
+ * excluded here too (they show under their issue on the same screen). Used by
+ * the Field Super's jobcard view and the installer jobcard's Photos section.
  */
 export function useJobcardPhotos(jobcardId: string | undefined): DisplayPhoto[] {
   const jobPhotos = useAppStore((s) => s.jobPhotos);
   const pendingPhotos = useAppStore((s) => s.pendingPhotos);
   return useMemo(() => {
     if (!jobcardId) return [];
-    const uploaded: DisplayPhoto[] = jobPhotos
-      .filter((p) => p.jobcardId === jobcardId)
-      .map((p) => ({
-        id: p.id,
-        jobId: p.jobId,
-        jobcardId: p.jobcardId,
-        workerId: p.workerId,
-        url: p.url,
-        note: p.note,
-        takenAt: p.takenAt,
-      }));
-    const pending: DisplayPhoto[] = pendingPhotos
-      .filter((p) => p.jobcardId === jobcardId)
-      .map((p) => ({
-        id: p.id,
-        jobId: p.jobId,
-        jobcardId: p.jobcardId,
-        workerId: p.workerId,
-        url: p.localUri,
-        note: p.note,
-        takenAt: p.takenAt,
-        pending: p.state,
-      }));
-    return [...uploaded, ...pending].sort((a, b) =>
-      b.takenAt.localeCompare(a.takenAt)
-    );
+    return newestFirst([
+      ...jobPhotos
+        .filter((p) => p.jobcardId === jobcardId && !p.issueId)
+        .map(uploadedToDisplay),
+      ...pendingPhotos
+        .filter((p) => p.jobcardId === jobcardId && !p.issueId)
+        .map(pendingToDisplay),
+    ]);
   }, [jobcardId, jobPhotos, pendingPhotos]);
+}
+
+/**
+ * Every photo documenting one issue, uploaded + this device's queued ones,
+ * newest first. Rendered inside the issue's card on the jobcard screen and the
+ * parent job page.
+ */
+export function useIssuePhotos(issueId: string | undefined): DisplayPhoto[] {
+  const jobPhotos = useAppStore((s) => s.jobPhotos);
+  const pendingPhotos = useAppStore((s) => s.pendingPhotos);
+  return useMemo(() => {
+    if (!issueId) return [];
+    return newestFirst([
+      ...jobPhotos.filter((p) => p.issueId === issueId).map(uploadedToDisplay),
+      ...pendingPhotos
+        .filter((p) => p.issueId === issueId)
+        .map(pendingToDisplay),
+    ]);
+  }, [issueId, jobPhotos, pendingPhotos]);
 }

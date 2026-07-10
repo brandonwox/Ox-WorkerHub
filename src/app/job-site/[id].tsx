@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { IssueCard } from '@/components/issues/IssueCard';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
@@ -28,7 +29,22 @@ export default function JobSiteScreen() {
   const job = useAppStore((s) => s.jobs.find((j) => j.id === id));
   const workers = useAppStore((s) => s.workers);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
+  const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobPhotos(job?.id);
+  // This job's issues from every jobcard: open ones first, then newest first.
+  const issues = useMemo(
+    () =>
+      jobIssues
+        .filter((issue) => issue.jobId === job?.id)
+        .sort((a, b) =>
+          a.status !== b.status
+            ? a.status === 'open'
+              ? -1
+              : 1
+            : b.createdAt.localeCompare(a.createdAt)
+        ),
+    [jobIssues, job?.id]
+  );
 
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
@@ -125,6 +141,27 @@ export default function JobSiteScreen() {
           </Pressable>
         </View>
 
+        {/* Field issues raised on this job's cards, with a link back to each
+            card. Field Supers resolve them from here. */}
+        {issues.length > 0 && (
+          <View style={styles.issuesSection}>
+            <Text style={styles.issuesHeader}>Issues</Text>
+            {issues.map((issue) => (
+              <IssueCard
+                key={issue.id}
+                issue={issue}
+                showJobcardLink
+                onPhotoPress={(photo, all) =>
+                  setViewer({
+                    photos: all,
+                    index: all.findIndex((p) => p.id === photo.id),
+                  })
+                }
+              />
+            ))}
+          </View>
+        )}
+
         <JobPhotoGrid
           photos={photos}
           onPhotoPress={(photo, sorted) =>
@@ -208,6 +245,16 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  issuesSection: {
+    gap: spacing.md,
+  },
+  issuesHeader: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cameraButton: {
     flex: 1,

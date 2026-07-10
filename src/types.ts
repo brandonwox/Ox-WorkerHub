@@ -96,8 +96,25 @@ export interface Job {
   fieldSuperIds?: string[];
 }
 
-/** Status of a unit of work (a Jobcard) as it moves through the field. */
-export type JobcardStatus = 'Upcoming' | 'In Progress' | 'Finished';
+/**
+ * Status of a unit of work (a Jobcard) as the crew reports it from the field.
+ * 'Untouched' is the default until installers touch the card.
+ */
+export type JobcardStatus =
+  | 'Untouched'
+  | 'False Start'
+  | 'No Progress'
+  | 'Made Progress'
+  | 'Finished';
+
+/** All jobcard statuses, in display order. */
+export const JOBCARD_STATUSES: JobcardStatus[] = [
+  'Untouched',
+  'False Start',
+  'No Progress',
+  'Made Progress',
+  'Finished',
+];
 
 /**
  * Field-Super-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort).
@@ -294,6 +311,12 @@ export interface JobPhoto {
   jobId: string;
   /** The jobcard the photo was taken for, when captured from its screen. */
   jobcardId?: string;
+  /**
+   * The issue the photo documents, when captured from an issue's photo
+   * buttons. Issue photos render inside their issue (on the jobcard and the
+   * parent job) instead of the general photo grids.
+   */
+  issueId?: string;
   /** Worker who took/uploaded the photo. */
   workerId: string;
   /** Object path inside the job-photos bucket ("<jobId>/<photoId>.jpg"). */
@@ -318,6 +341,8 @@ export interface PendingJobPhoto {
   id: string;
   jobId: string;
   jobcardId?: string;
+  /** The issue the photo documents (see {@link JobPhoto.issueId}). */
+  issueId?: string;
   workerId: string;
   /** Local file uri (native) or blob uri (web) of the compressed image. */
   localUri: string;
@@ -325,6 +350,37 @@ export interface PendingJobPhoto {
   /** ISO datetime the photo was taken. */
   takenAt: string;
   state: PendingPhotoState;
+}
+
+// --- Job issues ---------------------------------------------------------------
+
+/** Lifecycle of a field-reported issue. Field Supers resolve open issues. */
+export type JobIssueStatus = 'open' | 'resolved';
+
+/**
+ * A problem an installer flags from a jobcard's screen (missing material, site
+ * not ready, damage, …). Always attached to the parent {@link Job} — the job's
+ * page lists every issue with a link back to the jobcard it was raised on —
+ * and linked to the {@link Jobcard} it was created from. Photos documenting the
+ * issue are {@link JobPhoto}s carrying this issue's id.
+ */
+export interface JobIssue {
+  id: string;
+  /** Parent Job (jobsite) the issue belongs to. */
+  jobId: string;
+  /** The jobcard the issue was raised on (cleared if that card is deleted). */
+  jobcardId?: string;
+  /** Installer who raised the issue. */
+  workerId: string;
+  /** What's wrong, written by the installer. */
+  description: string;
+  status: JobIssueStatus;
+  /** Field Super who resolved it (set with status = 'resolved'). */
+  resolvedById?: string;
+  /** ISO datetime the issue was resolved. */
+  resolvedAt?: string;
+  /** ISO datetime the issue was raised. */
+  createdAt: string;
 }
 
 // --- QuickBooks Time integration ---
