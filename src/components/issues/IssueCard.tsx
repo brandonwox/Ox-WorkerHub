@@ -70,6 +70,9 @@ export function IssueCard({
   const resolved = issue.status === 'resolved';
   const isCreator = me?.id === issue.workerId;
   const canResolve = role === 'field_super';
+  // The jobcard task the issue was raised for (shown on the parent job page,
+  // where the issue appears away from its task list).
+  const task = jobcard?.tasks?.find((t) => t.id === issue.taskId);
 
   const upload = async () => {
     if (picking) return;
@@ -104,6 +107,11 @@ export function IssueCard({
                 {jobcard.title}
               </Text>
             </Pressable>
+          )}
+          {showJobcardLink && task && (
+            <Text style={styles.taskRef} numberOfLines={2}>
+              Task: {task.text}
+            </Text>
           )}
           <Text style={styles.meta} numberOfLines={1}>
             {raisedBy ?? 'Unknown'} ·{' '}
@@ -277,6 +285,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  taskRef: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   meta: {
     color: colors.textTertiary,

@@ -38,18 +38,30 @@ export default function JobDetailsScreen() {
     s.jobs.find((parent) => parent.id === job?.jobId)
   );
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
+  const setJobcardTaskDone = useAppStore((s) => s.setJobcardTaskDone);
   const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const addJobIssue = useAppStore((s) => s.addJobIssue);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobcardPhotos(job?.id);
-  // This card's issues, newest first (right under the + that created them).
+  // This card's issues, newest first (right under the button that raised them).
   const issues = useMemo(
     () =>
       jobIssues
         .filter((issue) => issue.jobcardId === job?.id)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [jobIssues, job?.id]
+  );
+  // Issues whose task is gone (or that predate per-task issues) — rendered in
+  // a fallback list at the bottom instead of silently disappearing.
+  const orphanIssues = useMemo(
+    () =>
+      issues.filter(
+        (issue) =>
+          !issue.taskId ||
+          !job?.tasks?.some((task) => task.id === issue.taskId)
+      ),
+    [issues, job?.tasks]
   );
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
@@ -200,6 +212,91 @@ export default function JobDetailsScreen() {
           ) : null}
         </View>
 
+        {/* The Field Super's task list: installers check each task off as it
+            completes, and raise issues per task (nested under the task). */}
+        {(job.tasks?.length ?? 0) > 0 && (
+          <View style={styles.section}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoIcon}>
+                <Feather
+                  name="check-square"
+                  size={16}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <View style={styles.infoText}>
+                <Text style={styles.infoLabel}>Tasks</Text>
+              </View>
+            </View>
+            {job.tasks!.map((task) => {
+              const taskIssues = issues.filter((i) => i.taskId === task.id);
+              return (
+                <View key={task.id} style={styles.taskBlock}>
+                  <View style={styles.taskRow}>
+                    <Pressable
+                      hitSlop={10}
+                      onPress={() =>
+                        setJobcardTaskDone(job.id, task.id, !task.done)
+                      }
+                    >
+                      <Feather
+                        name={task.done ? 'check-square' : 'square'}
+                        size={22}
+                        color={task.done ? colors.success : colors.textSecondary}
+                      />
+                    </Pressable>
+                    <Text
+                      style={[styles.taskText, task.done && styles.taskTextDone]}
+                    >
+                      {task.text}
+                    </Text>
+                    {job.jobId && (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.taskIssueButton,
+                          pressed && styles.closePressed,
+                        ]}
+                        hitSlop={6}
+                        onPress={() =>
+                          addJobIssue({
+                            jobId: job.jobId!,
+                            jobcardId: job.id,
+                            taskId: task.id,
+                          })
+                        }
+                      >
+                        <Feather
+                          name="alert-triangle"
+                          size={12}
+                          color={colors.warning}
+                        />
+                        <Text style={styles.taskIssueText}>Issue</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  {taskIssues.length > 0 && (
+                    <View style={styles.taskIssues}>
+                      {taskIssues.map((issue) => (
+                        <IssueCard
+                          key={issue.id}
+                          issue={issue}
+                          editable
+                          onPhotoPress={(photo, all) =>
+                            setViewer({
+                              photos: all,
+                              index: all.findIndex((p) => p.id === photo.id),
+                            })
+                          }
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.infoRow}>
             <View style={styles.infoIcon}>
@@ -296,12 +393,11 @@ export default function JobDetailsScreen() {
           </View>
         )}
 
-        {/* Field issues raised on this card. Like photos, they belong to the
-            parent job (its page lists them all) — so legacy cards without a
-            parent can't raise one. */}
-        {job.jobId && (
+        {/* Issues that don't belong to a task anymore (raised before tasks
+            were checkable, or their task was deleted). Hidden when empty. */}
+        {orphanIssues.length > 0 && (
           <View style={styles.section}>
-            <View style={[styles.infoRow, styles.issuesHeaderRow]}>
+            <View style={styles.infoRow}>
               <View style={styles.infoIcon}>
                 <Feather
                   name="alert-triangle"
@@ -312,20 +408,8 @@ export default function JobDetailsScreen() {
               <View style={styles.infoText}>
                 <Text style={styles.infoLabel}>Issues</Text>
               </View>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.addIssueButton,
-                  pressed && styles.closePressed,
-                ]}
-                hitSlop={8}
-                onPress={() =>
-                  addJobIssue({ jobId: job.jobId!, jobcardId: job.id })
-                }
-              >
-                <Feather name="plus" size={20} color={colors.primary} />
-              </Pressable>
             </View>
-            {issues.map((issue) => (
+            {orphanIssues.map((issue) => (
               <IssueCard
                 key={issue.id}
                 issue={issue}
@@ -415,17 +499,44 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 22,
   },
-  issuesHeaderRow: {
-    alignItems: 'center',
+  taskBlock: {
+    gap: spacing.sm,
   },
-  addIssueButton: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.pill,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  taskText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    marginTop: 1,
+  },
+  taskTextDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
+  },
+  taskIssueButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    marginTop: 1,
+  },
+  taskIssueText: {
+    color: colors.warning,
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+  },
+  taskIssues: {
+    marginLeft: spacing.xl + spacing.sm,
+    gap: spacing.sm,
   },
   statusWrap: {
     position: 'relative',

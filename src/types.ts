@@ -152,6 +152,24 @@ export const JOB_SCOPES: JobScope[] = [
 export const READINESS_PRESETS = ['Now', 'Soon', 'Over 2 Weeks'] as const;
 
 /**
+ * One discrete task on a Jobcard. Authored by the Field Super / Scheduler;
+ * installers check tasks off from their phone as the work completes. The id is
+ * stable across text edits so check-offs and per-task issues never mis-link
+ * when the task list is edited.
+ */
+export interface JobcardTask {
+  id: string;
+  /** What must be done (≥15 chars, Field-Super-authored). */
+  text: string;
+  /** Checked off by an installer. */
+  done: boolean;
+  /** Installer who checked it off. */
+  doneById?: string;
+  /** ISO datetime it was checked off. */
+  doneAt?: string;
+}
+
+/**
  * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
  * Field Super creates them; the Scheduler assigns them to crews; installers
  * perform the work. (Formerly the app's `Job` type — it has always been the
@@ -183,10 +201,11 @@ export interface Jobcard {
    */
   scopes?: JobScope[];
   /**
-   * Discrete tasks the installers must complete. Each must be ≥15 chars; a card
-   * cannot be created without at least one. Field-Super-authored.
+   * Discrete tasks the installers must complete (and check off from their
+   * phone). Each text must be ≥15 chars; a card cannot be created without at
+   * least one. Field-Super-authored; installers only toggle `done`.
    */
-  tasks?: string[];
+  tasks?: JobcardTask[];
   /**
    * When the card is ready for installers to arrive — a {@link READINESS_PRESETS}
    * value ('Now' | 'Soon' | 'Over 2 Weeks') or a custom string.
@@ -370,6 +389,8 @@ export interface JobIssue {
   jobId: string;
   /** The jobcard the issue was raised on (cleared if that card is deleted). */
   jobcardId?: string;
+  /** The jobcard task ({@link JobcardTask.id}) the issue was raised for. */
+  taskId?: string;
   /** Installer who raised the issue. */
   workerId: string;
   /** What's wrong, written by the installer. */

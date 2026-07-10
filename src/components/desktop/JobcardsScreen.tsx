@@ -14,7 +14,7 @@ import {
 } from '@/components/desktop/JobcardFilters';
 import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 
@@ -145,7 +145,9 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
       date: format(new Date(), 'yyyy-MM-dd'),
       priority: input.priority,
       scopes: input.scopes,
-      tasks: input.tasks,
+      // The modal authors task text; each becomes a check-off item with a
+      // stable id (installers tick them off from their phones).
+      tasks: input.tasks.map((text) => ({ id: uuid(), text, done: false })),
       readiness: input.readiness,
       materials: input.materials,
       flashingMaterial: input.flashingMaterial,

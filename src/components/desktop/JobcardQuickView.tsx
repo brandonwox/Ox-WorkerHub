@@ -19,7 +19,7 @@ import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import {
   Job,
@@ -186,9 +186,11 @@ export function JobcardQuickView({
       );
       return;
     }
-    if (t !== tasks[index]) {
+    if (t !== tasks[index].text) {
+      // Text edits keep the task's id (and check-off state) intact so
+      // installer check-offs and per-task issues stay linked.
       updateJobcard(jobcard.id, {
-        tasks: tasks.map((task, i) => (i === index ? t : task)),
+        tasks: tasks.map((task, i) => (i === index ? { ...task, text: t } : task)),
       });
     }
   };
@@ -204,7 +206,9 @@ export function JobcardQuickView({
       );
       return;
     }
-    updateJobcard(jobcard.id, { tasks: [...tasks, t] });
+    updateJobcard(jobcard.id, {
+      tasks: [...tasks, { id: uuid(), text: t, done: false }],
+    });
   };
 
   const changeReadiness = (value: string) => {
@@ -499,7 +503,7 @@ export function JobcardQuickView({
                 {tasks.map((task, index) =>
                   editing === `task-${index}` ? (
                     <TextInput
-                      key={index}
+                      key={task.id}
                       style={styles.textEditor}
                       value={draft}
                       onChangeText={setDraft}
@@ -509,10 +513,18 @@ export function JobcardQuickView({
                     />
                   ) : (
                     <Editable
-                      key={index}
-                      onPress={() => startEdit(`task-${index}`, task)}
+                      key={task.id}
+                      onPress={() => startEdit(`task-${index}`, task.text)}
                     >
-                      <Text style={styles.valueText}>•  {task}</Text>
+                      <Text
+                        style={[
+                          styles.valueText,
+                          task.done && styles.taskDoneText,
+                        ]}
+                      >
+                        {task.done ? '✓  ' : '•  '}
+                        {task.text}
+                      </Text>
                     </Editable>
                   )
                 )}
@@ -1124,6 +1136,10 @@ const styles = StyleSheet.create({
   },
   taskStack: {
     gap: 2,
+  },
+  taskDoneText: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
   },
   textEditor: {
     backgroundColor: colors.background,

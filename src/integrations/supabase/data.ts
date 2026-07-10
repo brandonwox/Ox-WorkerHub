@@ -9,6 +9,7 @@ import {
   Jobcard,
   JobcardPriority,
   JobcardStatus,
+  JobcardTask,
   JobIssue,
   JobIssueStatus,
   JobPhoto,
@@ -58,7 +59,8 @@ interface JobcardRow {
   priority: string;
   priority_order: number;
   scopes: string[] | null;
-  tasks: string[] | null;
+  /** jsonb array of JobcardTask objects (plain strings only pre-migration). */
+  tasks: (JobcardTask | string)[] | null;
   readiness: string | null;
   flashing_material: string | null;
   materials: string | null;
@@ -125,6 +127,7 @@ interface JobIssueRow {
   id: string;
   job_id: string;
   jobcard_id: string | null;
+  task_id: string | null;
   worker_id: string;
   description: string;
   status: string;
@@ -150,6 +153,20 @@ function rowToJob(r: JobRow): Job {
   };
 }
 
+/**
+ * Tolerate rows read before the tasks-to-jsonb migration ran: plain string
+ * tasks get a synthetic id so the UI renders (check-offs on them are refused
+ * server-side until the migration lands).
+ */
+function normalizeTasks(
+  raw: (JobcardTask | string)[] | null
+): JobcardTask[] | undefined {
+  if (!raw || raw.length === 0) return undefined;
+  return raw.map((t, i) =>
+    typeof t === 'string' ? { id: `legacy-${i}`, text: t, done: false } : t
+  );
+}
+
 function rowToJobcard(r: JobcardRow): Jobcard {
   return {
     id: r.id,
@@ -163,7 +180,7 @@ function rowToJobcard(r: JobcardRow): Jobcard {
     priority: r.priority as JobcardPriority,
     priorityOrder: r.priority_order,
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
-    tasks: r.tasks ?? undefined,
+    tasks: normalizeTasks(r.tasks),
     readiness: r.readiness ?? undefined,
     flashingMaterial: r.flashing_material ?? undefined,
     materials: r.materials ?? undefined,
@@ -225,6 +242,7 @@ function rowToJobIssue(r: JobIssueRow): JobIssue {
     id: r.id,
     jobId: r.job_id,
     jobcardId: r.jobcard_id ?? undefined,
+    taskId: r.task_id ?? undefined,
     workerId: r.worker_id,
     description: r.description,
     status: r.status as JobIssueStatus,
@@ -431,7 +449,8 @@ function jobcardToRow(card: Jobcard) {
     priority: card.priority,
     priority_order: card.priorityOrder,
     scopes: card.scopes ?? null,
-    tasks: card.tasks ?? null,
+    // Column is NOT NULL — an absent task list writes as the empty jsonb array.
+    tasks: card.tasks ?? [],
     readiness: card.readiness ?? null,
     flashing_material: card.flashingMaterial ?? null,
     materials: card.materials ?? null,
@@ -694,6 +713,7 @@ function jobIssueToRow(issue: JobIssue) {
     id: issue.id,
     job_id: issue.jobId,
     jobcard_id: issue.jobcardId ?? null,
+    task_id: issue.taskId ?? null,
     worker_id: issue.workerId,
     description: issue.description,
     status: issue.status,

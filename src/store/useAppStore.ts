@@ -194,8 +194,11 @@ function write(p: Promise<unknown>): void {
   );
 }
 
-/** RFC4122-ish v4 id for new records in backend mode (DB columns are uuid). */
-function uuid(): string {
+/**
+ * RFC4122-ish v4 id for new records in backend mode (DB columns are uuid).
+ * Exported for callers that mint ids for embedded records (jobcard tasks).
+ */
+export function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
@@ -407,6 +410,8 @@ interface AppState {
   /** Installer-facing: append/replace shared field notes on a Jobcard. */
   updateJobcardNotes: (id: string, fieldNotes: string) => void;
   setJobcardStatus: (jobcardId: string, status: JobcardStatus) => void;
+  /** Installer-facing: check a jobcard task off (or un-check it). */
+  setJobcardTaskDone: (jobcardId: string, taskId: string, done: boolean) => void;
 
   // --- Crews & scheduling (Scheduler) ---
   /** Create a permanent crew. Non-installer ids are dropped. Returns the record. */
@@ -481,7 +486,11 @@ interface AppState {
    * created record so the UI can focus its description input, or null when
    * signed out.
    */
-  addJobIssue: (input: { jobId: string; jobcardId?: string }) => JobIssue | null;
+  addJobIssue: (input: {
+    jobId: string;
+    jobcardId?: string;
+    taskId?: string;
+  }) => JobIssue | null;
   /** Set/replace an issue's description (creator-only in the UI). */
   updateJobIssueDescription: (id: string, description: string) => void;
   /** Field Super: mark an issue resolved (or reopen it). */
@@ -991,6 +1000,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
   },
 
+  setJobcardTaskDone: (jobcardId, taskId, done) => {
+    const me = currentWorkerOf(get());
+    let updated: Jobcard | undefined;
+    set((state) => ({
+      jobcards: state.jobcards.map((card) => {
+        if (card.id !== jobcardId || !card.tasks) return card;
+        updated = {
+          ...card,
+          tasks: card.tasks.map((task) =>
+            task.id === taskId
+              ? {
+                  ...task,
+                  done,
+                  doneById: done ? me?.id : undefined,
+                  doneAt: done ? new Date().toISOString() : undefined,
+                }
+              : task
+          ),
+        };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+  },
+
   addCrew: (crew) => {
     const state = get();
     const isBackend = backendActive(state);
@@ -1390,6 +1424,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: isBackend ? uuid() : `iss-${nextIssueId++}`,
       jobId: input.jobId,
       jobcardId: input.jobcardId,
+      taskId: input.taskId,
       workerId: me.id,
       description: '',
       status: 'open',
