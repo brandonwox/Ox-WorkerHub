@@ -21,7 +21,12 @@ import { colors, fonts, spacing } from '@/theme';
 import { Jobcard, TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
 
-export default function CalendarScreen() {
+/**
+ * The installer's day-by-day agenda: week ribbon, the selected day's crew
+ * jobcards, and the clock in/out controls. Rendered by the mobile home tab and
+ * (in a centered column) by the desktop /installer-schedule page.
+ */
+export function InstallerAgenda() {
   const router = useRouter();
   const allJobcards = useAppStore((s) => s.jobcards);
   const crews = useAppStore((s) => s.crews);

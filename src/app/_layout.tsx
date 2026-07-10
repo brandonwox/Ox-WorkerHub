@@ -70,7 +70,7 @@ export default function RootLayout() {
     <ThemeProvider value={appTheme}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(installer)" />
+        <Stack.Screen name="(mobile)" />
         <Stack.Screen name="(desktop)" />
         <Stack.Screen name="set-password" />
         {/* Full-screen login gate (no modal/header) — it's the logged-out landing. */}

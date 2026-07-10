@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { addMonths, subMonths } from 'date-fns';
+import { addMonths, format, parseISO, subMonths } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -12,7 +12,7 @@ import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModa
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { Crew, Jobcard } from '@/types';
+import { Crew, DailyCrew, Jobcard } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 
 interface Props {
@@ -30,6 +30,7 @@ interface Props {
  */
 export function CalendarBoard({ canAssign }: Props) {
   const crews = useAppStore((s) => s.crews);
+  const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
   const jobcards = useAppStore((s) => s.jobcards);
   const jobs = useAppStore((s) => s.jobs);
@@ -53,16 +54,24 @@ export function CalendarBoard({ canAssign }: Props) {
   const [editing, setEditing] = useState<Jobcard | null>(null);
   const [month, setMonth] = useState(() => new Date());
 
+  // Permanent crews plus every Daily Crew (one-day overrides), so daily crews
+  // sit in the chip row and can be shown, hidden, and assigned to like any other
+  // crew. Permanent crews stay first so their colors never shift.
+  const allCrews = useMemo<(Crew | DailyCrew)[]>(
+    () => [...crews, ...dailyCrews],
+    [crews, dailyCrews]
+  );
+
   // Distinct, stable color per crew for tinting cards and chips.
   const crewColorMap = useMemo(
-    () => buildCrewColorMap(crews.map((c) => c.id)),
-    [crews]
+    () => buildCrewColorMap(allCrews.map((c) => c.id)),
+    [allCrews]
   );
   const colorForCrew = (crewId: string) => crewColorFrom(crewColorMap, crewId);
 
   const activeCrews = useMemo(
-    () => crews.filter((c) => activeCrewIds.has(c.id)),
-    [crews, activeCrewIds]
+    () => allCrews.filter((c) => activeCrewIds.has(c.id)),
+    [allCrews, activeCrewIds]
   );
   // The primary target, used for single-target visuals (banner tint, etc.).
   const activeCrew = activeCrews[0] ?? null;
@@ -71,15 +80,15 @@ export function CalendarBoard({ canAssign }: Props) {
   // the set empties, seed the first visible crew so there's always a target.
   useEffect(() => {
     setActiveCrewIds((prev) => {
-      const valid = [...prev].filter((id) => crews.some((c) => c.id === id));
+      const valid = [...prev].filter((id) => allCrews.some((c) => c.id === id));
       if (valid.length === 0) {
-        const firstVisible = crews.find((c) => !hiddenCrewIds.has(c.id));
+        const firstVisible = allCrews.find((c) => !hiddenCrewIds.has(c.id));
         if (!firstVisible) return prev.size === 0 ? prev : new Set();
         return new Set([firstVisible.id]);
       }
       return valid.length === prev.size ? prev : new Set(valid);
     });
-  }, [crews, hiddenCrewIds]);
+  }, [allCrews, hiddenCrewIds]);
 
   const setSoleActive = (id: string | null) =>
     setActiveCrewIds(id ? new Set([id]) : new Set());
@@ -134,7 +143,7 @@ export function CalendarBoard({ canAssign }: Props) {
       const next = new Set(hiddenCrewIds);
       next.add(id);
       setHiddenCrewIds(next);
-      setSoleActive(crews.find((c) => !next.has(c.id))?.id ?? null);
+      setSoleActive(allCrews.find((c) => !next.has(c.id))?.id ?? null);
       return;
     }
     // Visible but not active → make it the sole assign target.
@@ -186,7 +195,7 @@ export function CalendarBoard({ canAssign }: Props) {
     if (!placingCardId) return;
     if (activeCrews.length === 0) {
       flash(
-        crews.length === 0
+        allCrews.length === 0
           ? 'Create a crew before assigning work.'
           : 'Tap a crew to make it the assign target first.',
         'warning'
@@ -198,6 +207,17 @@ export function CalendarBoard({ canAssign }: Props) {
     setPlacingCardId(null);
     const names = activeCrews.map((c) => c.name).join(', ');
     flash(`Assigned "${card?.title ?? 'jobcard'}" to ${names}`, 'success');
+  };
+
+  // Removing a placed card from the calendar pulls it off EVERY crew it was
+  // assigned to — a multi-crew placement is one logical placement, so unassigning
+  // from one crew's view must not leave orphaned copies on the others.
+  const handleUnassign = (assignmentId: string) => {
+    const target = assignments.find((a) => a.id === assignmentId);
+    if (!target) return;
+    assignments
+      .filter((a) => a.jobcardId === target.jobcardId)
+      .forEach((a) => unassignJobcard(a.id));
   };
 
   const togglePlacing = (cardId: string) =>
@@ -218,7 +238,7 @@ export function CalendarBoard({ canAssign }: Props) {
     <View style={styles.screen}>
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
-          {crews.length === 0 ? (
+          {allCrews.length === 0 ? (
             <Text style={styles.noCrews}>
               {canAssign
                 ? 'No crews yet — create one to start scheduling.'
@@ -250,13 +270,14 @@ export function CalendarBoard({ canAssign }: Props) {
                   </Text>
                 </Pressable>
               )}
-              {crews.map((crew) => (
+              {allCrews.map((crew) => (
                 <CrewChip
                   key={crew.id}
                   crew={crew}
                   color={colorForCrew(crew.id)}
                   visible={!hiddenCrewIds.has(crew.id)}
                   active={canAssign && activeCrewIds.has(crew.id)}
+                  dailyDate={'date' in crew ? crew.date : undefined}
                   onPress={() => cycleCrew(crew.id)}
                 />
               ))}
@@ -273,7 +294,7 @@ export function CalendarBoard({ canAssign }: Props) {
           </Pressable>
         )}
       </View>
-      {crews.length > 0 && (
+      {allCrews.length > 0 && (
         <Text style={styles.filterHint}>
           {!canAssign
             ? 'Tap a crew to show or hide it on the calendar.'
@@ -295,7 +316,7 @@ export function CalendarBoard({ canAssign }: Props) {
             colorForCrew={colorForCrew}
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
-            onUnassign={unassignJobcard}
+            onUnassign={handleUnassign}
             canUnassign={canAssign}
           />
         </View>
@@ -307,14 +328,11 @@ export function CalendarBoard({ canAssign }: Props) {
             onTogglePlacing={togglePlacing}
             onOpenCard={setEditing}
             canSchedule={canAssign}
-            activeCrewName={
-              activeCrews.length > 0
-                ? activeCrews.map((c) => c.name).join(', ')
-                : undefined
-            }
-            activeCrewColor={
-              activeCrews.length === 1 ? colorForCrew(activeCrews[0].id) : undefined
-            }
+            activeCrews={activeCrews.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: colorForCrew(c.id),
+            }))}
           />
         </View>
       </View>
@@ -343,17 +361,24 @@ function CrewChip({
   color,
   visible,
   active,
+  dailyDate,
   onPress,
 }: {
   crew: Crew;
   color: string;
   visible: boolean;
   active: boolean;
+  /** yyyy-MM-dd when this is a Daily Crew, else undefined — drives the "Daily" tag. */
+  dailyDate?: string;
   onPress: () => void;
 }) {
+  // The "Daily · date" tag only shows on hover to keep the chip row compact.
+  const [hovered, setHovered] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       style={({ pressed }) => [
         styles.crewChip,
         {
@@ -382,6 +407,13 @@ function CrewChip({
       >
         {crew.name}
       </Text>
+      {dailyDate && hovered && (
+        <View style={[styles.dailyTag, { borderColor: withAlpha(color, 0.6) }]}>
+          <Text style={[styles.dailyTagText, { color }]}>
+            Daily · {format(parseISO(dailyDate), 'MMM d')}
+          </Text>
+        </View>
+      )}
       {active && <Feather name="crosshair" size={12} color={color} />}
     </Pressable>
   );
@@ -434,6 +466,18 @@ const styles = StyleSheet.create({
   },
   crewChipText: {
     fontSize: 13,
+  },
+  dailyTag: {
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
+  },
+  dailyTagText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   noCrews: {
     color: colors.warning,

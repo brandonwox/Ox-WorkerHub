@@ -28,8 +28,10 @@ on web (Expo static) and native.
 
 ## 2. The big picture (architecture)
 
-- **One Expo codebase**, two shells: Installer = mobile tabs (`src/app/(installer)`),
-  desktop roles = sidebar console (`src/app/(desktop)`). Nav in `src/roles.ts`.
+- **One Expo codebase**, two shells split by **form factor** (since 2026-07-09):
+  native (iOS/Android) = mobile tabs (`src/app/(mobile)`), web = desktop sidebar
+  console (`src/app/(desktop)`) — **every role has a layout in both**. Nav in
+  `src/roles.ts` (`MOBILE_NAV` + `DESKTOP_NAV`).
 - **State:** a single Zustand store, `src/store/useAppStore.ts`.
 - **Backend:** Supabase (Postgres + Auth + Edge Functions). Client lib in
   `src/integrations/supabase/`.
@@ -218,8 +220,9 @@ policy to fix.
 | Role nav / labels / home routes | `src/roles.ts` |
 | Supabase client / auth / session / invites / data layer | `src/integrations/supabase/` |
 | QuickBooks Time integration | `src/integrations/quickbooksTime/` |
-| Desktop screens | `src/app/(desktop)/` |
-| Installer screens | `src/app/(installer)/` |
+| Desktop (web) screens | `src/app/(desktop)/` |
+| Mobile tab routes (role-branching) | `src/app/(mobile)/` |
+| Mobile screen components | `src/components/mobile/` |
 | Jobcard detail | `src/app/job/[id].tsx` |
 | Sign-in screen | `src/app/sign-in.tsx` |
 | DB schema + RLS | `supabase/migrations/20260614201808_initial_schema.sql` |

@@ -20,10 +20,12 @@ interface Props {
    * Supers view the same board but can't assign work to crews, so it's hidden.
    */
   canSchedule?: boolean;
-  /** Name of the crew a placed card is being assigned to (the assign target). */
-  activeCrewName?: string;
-  /** Color of the active crew, used to tint the selected/placing card. */
-  activeCrewColor?: string;
+  /**
+   * The crews a placed card is being assigned to (the assign targets), each with
+   * its display color. Drives the "Placing — …" label (crew names in their own
+   * colors) and the selected-card tint (a single crew's color, else neutral grey).
+   */
+  activeCrews?: { id: string; name: string; color: string }[];
 }
 
 /** Right-column pool of unassigned jobcards waiting for a crew + date. */
@@ -34,9 +36,12 @@ export function Backlog({
   onTogglePlacing,
   onOpenCard,
   canSchedule = true,
-  activeCrewName,
-  activeCrewColor,
+  activeCrews = [],
 }: Props) {
+  // Single target → tint with that crew's color; several (multi-assign) or none
+  // → stay neutral grey. The crew names themselves render in their own colors.
+  const crewTint =
+    activeCrews.length === 1 ? activeCrews[0].color : colors.textSecondary;
   // Highest priority first; within a priority, the card that has been waiting
   // longest first. There's no created-at timestamp, so the target `date` is the
   // proxy for wait time — an earlier/overdue date has been waiting the longest.
@@ -76,8 +81,6 @@ export function Backlog({
           sorted.map((card) => {
             const selected = placingCardId === card.id;
             const accent = priorityColor(card.priority);
-            // When placing, tint the card with the crew being assigned to.
-            const crewTint = activeCrewColor ?? colors.primary;
             return (
               <View
                 key={card.id}
@@ -117,7 +120,7 @@ export function Backlog({
                     ]}
                     onPress={() => onOpenCard(card)}
                   >
-                    <Feather name="edit-2" size={13} color={colors.textPrimary} />
+                    <Feather name="edit-2" size={12} color={colors.textPrimary} />
                     <Text style={styles.actionText}>Open</Text>
                   </Pressable>
                   {canSchedule && (
@@ -136,13 +139,27 @@ export function Backlog({
                     >
                       <Feather
                         name={selected ? 'crosshair' : 'calendar'}
-                        size={13}
+                        size={12}
                         color={colors.textPrimary}
                       />
-                      <Text style={styles.actionText}>
-                        {selected
-                          ? `Placing — ${activeCrewName ?? 'pick a day'}`
-                          : 'Schedule'}
+                      <Text style={styles.actionText} numberOfLines={1}>
+                        {selected ? (
+                          <>
+                            <Text style={styles.placingLabel}>Placing — </Text>
+                            {activeCrews.length > 0 ? (
+                              activeCrews.map((c, i) => (
+                                <Text key={c.id} style={{ color: c.color }}>
+                                  {c.name}
+                                  {i < activeCrews.length - 1 ? ', ' : ''}
+                                </Text>
+                              ))
+                            ) : (
+                              <Text style={styles.placingLabel}>pick a day</Text>
+                            )}
+                          </>
+                        ) : (
+                          'Schedule'
+                        )}
                       </Text>
                     </Pressable>
                   )}
@@ -264,23 +281,23 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.xs,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 4,
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
   scheduleBtn: {
-    flex: 1,
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
@@ -291,6 +308,9 @@ const styles = StyleSheet.create({
   actionText: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 11,
+  },
+  placingLabel: {
+    color: colors.textSecondary,
   },
 });

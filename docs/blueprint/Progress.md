@@ -5,7 +5,7 @@
 > `Step-0-Overview.md` for the shared vocabulary and conventions; read the
 > matching `Step-N-*.md` for the full work order.
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-07-09
 
 ---
 
@@ -282,3 +282,26 @@ during 7d.
   new client module `integrations/supabase/notifications.ts`. **Awaiting user:**
   `supabase db push` to apply the migration (and confirm realtime is enabled for the
   table).
+- **2026-07-09 — Split by form factor, not by role: every role works on mobile AND
+  web.** The old rule (installer = mobile tabs, everyone else = desktop console)
+  is gone. Native (iOS/Android) always renders the mobile tab layout; the web
+  build always renders the desktop sidebar console — for **every role**. Target
+  platforms are the iOS app, the Android app, and the web app; **no packaged
+  desktop executable** (decision: web-only for desktops; could wrap the web build
+  in Tauri/Electron later if a need appears). Routing: the `(installer)` route
+  group is renamed **`(mobile)`** with generic tab routes (`index`, `timesheets`,
+  `people`, `backlog`, `jobs`, `calendar`, `settings`) that branch by role;
+  per-role tab sets live in `MOBILE_NAV` (`src/roles.ts`), which also gained
+  `desktopHomeHref`/`roleCanAccessMobilePath`, a platform-aware `roleHomeHref`,
+  and installer entries in `DESKTOP_NAV` (`/installer-schedule`,
+  `/installer-timesheets`). New mobile screens in `src/components/mobile/`:
+  `CrewCalendarMobile` (Scheduler assign/unassign via tap — bottom-sheet backlog
+  picker — and the Field Super's read-only calendar), `SchedulerBacklogMobile`,
+  `OperatorJobsMobile` + `OperatorPeopleMobile` (read-only monitors; create/edit
+  stays on desktop), `OperatorTimesheetsMobile` (full review + edit via the
+  shared `EditLogModal`), `FieldSuperJobcardsMobile` (search + schedule filter),
+  `FieldSuperJobsMobile` (edit address/flashing). The installer's agenda and
+  timesheets moved to `InstallerAgenda`/`InstallerTimesheets` components, reused
+  by both the mobile tabs and the new installer desktop pages (centered column).
+  Jobcard/job/worker **creation** remains desktop-only for now (the desktop
+  modals aren't phone-sized yet) — a known follow-up.

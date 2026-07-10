@@ -53,12 +53,22 @@ export function MonthCalendar({
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart); // 0 (Sun) … 6 (Sat)
 
-  // Placing cues take on the active crew's color so the whole flow reads as
-  // "assigning to this crew". With one target we use its color; with several
-  // (multi-assign) or none we fall back to the neutral primary.
+  // Placing cues take on the active crew's color when there's a single target;
+  // with several (multi-assign) or none they stay neutral grey — the crew names
+  // themselves are always rendered in their own colors.
   const activeColor =
-    activeCrews.length === 1 ? colorForCrew(activeCrews[0].id) : colors.primary;
-  const activeNames = activeCrews.map((c) => c.name).join(', ');
+    activeCrews.length === 1
+      ? colorForCrew(activeCrews[0].id)
+      : colors.textSecondary;
+
+  // The active crew names as inline, per-crew-colored spans for use inside a
+  // parent <Text> (e.g. "Assigning to Alpha, Bravo").
+  const crewNameSpans = activeCrews.map((c, i) => (
+    <Text key={c.id} style={{ color: colorForCrew(c.id) }}>
+      {c.name}
+      {i < activeCrews.length - 1 ? ', ' : ''}
+    </Text>
+  ));
 
   const cardById = (id: string) => jobcards.find((c) => c.id === id);
 
@@ -67,15 +77,12 @@ export function MonthCalendar({
       <View style={styles.header}>
         <View>
           <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
-          <Text
-            style={[
-              styles.viewing,
-              activeCrews.length > 0 && { color: activeColor },
-            ]}
-          >
-            {activeCrews.length > 0
-              ? `Assigning to ${activeNames}`
-              : 'No active crew — tap one to assign'}
+          <Text style={styles.viewing}>
+            {activeCrews.length > 0 ? (
+              <>Assigning to {crewNameSpans}</>
+            ) : (
+              'No active crew — tap one to assign'
+            )}
           </Text>
         </View>
         <View style={styles.navBtns}>
@@ -101,7 +108,7 @@ export function MonthCalendar({
           <Feather name="crosshair" size={14} color={activeColor} />
           <Text style={styles.placingText}>
             Click a day to assign the selected jobcard
-            {activeCrews.length > 0 ? ` to ${activeNames}` : ''}.
+            {activeCrews.length > 0 ? <> to {crewNameSpans}</> : ''}.
           </Text>
         </View>
       )}
@@ -128,10 +135,7 @@ export function MonthCalendar({
           return (
             <Pressable
               key={dateStr}
-              style={[
-                styles.cell,
-                placing && { borderColor: activeColor },
-              ]}
+              style={styles.cell}
               onPress={placing ? () => onAssignToDate(dateStr) : undefined}
             >
               <View style={styles.cellHead}>

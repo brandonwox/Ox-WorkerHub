@@ -4,6 +4,19 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+kim(scheduler) creates jobcards (not field supers)
+
+1. only let crew names be a single letter.
+2. if multiple crews are assigned to a single jobcard, and the scheduler is viewing multiple crew calendars, the jobcard currently would show the same jobcard multiple times, instead it should only show the one jobcard. that jobcard - because it has multiple crews assigned - should have the crew name of each assigned crew listed on the end of the jobcard.
+
+scheduler calendar: "Assigning to" at the top of the calendar should not be blue it should be gray.
+
+field-super-calendar -> there should not be a "Assinging to Crew" message at the top of the calendar because field supers do not assign jobcards. they can only see the calendar. (This change should not affect the scheduler's calendar.)
+
+operator: deleting a job should require the operator to type the name of the job and click a confirmation button. there should also be a warning that tells the operator that the job can be restored if they proceed.
+
+scheduler work requests -> jobcards: make the open and schedule buttons way smaller and not take up as much space as they currently do.
+
 make sure jobcards placed assigned for multiple crews is actually assigned to each of those crews. (if a jobcard is taken of the calendar or moved, it should be removed from all crews, even if the scheduler was only viewing from a single crew calendar.)
 
 calendar views: when assigning crews the calendar borders should not change colors.
@@ -24,7 +37,7 @@ jobcard creation: field super is required to click either "Yes" or "No" for an o
 
 field super cannot create a jobcard if they have not specified a "Window Opening Flashing Material" and a "Jobsite address" for the parent job.
 
-the backlog should be expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
+the work requests should be expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
 
 when a popup modal (e.g. to create a jobcard) appears it adds an overlay that darkens the rest of the screen, can you get rid of that and instead just add a slight dropshadow to the popup modal?
 

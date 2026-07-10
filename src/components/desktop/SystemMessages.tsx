@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { detectDoubleBookings } from '@/utils/doubleBookings';
 
@@ -14,6 +14,7 @@ import { detectDoubleBookings } from '@/utils/doubleBookings';
  * expands to show the conflicting day, crews, and jobcards.
  */
 export function SystemMessages() {
+  const role = useCurrentRole();
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
@@ -27,6 +28,9 @@ export function SystemMessages() {
   );
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Double-booking is a scheduling concern — only the Scheduler sees these.
+  if (role !== 'scheduler') return null;
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);

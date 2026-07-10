@@ -1,11 +1,12 @@
 import { Redirect, Slot, usePathname } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { SidebarShell } from '@/components/desktop/SidebarShell';
 import { NotificationToaster } from '@/components/NotificationToaster';
 import { DESKTOP_NAV, roleCanAccessPath, roleHomeHref } from '@/roles';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 
-/** Wide desktop console for the Scheduler and Operator roles. */
+/** Wide desktop console — the web layout for every role. */
 export default function DesktopLayout() {
   const authResolved = useAppStore((s) => s.authResolved);
   const authWorker = useAppStore((s) => s.authWorker);
@@ -26,14 +27,15 @@ export default function DesktopLayout() {
     return <Redirect href="/set-password" />;
   }
 
-  // Installers belong in the mobile tabs, not the desktop console.
-  const role = worker.role;
-  if (role === 'installer') {
+  // The split is by form factor, not role: phones/tablets get the mobile tabs,
+  // the web build gets this console.
+  if (Platform.OS !== 'web') {
     return <Redirect href="/" />;
   }
 
   // Landed on another role's page (e.g. an Operator opening /schedule) → send
   // them back to their own home, where their role has access.
+  const role = worker.role;
   if (!roleCanAccessPath(role, pathname)) {
     return <Redirect href={roleHomeHref(role)} />;
   }

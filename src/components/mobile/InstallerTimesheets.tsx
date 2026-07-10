@@ -30,7 +30,12 @@ function timeframeRange(timeframe: Timeframe): { from: string; to: string } {
   return { from: format(subDays(new Date(), 29), 'yyyy-MM-dd'), to: today };
 }
 
-export default function TimesheetsScreen() {
+/**
+ * The installer's own timesheet history (timeframe filter + summary + logs).
+ * Rendered by the mobile Timesheets tab and by the desktop /installer-timesheets
+ * page.
+ */
+export function InstallerTimesheets() {
   const logs = useAppStore((s) => s.logs);
   const jobcards = useAppStore((s) => s.jobcards);
   const currentUserId = useAppStore((s) => currentWorkerOf(s)?.id ?? '');
