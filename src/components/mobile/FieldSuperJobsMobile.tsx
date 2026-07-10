@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FormInput } from '@/components/FormInput';
+import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
@@ -154,6 +155,7 @@ function JobRow({
             }}
             placeholder="e.g. Dark bronze aluminum"
           />
+          <FlashingPhotoField job={job} editable />
           <Pressable
             style={({ pressed }) => [
               styles.saveButton,

@@ -4,6 +4,10 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+installer camera: add zoom buttons (0.5 if available on their device or 0.7, 1, 1.5, 3). The user should also be able to grab and drag the numbers to scroll through more defined zoom ranging from the most zoomed out their device works on, and all the way to 5x zoom in.
+
+photos on mobile: users on mobile should be able to pinch to zoom in/out on any photo while viewing it on mobile, no matter where they're viewing from.
+
 kim(scheduler) creates jobcards (not field supers)
 
 1. only let crew names be a single letter.

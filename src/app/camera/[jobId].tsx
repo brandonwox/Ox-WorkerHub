@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -33,16 +34,22 @@ export default function JobCameraScreen() {
   const job = useAppStore((s) => s.jobs.find((j) => j.id === jobId));
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const setJobPhotoNote = useAppStore((s) => s.setJobPhotoNote);
+  const deleteJobPhoto = useAppStore((s) => s.deleteJobPhoto);
 
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [capturing, setCapturing] = useState(false);
-  const [shotCount, setShotCount] = useState(0);
-  const [lastShot, setLastShot] = useState<{ id: string; uri: string } | null>(
-    null
-  );
+  // Every shot taken this session (oldest first); the last one is the
+  // thumbnail. Deleting the latest falls back to the one before it.
+  const [shots, setShots] = useState<{ id: string; uri: string }[]>([]);
   const [note, setNote] = useState('');
+  // Tapping the thumbnail expands the latest shot into a popup with delete
+  // (two-tap confirm) and the note input.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const lastShot = shots.length > 0 ? shots[shots.length - 1] : null;
 
   // The camera is native-only; the job page offers file upload on web instead.
   if (Platform.OS === 'web') {
@@ -92,9 +99,15 @@ export default function JobCameraScreen() {
         localUris: [compressed],
       });
       if (photoId) {
-        setLastShot({ id: photoId, uri: compressed });
+        // addJobPhotos MOVES the file into app storage, so `compressed` is a
+        // dead uri now — the thumbnail must render the stashed copy instead.
+        const stored = useAppStore.getState();
+        const uri =
+          stored.pendingPhotos.find((p) => p.id === photoId)?.localUri ??
+          stored.jobPhotos.find((p) => p.id === photoId)?.url ??
+          compressed;
+        setShots((prev) => [...prev, { id: photoId, uri }]);
         setNote('');
-        setShotCount((n) => n + 1);
       }
     } catch (e) {
       console.error('Capture failed:', e);
@@ -105,6 +118,36 @@ export default function JobCameraScreen() {
 
   const commitNote = () => {
     if (lastShot) setJobPhotoNote(lastShot.id, note);
+  };
+
+  const closePreview = () => {
+    commitNote();
+    setConfirmingDelete(false);
+    setPreviewOpen(false);
+  };
+
+  const deleteLastShot = () => {
+    if (!lastShot) return;
+    // Two-tap confirm — the first tap arms the button, the second deletes.
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    deleteJobPhoto(lastShot.id);
+    const remaining = shots.slice(0, -1);
+    setShots(remaining);
+    // The note input now belongs to the new latest shot — load its saved note.
+    const previous = remaining.length ? remaining[remaining.length - 1] : null;
+    const stored = useAppStore.getState();
+    setNote(
+      previous
+        ? (stored.pendingPhotos.find((p) => p.id === previous.id)?.note ??
+            stored.jobPhotos.find((p) => p.id === previous.id)?.note ??
+            '')
+        : ''
+    );
+    setConfirmingDelete(false);
+    setPreviewOpen(false);
   };
 
   return (
@@ -140,19 +183,20 @@ export default function JobCameraScreen() {
         </View>
 
         <View style={styles.bottomArea}>
-          {/* Latest shot + its note input, side by side (bottom-left). */}
+          {/* Latest shot + its note input, side by side (bottom-left). Tapping
+              the thumbnail expands it into the preview popup. */}
           {lastShot && (
             <View style={styles.lastShotRow}>
-              <View>
+              <Pressable onPress={() => setPreviewOpen(true)} hitSlop={4}>
                 <Image
                   source={{ uri: lastShot.uri }}
                   style={styles.lastShotThumb}
                   contentFit="cover"
                 />
                 <View style={styles.shotCountBadge}>
-                  <Text style={styles.shotCountText}>{shotCount}</Text>
+                  <Text style={styles.shotCountText}>{shots.length}</Text>
                 </View>
-              </View>
+              </Pressable>
               <TextInput
                 style={styles.noteInput}
                 value={note}
@@ -166,8 +210,9 @@ export default function JobCameraScreen() {
             </View>
           )}
 
-          {/* Shutter. */}
+          {/* Shutter, with Done on its right to leave the camera. */}
           <View style={styles.shutterRow}>
+            <View style={styles.shutterSide} />
             <Pressable
               style={[styles.shutter, capturing && styles.shutterBusy]}
               onPress={capture}
@@ -175,9 +220,84 @@ export default function JobCameraScreen() {
             >
               <View style={styles.shutterInner} />
             </Pressable>
+            <View style={[styles.shutterSide, styles.shutterSideRight]}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.doneButton,
+                  pressed && styles.donePressed,
+                ]}
+                onPress={() => router.back()}
+              >
+                <Feather name="check" size={16} color={colors.textPrimary} />
+                <Text style={styles.doneText}>Done</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Expanded view of the latest shot: delete (confirmed) + note. */}
+      <Modal
+        visible={previewOpen && lastShot != null}
+        transparent
+        animationType="fade"
+        onRequestClose={closePreview}
+      >
+        <View style={styles.previewBackdrop}>
+          <KeyboardAvoidingView
+            style={styles.previewFlex}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            {lastShot && (
+              <Image
+                source={{ uri: lastShot.uri }}
+                style={styles.previewImage}
+                contentFit="contain"
+              />
+            )}
+
+            <View style={styles.previewTopBar}>
+              <Text style={styles.previewCounter}>
+                Photo {shots.length} of {shots.length}
+              </Text>
+              <Pressable
+                style={styles.roundButton}
+                onPress={closePreview}
+                hitSlop={10}
+              >
+                <Feather name="x" size={22} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.previewBottomBar}>
+              <Pressable
+                style={[
+                  styles.deleteButton,
+                  confirmingDelete && styles.deleteConfirm,
+                ]}
+                onPress={deleteLastShot}
+              >
+                <Feather name="trash-2" size={15} color={colors.danger} />
+                <Text style={styles.deleteText}>
+                  {confirmingDelete ? 'Tap again to delete' : 'Delete photo'}
+                </Text>
+              </Pressable>
+              {/* The keyboard's mic button gives speech-to-text dictation. */}
+              <TextInput
+                style={styles.noteInput}
+                value={note}
+                onChangeText={setNote}
+                onBlur={commitNote}
+                onSubmitEditing={commitNote}
+                placeholder="Note — tap the mic on your keyboard to dictate…"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                multiline
+              />
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -273,7 +393,86 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   shutterRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  shutterSide: {
+    flex: 1,
+  },
+  shutterSideRight: {
+    alignItems: 'flex-end',
+  },
+  doneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.overlay,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+  },
+  donePressed: {
+    opacity: 0.85,
+  },
+  doneText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  previewFlex: {
+    flex: 1,
+  },
+  previewImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  previewTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.xxl + spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  previewCounter: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    backgroundColor: colors.overlay,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    overflow: 'hidden',
+  },
+  previewBottomBar: {
+    marginTop: 'auto',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    padding: spacing.lg,
+    paddingBottom: spacing.xl + spacing.md,
+    gap: spacing.md,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  deleteConfirm: {
+    backgroundColor: colors.dangerDim,
+  },
+  deleteText: {
+    color: colors.danger,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
   shutter: {
     width: 74,

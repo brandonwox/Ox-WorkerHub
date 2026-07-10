@@ -463,6 +463,13 @@ interface AppState {
   deleteJobPhoto: (id: string) => void;
   /** Re-queue failed uploads and kick the queue (also fired by the retry timer). */
   retryPhotoUploads: () => void;
+  /**
+   * Set/replace a job's Window Flashing Material reference photo. Uploads the
+   * image immediately (no offline queue — it's a one-off reference shot taken
+   * by the Field Super) and stores its path on the job, so every jobcard of the
+   * job shows it. Returns false when the upload failed.
+   */
+  setJobFlashingPhoto: (jobId: string, localUri: string) => Promise<boolean>;
 
   // --- Timesheets → QuickBooks Time (Operator visibility) ---
   /**
@@ -1318,6 +1325,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     void processPhotoQueue();
+  },
+
+  setJobFlashingPhoto: async (jobId, localUri) => {
+    const state = get();
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (!job) return false;
+    if (!backendActive(state)) {
+      // Local dev: the compressed local uri renders directly this session.
+      get().updateJob(jobId, { flashingPhotoUrl: localUri });
+      return true;
+    }
+    const storagePath = `${jobId}/flashing-${uuid()}.jpg`;
+    try {
+      await backend.uploadJobPhoto(localUri, storagePath);
+    } catch (e) {
+      console.error('Flashing photo upload failed:', e);
+      get().flash('Photo upload failed — check your signal and retry', 'warning');
+      return false;
+    }
+    const previousPath = job.flashingPhotoPath;
+    // updateJob persists the new path on the jobs row (and updates local state).
+    get().updateJob(jobId, {
+      flashingPhotoPath: storagePath,
+      flashingPhotoUrl: backend.jobPhotoUrl(storagePath),
+    });
+    // The replaced object is unreferenced now — clean it up best-effort.
+    if (previousPath) void backend.removePhotoObject(previousPath);
+    return true;
   },
 
   markTimesheetsSent: () => {

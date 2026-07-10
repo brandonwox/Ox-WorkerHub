@@ -36,6 +36,7 @@ interface JobRow {
   status: string;
   qbt_jobcode_id: string | null;
   flashing_material: string | null;
+  flashing_photo_path: string | null;
 }
 
 interface JobFieldSuperRow {
@@ -127,6 +128,10 @@ function rowToJob(r: JobRow): Job {
     status: r.status as JobStatus,
     qbtJobcodeId: r.qbt_jobcode_id ?? undefined,
     flashingMaterial: r.flashing_material ?? undefined,
+    flashingPhotoPath: r.flashing_photo_path ?? undefined,
+    flashingPhotoUrl: r.flashing_photo_path
+      ? jobPhotoUrl(r.flashing_photo_path)
+      : undefined,
   };
 }
 
@@ -325,6 +330,7 @@ function jobToRow(job: Job) {
     status: job.status,
     qbt_jobcode_id: job.qbtJobcodeId ?? null,
     flashing_material: job.flashingMaterial ?? null,
+    flashing_photo_path: job.flashingPhotoPath ?? null,
   };
 }
 
@@ -654,6 +660,20 @@ export async function updateJobPhotoNote(
         .eq('id', id)
     ).error
   );
+}
+
+/**
+ * Best-effort removal of a storage object in the job-photos bucket (used when a
+ * job's flashing photo is replaced). A failure just leaves an orphan file —
+ * harmless, nothing references it anymore.
+ */
+export async function removePhotoObject(storagePath: string): Promise<void> {
+  const { error } = await getSupabase()
+    .storage.from(PHOTO_BUCKET)
+    .remove([storagePath]);
+  if (error) {
+    console.warn('Photo storage object not removed:', error.message);
+  }
 }
 
 /**

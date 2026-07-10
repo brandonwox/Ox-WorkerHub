@@ -12,6 +12,7 @@ import {
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
+import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import {
   jobsForFieldSuper,
   useAppStore,
@@ -179,10 +180,13 @@ function JobRow({
           <AddressCell job={job} onCommit={onCommitLocation} />
 
           <Text style={styles.fieldLabel}>Window Opening Flashing Material</Text>
-          <FlashingCell job={job} onCommit={onCommitFlashing} />
+          <View style={styles.flashRow}>
+            <FlashingCell job={job} onCommit={onCommitFlashing} />
+            <FlashingPhotoField job={job} editable />
+          </View>
           <Text style={styles.fieldHint}>
             New jobcards with the Windows scope inherit this value (editable per
-            card).
+            card). The photo shows on every jobcard of this job.
           </Text>
         </View>
       )}
@@ -354,6 +358,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 17,
+  },
+  flashRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
   },
   flashWrap: {
     alignSelf: 'flex-start',

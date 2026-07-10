@@ -12,6 +12,7 @@ import {
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
+import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { colors, fonts, radii, spacing } from '@/theme';
 import {
   Job,
@@ -317,21 +318,28 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
               </Pressable>
             )}
 
-            {/* Window Opening Flashing Material (Windows scope only) */}
+            {/* Window Opening Flashing Material (Windows scope only). The photo
+                beside it belongs to the parent JOB — installers see it on every
+                jobcard of that job. */}
             {includesWindows && (
-              <FormInput
-                label="Window Opening Flashing Material"
-                value={flashingValue}
-                onChangeText={(t) => {
-                  setFlashingTouched(true);
-                  setFlashing(t);
-                }}
-                placeholder={
-                  selectedJob?.flashingMaterial
-                    ? `Defaults to ${selectedJob.flashingMaterial}`
-                    : 'e.g. Clear Anodized Aluminum'
-                }
-              />
+              <View style={styles.flashingRow}>
+                <View style={styles.flashingInput}>
+                  <FormInput
+                    label="Window Opening Flashing Material"
+                    value={flashingValue}
+                    onChangeText={(t) => {
+                      setFlashingTouched(true);
+                      setFlashing(t);
+                    }}
+                    placeholder={
+                      selectedJob?.flashingMaterial
+                        ? `Defaults to ${selectedJob.flashingMaterial}`
+                        : 'e.g. Clear Anodized Aluminum'
+                    }
+                  />
+                </View>
+                <FlashingPhotoField job={selectedJob} editable />
+              </View>
             )}
 
             {/* Materials needed (optional) */}
@@ -372,6 +380,15 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
 }
 
 const styles = StyleSheet.create({
+  // Flashing text input + the parent job's reference photo side by side.
+  flashingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.lg,
+  },
+  flashingInput: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     alignItems: 'center',

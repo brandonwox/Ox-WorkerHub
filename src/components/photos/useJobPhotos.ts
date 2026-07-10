@@ -57,3 +57,42 @@ export function useJobPhotos(jobId: string | undefined): DisplayPhoto[] {
     );
   }, [jobId, jobPhotos, pendingPhotos]);
 }
+
+/**
+ * Every photo linked to one jobcard (the installer shots taken from its
+ * screen), uploaded + this device's queued ones, newest first. Used by the
+ * Field Super's jobcard view.
+ */
+export function useJobcardPhotos(jobcardId: string | undefined): DisplayPhoto[] {
+  const jobPhotos = useAppStore((s) => s.jobPhotos);
+  const pendingPhotos = useAppStore((s) => s.pendingPhotos);
+  return useMemo(() => {
+    if (!jobcardId) return [];
+    const uploaded: DisplayPhoto[] = jobPhotos
+      .filter((p) => p.jobcardId === jobcardId)
+      .map((p) => ({
+        id: p.id,
+        jobId: p.jobId,
+        jobcardId: p.jobcardId,
+        workerId: p.workerId,
+        url: p.url,
+        note: p.note,
+        takenAt: p.takenAt,
+      }));
+    const pending: DisplayPhoto[] = pendingPhotos
+      .filter((p) => p.jobcardId === jobcardId)
+      .map((p) => ({
+        id: p.id,
+        jobId: p.jobId,
+        jobcardId: p.jobcardId,
+        workerId: p.workerId,
+        url: p.localUri,
+        note: p.note,
+        takenAt: p.takenAt,
+        pending: p.state,
+      }));
+    return [...uploaded, ...pending].sort((a, b) =>
+      b.takenAt.localeCompare(a.takenAt)
+    );
+  }, [jobcardId, jobPhotos, pendingPhotos]);
+}

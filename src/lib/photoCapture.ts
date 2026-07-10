@@ -29,6 +29,49 @@ export async function compressJobPhoto(
 }
 
 /**
+ * Open the OS camera to take ONE photo (native only) and return its compressed
+ * local uri. Returns null when cancelled or permission is denied. Used for
+ * single reference shots (e.g. the flashing material photo) — the multi-shot
+ * in-app camera lives at /camera/[jobId].
+ */
+export async function captureSingleJobPhoto(): Promise<string | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) return null;
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+  });
+  if (result.canceled || result.assets.length === 0) return null;
+  const asset = result.assets[0];
+  try {
+    return await compressJobPhoto(asset.uri, asset.width);
+  } catch (e) {
+    console.error('Could not process captured image:', e);
+    return null;
+  }
+}
+
+/**
+ * Pick ONE photo from the gallery (native) or file system (web) and return its
+ * compressed local uri, or null when cancelled.
+ */
+export async function pickSingleJobPhoto(): Promise<string | null> {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    allowsMultipleSelection: false,
+    quality: 1,
+  });
+  if (result.canceled || result.assets.length === 0) return null;
+  const asset = result.assets[0];
+  try {
+    return await compressJobPhoto(asset.uri, asset.width);
+  } catch (e) {
+    console.error('Could not process picked image:', e);
+    return null;
+  }
+}
+
+/**
  * Let the user pick photos from their gallery (native) or file system (web) and
  * return the compressed local uris, ready for the upload queue. Returns [] when
  * the picker is cancelled or permission is denied.

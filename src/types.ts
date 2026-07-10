@@ -78,6 +78,15 @@ export interface Job {
    */
   flashingMaterial?: string;
   /**
+   * Reference photo of the Window Flashing Material, taken/uploaded by the
+   * Field Super. Object path inside the job-photos bucket
+   * ("<jobId>/flashing-<uuid>.jpg"). Shown wherever the flashing material text
+   * appears — including every jobcard of this job.
+   */
+  flashingPhotoPath?: string;
+  /** Renderable URL of the flashing photo (public bucket URL; local uri in dev). */
+  flashingPhotoUrl?: string;
+  /**
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field
    * Super sees ONLY the jobs they're in here — and, transitively, only those

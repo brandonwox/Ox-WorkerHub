@@ -12,6 +12,10 @@ import {
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
+import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
+import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
+import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
+import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
 import { colors, fonts, radii, spacing } from '@/theme';
 import {
   Job,
@@ -72,6 +76,13 @@ export function EditJobcardModal({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Installer photos taken for this jobcard, browsable in a full-screen viewer.
+  const photos = useJobcardPhotos(jobcard?.id);
+  const [viewer, setViewer] = useState<{
+    photos: DisplayPhoto[];
+    index: number;
+  } | null>(null);
 
   // Re-seed the form whenever a different jobcard is opened.
   useEffect(() => {
@@ -307,18 +318,25 @@ export function EditJobcardModal({
               </Pressable>
             )}
 
-            {/* Window Opening Flashing Material (Windows scope only) */}
+            {/* Window Opening Flashing Material (Windows scope only). The photo
+                beside it belongs to the parent JOB — installers see it on every
+                jobcard of that job. */}
             {includesWindows && (
-              <FormInput
-                label="Window Opening Flashing Material"
-                value={flashing}
-                onChangeText={setFlashing}
-                placeholder={
-                  selectedJob?.flashingMaterial
-                    ? `Defaults to ${selectedJob.flashingMaterial}`
-                    : 'e.g. Clear Anodized Aluminum'
-                }
-              />
+              <View style={styles.flashingRow}>
+                <View style={styles.flashingInput}>
+                  <FormInput
+                    label="Window Opening Flashing Material"
+                    value={flashing}
+                    onChangeText={setFlashing}
+                    placeholder={
+                      selectedJob?.flashingMaterial
+                        ? `Defaults to ${selectedJob.flashingMaterial}`
+                        : 'e.g. Clear Anodized Aluminum'
+                    }
+                  />
+                </View>
+                <FlashingPhotoField job={selectedJob} editable />
+              </View>
             )}
 
             {/* Materials needed (optional) */}
@@ -340,6 +358,28 @@ export function EditJobcardModal({
               multiline
               style={styles.multiline}
             />
+
+            {/* Photos installers took for this jobcard. */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Installer photos{photos.length > 0 ? ` (${photos.length})` : ''}
+              </Text>
+              {photos.length === 0 ? (
+                <Text style={styles.noPhotos}>
+                  No photos taken for this jobcard yet.
+                </Text>
+              ) : (
+                <JobPhotoGrid
+                  photos={photos}
+                  onPhotoPress={(photo, sorted) =>
+                    setViewer({
+                      photos: sorted,
+                      index: sorted.findIndex((p) => p.id === photo.id),
+                    })
+                  }
+                />
+              )}
+            </View>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </ScrollView>
@@ -379,6 +419,12 @@ export function EditJobcardModal({
           </View>
         </View>
       </View>
+
+      <PhotoViewerModal
+        photos={viewer?.photos ?? []}
+        initialIndex={viewer?.index ?? null}
+        onClose={() => setViewer(null)}
+      />
     </Modal>
   );
 }
@@ -446,6 +492,20 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  noPhotos: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  // Flashing text input + the parent job's reference photo side by side.
+  flashingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.lg,
+  },
+  flashingInput: {
+    flex: 1,
   },
   taskRow: {
     flexDirection: 'row',

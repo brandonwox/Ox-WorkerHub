@@ -76,19 +76,10 @@ export default function RootLayout() {
         <Stack.Screen name="set-password" />
         {/* Full-screen login gate (no modal/header) — it's the logged-out landing. */}
         <Stack.Screen name="sign-in" />
+        {/* Jobcard details renders its own close (X) button — no nav header. */}
         <Stack.Screen
           name="job/[id]"
-          options={{
-            presentation: 'modal',
-            headerShown: true,
-            headerTitle: 'Jobcard Details',
-            headerTitleStyle: {
-              fontFamily: fonts.bold,
-              color: colors.textPrimary,
-            },
-            headerStyle: { backgroundColor: colors.surface },
-            headerTintColor: colors.primary,
-          }}
+          options={{ presentation: 'modal', headerShown: false }}
         />
         {/* A parent Job's page (jobsite info + photo wall), opened from the
             installer Pics tab. */}
