@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -97,6 +98,7 @@ function JobRow({
   onToggle: () => void;
   onSave: (changes: { location?: string; flashingMaterial?: string }) => void;
 }) {
+  const router = useRouter();
   const [location, setLocation] = useState(job.location);
   const [flashing, setFlashing] = useState(job.flashingMaterial ?? '');
   const [saved, setSaved] = useState(false);
@@ -163,6 +165,18 @@ function JobRow({
             <Text style={styles.saveText}>
               {saved && !dirty ? 'Saved ✓' : 'Save'}
             </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.picsButton,
+              pressed && styles.saveDim,
+            ]}
+            onPress={() =>
+              router.push({ pathname: '/job-site/[id]', params: { id: job.id } })
+            }
+          >
+            <Feather name="image" size={15} color={colors.primary} />
+            <Text style={styles.picsText}>Job pics</Text>
           </Pressable>
         </View>
       )}
@@ -244,6 +258,21 @@ const styles = StyleSheet.create({
   },
   saveText: {
     color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  picsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: spacing.md,
+  },
+  picsText: {
+    color: colors.primary,
     fontFamily: fonts.bold,
     fontSize: 14,
   },

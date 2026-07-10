@@ -122,7 +122,9 @@ export function DropdownPortal({
     position: 'fixed',
     top: rect.bottom + offset,
     minWidth: minWidth ?? rect.width,
-    zIndex: 1000,
+    // Above react-native-web's <Modal> layer (fixed at 9999), so dropdowns
+    // inside modals (Add worker, Edit job, …) open on top instead of behind.
+    zIndex: 10000,
     ...(align === 'stretch'
       ? { left: rect.left, width: rect.width }
       : align === 'right'

@@ -11,6 +11,7 @@ import {
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
+import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import {
   jobsForFieldSuper,
   useAppStore,
@@ -31,6 +32,7 @@ export default function FieldSuperJobsScreen() {
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [viewJob, setViewJob] = useState<Job | null>(null);
+  const [photosJob, setPhotosJob] = useState<Job | null>(null);
 
   // A Field Super sees ONLY the jobs they're assigned to, Active first.
   const sortedJobs = useMemo(
@@ -77,6 +79,7 @@ export default function FieldSuperJobsScreen() {
                   setExpandedJobId((id) => (id === job.id ? null : job.id))
                 }
                 onViewJobcards={() => setViewJob(job)}
+                onViewPhotos={() => setPhotosJob(job)}
                 onCommitLocation={(location) =>
                   updateJob(job.id, { location })
                 }
@@ -95,6 +98,8 @@ export default function FieldSuperJobsScreen() {
         scheduledIds={scheduledIds}
         onClose={() => setViewJob(null)}
       />
+
+      <JobPhotosModal job={photosJob} onClose={() => setPhotosJob(null)} />
     </View>
   );
 }
@@ -106,6 +111,7 @@ function JobRow({
   expanded,
   onToggle,
   onViewJobcards,
+  onViewPhotos,
   onCommitLocation,
   onCommitFlashing,
 }: {
@@ -114,6 +120,7 @@ function JobRow({
   expanded: boolean;
   onToggle: () => void;
   onViewJobcards: () => void;
+  onViewPhotos: () => void;
   onCommitLocation: (value: string) => void;
   onCommitFlashing: (value: string | undefined) => void;
 }) {
@@ -147,6 +154,17 @@ function JobRow({
           <Text style={styles.viewButtonText}>
             {jobcardCount} {jobcardCount === 1 ? 'jobcard' : 'jobcards'}
           </Text>
+        </Pressable>
+        {/* Nested Pressable: opens the job's photo wall. */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.viewButton,
+            pressed && styles.viewButtonPressed,
+          ]}
+          onPress={onViewPhotos}
+        >
+          <Feather name="image" size={14} color={colors.primary} />
+          <Text style={styles.viewButtonText}>Pics</Text>
         </Pressable>
         <Feather
           name={expanded ? 'chevron-up' : 'chevron-down'}

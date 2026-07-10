@@ -1,4 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 import {
   Crew,
@@ -7,6 +9,7 @@ import {
   Jobcard,
   JobcardPriority,
   JobcardStatus,
+  JobPhoto,
   JobScope,
   JobStatus,
   ScheduleAssignment,
@@ -104,6 +107,16 @@ interface TimesheetRow {
   send_status: string;
 }
 
+interface JobPhotoRow {
+  id: string;
+  job_id: string;
+  jobcard_id: string | null;
+  worker_id: string;
+  storage_path: string;
+  note: string | null;
+  taken_at: string;
+}
+
 // --- Mappers (row -> domain) -------------------------------------------------
 
 function rowToJob(r: JobRow): Job {
@@ -164,6 +177,28 @@ function rowToTimesheet(r: TimesheetRow): TimesheetLog {
   };
 }
 
+/** The storage bucket job photos live in (public reads; see its migration). */
+const PHOTO_BUCKET = 'job-photos';
+
+/** Public render URL for a photo's storage object. */
+export function jobPhotoUrl(storagePath: string): string {
+  return getSupabase().storage.from(PHOTO_BUCKET).getPublicUrl(storagePath).data
+    .publicUrl;
+}
+
+function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
+  return {
+    id: r.id,
+    jobId: r.job_id,
+    jobcardId: r.jobcard_id ?? undefined,
+    workerId: r.worker_id,
+    storagePath: r.storage_path,
+    url: jobPhotoUrl(r.storage_path),
+    note: r.note ?? undefined,
+    takenAt: r.taken_at,
+  };
+}
+
 // --- Bulk read ---------------------------------------------------------------
 
 export interface BackendData {
@@ -174,6 +209,7 @@ export interface BackendData {
   dailyCrews: DailyCrew[];
   assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
+  jobPhotos: JobPhoto[];
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -191,6 +227,7 @@ export async function fetchAllData(): Promise<BackendData> {
     dailyCrewMembersR,
     assignmentsR,
     timesheetsR,
+    jobPhotosR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -202,6 +239,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('daily_crew_members').select('*'),
     sb.from('schedule_assignments').select('*'),
     sb.from('timesheets').select('*'),
+    sb.from('job_photos').select('*'),
   ]);
 
   const firstError =
@@ -216,6 +254,11 @@ export async function fetchAllData(): Promise<BackendData> {
     assignmentsR.error ??
     timesheetsR.error;
   if (firstError) throw new Error(firstError.message);
+  // Photos are non-fatal: a project that hasn't run the job_photos migration
+  // yet still hydrates everything else (mirrors how notifications degrade).
+  if (jobPhotosR.error) {
+    console.warn('Job photos load failed; none shown.', jobPhotosR.error.message);
+  }
 
   // Group Field Super assignments by job so each Job carries its own
   // fieldSuperIds list.
@@ -263,6 +306,7 @@ export async function fetchAllData(): Promise<BackendData> {
       rowToAssignment
     ),
     logs: ((timesheetsR.data ?? []) as TimesheetRow[]).map(rowToTimesheet),
+    jobPhotos: ((jobPhotosR.data ?? []) as JobPhotoRow[]).map(rowToJobPhoto),
   };
 }
 
@@ -532,6 +576,92 @@ export async function markTimesheetsSentRemote(): Promise<void> {
   );
 }
 
+// --- Job photos ----------------------------------------------------------------
+
+/**
+ * Decode a base64 string to bytes. Storage uploads from React Native must send
+ * raw bytes (there is no Blob for a file:// uri); Hermes ships atob, so no
+ * extra dependency is needed.
+ */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Push a photo's bytes to the job-photos bucket. On native the local file is
+ * read as base64 and sent as raw bytes; on web the picker's blob uri is fetched
+ * directly. Upsert so a retry after a half-failed attempt can't collide.
+ */
+export async function uploadJobPhoto(
+  localUri: string,
+  storagePath: string
+): Promise<void> {
+  let body: Blob | ArrayBuffer;
+  if (Platform.OS === 'web') {
+    body = await (await fetch(localUri)).blob();
+  } else {
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    body = base64ToBytes(base64).buffer as ArrayBuffer;
+  }
+  const { error } = await getSupabase()
+    .storage.from(PHOTO_BUCKET)
+    .upload(storagePath, body, { contentType: 'image/jpeg', upsert: true });
+  if (error) throw new Error(error.message);
+}
+
+export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
+  check(
+    (
+      await getSupabase().from('job_photos').insert({
+        id: photo.id,
+        job_id: photo.jobId,
+        jobcard_id: photo.jobcardId ?? null,
+        worker_id: photo.workerId,
+        storage_path: photo.storagePath,
+        note: photo.note ?? null,
+        taken_at: photo.takenAt,
+      })
+    ).error
+  );
+}
+
+export async function updateJobPhotoNote(
+  id: string,
+  note: string | undefined
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_photos')
+        .update({ note: note ?? null })
+        .eq('id', id)
+    ).error
+  );
+}
+
+/**
+ * Delete a photo: the metadata row first (the authoritative record), then the
+ * storage object. A failed object removal leaves an orphan file, which is
+ * harmless — nothing references it once the row is gone.
+ */
+export async function deleteJobPhoto(
+  id: string,
+  storagePath: string
+): Promise<void> {
+  check((await getSupabase().from('job_photos').delete().eq('id', id)).error);
+  const { error } = await getSupabase()
+    .storage.from(PHOTO_BUCKET)
+    .remove([storagePath]);
+  if (error) {
+    console.warn('Job photo storage object not removed:', error.message);
+  }
+}
+
 // --- Realtime sync -----------------------------------------------------------
 
 /**
@@ -553,6 +683,7 @@ const REALTIME_TABLES = [
   'daily_crew_members',
   'schedule_assignments',
   'timesheets',
+  'job_photos',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the

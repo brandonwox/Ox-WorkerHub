@@ -35,6 +35,18 @@
             "imageWidth": 76
           }
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ox WorkerHub uses the camera to take photos of your work on jobsites."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ox WorkerHub accesses your photos so you can add existing pictures to a job."
+        }
       ]
     ],
     "experiments": {

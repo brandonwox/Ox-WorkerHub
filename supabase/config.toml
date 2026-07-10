@@ -124,6 +124,13 @@ file_size_limit = "50MiB"
 # allowed_mime_types = ["image/png", "image/jpeg"]
 # objects_path = "./images"
 
+# Installer job photos (see the job_photos migration). Public reads; the app
+# renders plain public URLs.
+[storage.buckets.job-photos]
+public = true
+file_size_limit = "25MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

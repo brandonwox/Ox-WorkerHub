@@ -26,6 +26,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
  */
 export type DesktopHref =
   | '/scheduler-calendar'
+  | '/scheduler-jobcards'
   | '/operator-jobs'
   | '/operator-people'
   | '/operator-timesheets'
@@ -33,7 +34,8 @@ export type DesktopHref =
   | '/field-super-jobs'
   | '/field-super-calendar'
   | '/installer-schedule'
-  | '/installer-timesheets';
+  | '/installer-timesheets'
+  | '/installer-pics';
 
 export interface DesktopNavItem {
   href: DesktopHref;
@@ -46,13 +48,20 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   installer: [
     { href: '/installer-schedule', label: 'Schedule', icon: 'calendar' },
     { href: '/installer-timesheets', label: 'Timesheets', icon: 'file-text' },
+    // No live camera on web — the page offers file upload instead.
+    { href: '/installer-pics', label: 'Pics', icon: 'camera' },
   ],
   operator: [
     { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
     { href: '/operator-people', label: 'People', icon: 'users' },
     { href: '/operator-timesheets', label: 'Timesheets', icon: 'file-text' },
   ],
-  scheduler: [{ href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' }],
+  scheduler: [
+    { href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' },
+    // Distinct route from the Field Super's '/field-super-jobcards' — the
+    // Scheduler creates jobcards across every job, not just their own.
+    { href: '/scheduler-jobcards', label: 'Jobcards', icon: 'clipboard' },
+  ],
   field_super: [
     // Distinct route from the Operator's '/operator-jobs', shown to the Field
     // Super as "Jobs".
@@ -77,6 +86,7 @@ export type MobileTabName =
   | 'backlog'
   | 'jobs'
   | 'calendar'
+  | 'pics'
   | 'settings';
 
 /** Every tab file in the `(mobile)` group — used to declare and gate them. */
@@ -87,6 +97,7 @@ export const MOBILE_TAB_NAMES: MobileTabName[] = [
   'backlog',
   'jobs',
   'calendar',
+  'pics',
   'settings',
 ];
 
@@ -101,6 +112,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
   installer: [
     { name: 'timesheets', label: 'Timesheets', icon: 'file-text' },
     { name: 'index', label: 'Calendar', icon: 'calendar' },
+    { name: 'pics', label: 'Pics', icon: 'camera' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [

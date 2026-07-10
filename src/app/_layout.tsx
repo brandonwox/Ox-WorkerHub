@@ -89,6 +89,26 @@ export default function RootLayout() {
             headerTintColor: colors.primary,
           }}
         />
+        {/* A parent Job's page (jobsite info + photo wall), opened from the
+            installer Pics tab. */}
+        <Stack.Screen
+          name="job-site/[id]"
+          options={{
+            headerShown: true,
+            headerTitle: 'Job Photos',
+            headerTitleStyle: {
+              fontFamily: fonts.bold,
+              color: colors.textPrimary,
+            },
+            headerStyle: { backgroundColor: colors.surface },
+            headerTintColor: colors.primary,
+          }}
+        />
+        {/* Full-screen in-app camera (native only). */}
+        <Stack.Screen
+          name="camera/[jobId]"
+          options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+        />
       </Stack>
     </ThemeProvider>
   );

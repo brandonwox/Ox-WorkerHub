@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import { useMemo } from 'react';
 import { Platform } from 'react-native';
@@ -11,6 +12,7 @@ import {
 import { syncRealtimeAuth } from '@/integrations/supabase/auth';
 import * as backend from '@/integrations/supabase/data';
 import * as notificationsBackend from '@/integrations/supabase/notifications';
+import { discardPhotoFile, stashPhotoFile } from '@/lib/photoFiles';
 import {
   ActiveShift,
   AppNotification,
@@ -20,8 +22,10 @@ import {
   Job,
   Jobcard,
   JobcardStatus,
+  JobPhoto,
   JobStatus,
   NotificationType,
+  PendingJobPhoto,
   QbtConfig,
   QbtConnection,
   QbtJobcode,
@@ -293,6 +297,14 @@ interface AppState {
   /** Jobcard→crew→date links (single source of truth; never duplicates a card). */
   assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
+  /** Jobsite photos hydrated from the backend (see also pendingPhotos). */
+  jobPhotos: JobPhoto[];
+  /**
+   * Photos captured on THIS device still waiting to upload. Separate from
+   * `jobPhotos` so a realtime refetch never wipes the queue; uploads retry
+   * automatically until they land (jobsites have dead zones).
+   */
+  pendingPhotos: PendingJobPhoto[];
   activeShift: ActiveShift | null;
   qbt: QbtState;
   /**
@@ -433,6 +445,25 @@ interface AppState {
     endTime: string;
   }) => TimesheetLog;
 
+  // --- Job photos ---
+  /**
+   * Stage captured/picked images for a job (optionally linked to the jobcard
+   * they were taken for) and start the upload queue. Files are moved into app
+   * storage first so a queued upload survives an app restart. Returns the new
+   * photo ids (in input order) so the caller can attach a note to one.
+   */
+  addJobPhotos: (input: {
+    jobId: string;
+    jobcardId?: string;
+    localUris: string[];
+  }) => Promise<string[]>;
+  /** Set/replace the caption on a photo (pending or uploaded). Owner-only in the UI. */
+  setJobPhotoNote: (id: string, note: string) => void;
+  /** Delete a photo — a queued one locally, an uploaded one from the backend too. */
+  deleteJobPhoto: (id: string) => void;
+  /** Re-queue failed uploads and kick the queue (also fired by the retry timer). */
+  retryPhotoUploads: () => void;
+
   // --- Timesheets → QuickBooks Time (Operator visibility) ---
   /**
    * Reflect a successful weekly sweep by flagging every un-sent/failed timesheet
@@ -501,6 +532,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   dailyCrews: [],
   assignments: [],
   logs: [],
+  jobPhotos: [],
+  pendingPhotos: [],
   notifications: [],
   savedTick: 0,
   flashMessage: null,
@@ -550,6 +583,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: seed.mockDailyCrews,
       assignments: seed.mockAssignments,
       logs: seed.mockLogs,
+      jobPhotos: [],
+      pendingPhotos: [],
       devMode: true,
       devBaseUserId: seed.DEVELOPER_ID,
       viewAsUserId:
@@ -579,7 +614,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: data.dailyCrews,
       assignments: data.assignments,
       logs: data.logs,
+      jobPhotos: data.jobPhotos,
     });
+    // Resume photo uploads that were still queued when the app last closed
+    // (their files were stashed in app storage). Restored entries are this
+    // worker's own — another account's queue stays parked until they sign in.
+    const me0 = get().authWorker;
+    if (me0) {
+      const restored = await restorePendingPhotos(me0.id);
+      if (restored.length) {
+        set((state) => ({
+          pendingPhotos: [
+            ...state.pendingPhotos.filter(
+              (p) => !restored.some((r) => r.id === p.id)
+            ),
+            ...restored,
+          ],
+        }));
+      }
+      void processPhotoQueue();
+    }
     // Load this worker's notifications and open a live channel for new ones.
     // Kept separate from the bulk read (and tolerant of failure) so a missing
     // notifications migration never blocks the rest of the app from hydrating.
@@ -619,6 +673,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: data.dailyCrews,
       assignments: data.assignments,
       logs: data.logs,
+      jobPhotos: data.jobPhotos,
     });
   },
 
@@ -629,6 +684,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       clearTimeout(dataRefreshTimer);
       dataRefreshTimer = null;
     }
+    if (photoRetryTimer) {
+      clearTimeout(photoRetryTimer);
+      photoRetryTimer = null;
+    }
     set({
       workers: [],
       jobs: [],
@@ -637,6 +696,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: [],
       assignments: [],
       logs: [],
+      // Pending photo files/queue stay stashed on disk — they resume when
+      // their owner signs back in (restorePendingPhotos filters by worker).
+      jobPhotos: [],
+      pendingPhotos: [],
       notifications: [],
       devMode: false,
       devBaseUserId: '',
@@ -1154,6 +1217,109 @@ export const useAppStore = create<AppState>((set, get) => ({
     return log;
   },
 
+  addJobPhotos: async (input) => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return [];
+    const createdIds: string[] = [];
+    const isBackend = backendActive(state);
+    for (const uri of input.localUris) {
+      const id = uuid();
+      let stashed: string;
+      try {
+        stashed = await stashPhotoFile(uri, id);
+      } catch (e) {
+        console.error('Could not stage photo file:', e);
+        continue;
+      }
+      if (isBackend) {
+        const pending: PendingJobPhoto = {
+          id,
+          jobId: input.jobId,
+          jobcardId: input.jobcardId,
+          workerId: me.id,
+          localUri: stashed,
+          takenAt: new Date().toISOString(),
+          state: 'queued',
+        };
+        set((s) => ({ pendingPhotos: [pending, ...s.pendingPhotos] }));
+      } else {
+        // Local dev: no backend — the photo lives in memory for this session.
+        const photo: JobPhoto = {
+          id,
+          jobId: input.jobId,
+          jobcardId: input.jobcardId,
+          workerId: me.id,
+          storagePath: '',
+          url: stashed,
+          takenAt: new Date().toISOString(),
+        };
+        set((s) => ({ jobPhotos: [photo, ...s.jobPhotos] }));
+      }
+      createdIds.push(id);
+    }
+    if (isBackend) {
+      persistPendingPhotos(get().pendingPhotos);
+      void processPhotoQueue();
+    }
+    return createdIds;
+  },
+
+  setJobPhotoNote: (id, note) => {
+    const value = note.trim() || undefined;
+    if (get().pendingPhotos.some((p) => p.id === id)) {
+      set((s) => ({
+        pendingPhotos: s.pendingPhotos.map((p) =>
+          p.id === id ? { ...p, note: value } : p
+        ),
+      }));
+      // The note rides along when the queued photo uploads.
+      persistPendingPhotos(get().pendingPhotos);
+      return;
+    }
+    let found = false;
+    set((s) => ({
+      jobPhotos: s.jobPhotos.map((p) => {
+        if (p.id !== id) return p;
+        found = true;
+        return { ...p, note: value };
+      }),
+    }));
+    if (backendActive(get()) && found) {
+      write(backend.updateJobPhotoNote(id, value));
+    }
+  },
+
+  deleteJobPhoto: (id) => {
+    const state = get();
+    const pending = state.pendingPhotos.find((p) => p.id === id);
+    if (pending) {
+      // Never uploaded — just drop it from the queue and free the file. If it
+      // is mid-upload, the queue notices the removal and skips the DB row.
+      set((s) => ({
+        pendingPhotos: s.pendingPhotos.filter((p) => p.id !== id),
+      }));
+      persistPendingPhotos(get().pendingPhotos);
+      void discardPhotoFile(pending.localUri);
+      return;
+    }
+    const photo = state.jobPhotos.find((p) => p.id === id);
+    if (!photo) return;
+    set((s) => ({ jobPhotos: s.jobPhotos.filter((p) => p.id !== id) }));
+    if (backendActive(state) && photo.storagePath) {
+      write(backend.deleteJobPhoto(id, photo.storagePath));
+    }
+  },
+
+  retryPhotoUploads: () => {
+    set((s) => ({
+      pendingPhotos: s.pendingPhotos.map((p) =>
+        p.state === 'failed' ? { ...p, state: 'queued' } : p
+      ),
+    }));
+    void processPhotoQueue();
+  },
+
   markTimesheetsSent: () => {
     set((state) => ({
       // The weekly server sweep delivered these to QuickBooks Time. (A real
@@ -1262,6 +1428,118 @@ export const useAppStore = create<AppState>((set, get) => ({
       qbt: { ...state.qbt, submittedThrough, approvedThrough },
     })),
 }));
+
+// --- Job photo upload queue ---------------------------------------------------
+//
+// Photos upload one at a time in the background: bytes to the storage bucket,
+// then the metadata row. Any failure (usually no signal on site) parks the
+// queue and a timer retries every 30s until everything lands. Queue entries are
+// mirrored to AsyncStorage (files are already stashed in app storage — see
+// lib/photoFiles) so an app restart resumes instead of losing photos.
+
+const PENDING_PHOTOS_KEY = 'oxwh.pendingJobPhotos';
+const PHOTO_RETRY_MS = 30_000;
+
+let photoQueueRunning = false;
+let photoRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Mirror the queue to AsyncStorage. Web is skipped — blob uris die with the page. */
+function persistPendingPhotos(pending: PendingJobPhoto[]): void {
+  if (Platform.OS === 'web') return;
+  AsyncStorage.setItem(PENDING_PHOTOS_KEY, JSON.stringify(pending)).catch(
+    () => {}
+  );
+}
+
+/**
+ * Load the persisted queue for `workerId`. Only their own entries return (an
+ * upload must run as the photo's owner to pass RLS); anything mid-flight when
+ * the app died goes back to 'queued'.
+ */
+async function restorePendingPhotos(
+  workerId: string
+): Promise<PendingJobPhoto[]> {
+  if (Platform.OS === 'web') return [];
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_PHOTOS_KEY);
+    if (!raw) return [];
+    return (JSON.parse(raw) as PendingJobPhoto[])
+      .filter((p) => p.workerId === workerId)
+      .map((p) => ({ ...p, state: 'queued' as const }));
+  } catch {
+    return [];
+  }
+}
+
+function schedulePhotoRetry(): void {
+  if (photoRetryTimer) return;
+  photoRetryTimer = setTimeout(() => {
+    photoRetryTimer = null;
+    useAppStore.getState().retryPhotoUploads();
+  }, PHOTO_RETRY_MS);
+}
+
+async function processPhotoQueue(): Promise<void> {
+  if (photoQueueRunning) return;
+  photoQueueRunning = true;
+  try {
+    for (;;) {
+      const state = useAppStore.getState();
+      if (!backendActive(state)) return;
+      const next = state.pendingPhotos.find((p) => p.state === 'queued');
+      if (!next) return;
+      useAppStore.setState((s) => ({
+        pendingPhotos: s.pendingPhotos.map((p) =>
+          p.id === next.id ? { ...p, state: 'uploading' } : p
+        ),
+      }));
+      const storagePath = `${next.jobId}/${next.id}.jpg`;
+      try {
+        await backend.uploadJobPhoto(next.localUri, storagePath);
+        // The photo may have been deleted from the queue mid-upload — then the
+        // metadata row is skipped and the orphaned object is left behind
+        // (harmless: nothing references it).
+        const current = useAppStore
+          .getState()
+          .pendingPhotos.find((p) => p.id === next.id);
+        if (!current) continue;
+        const photo: JobPhoto = {
+          id: current.id,
+          jobId: current.jobId,
+          jobcardId: current.jobcardId,
+          workerId: current.workerId,
+          storagePath,
+          url: backend.jobPhotoUrl(storagePath),
+          note: current.note,
+          takenAt: current.takenAt,
+        };
+        await backend.insertJobPhoto(photo);
+        useAppStore.setState((s) => ({
+          pendingPhotos: s.pendingPhotos.filter((p) => p.id !== photo.id),
+          // Realtime may have already streamed the row in — don't double-add.
+          jobPhotos: s.jobPhotos.some((existing) => existing.id === photo.id)
+            ? s.jobPhotos
+            : [photo, ...s.jobPhotos],
+        }));
+        persistPendingPhotos(useAppStore.getState().pendingPhotos);
+        useAppStore.getState().signalSaved();
+        void discardPhotoFile(current.localUri);
+      } catch (e) {
+        console.error('Job photo upload failed; retrying shortly:', e);
+        useAppStore.setState((s) => ({
+          pendingPhotos: s.pendingPhotos.map((p) =>
+            p.id === next.id ? { ...p, state: 'failed' } : p
+          ),
+        }));
+        persistPendingPhotos(useAppStore.getState().pendingPhotos);
+        schedulePhotoRetry();
+        return;
+      }
+    }
+  } finally {
+    photoQueueRunning = false;
+  }
+}
 
 /** The identity-resolving slice of state (shared by the selectors below). */
 type IdentityState = {
@@ -1384,6 +1662,44 @@ export function assignedDatesForInstaller(
     }
   }
   return dates;
+}
+
+/**
+ * The distinct parent Jobs a worker has clocked into, most recent first (the
+ * currently running shift counts as most recent of all). Clock-ins reference
+ * jobcards, so each log resolves jobcard → parent job; custom-project logs (no
+ * jobcard) can't resolve to a job and are skipped.
+ */
+export function recentClockedJobs(
+  state: {
+    logs: TimesheetLog[];
+    jobcards: Jobcard[];
+    jobs: Job[];
+    activeShift: ActiveShift | null;
+  },
+  workerId: string,
+  limit = 10
+): Job[] {
+  const jobcardIds: string[] = [];
+  if (state.activeShift?.jobcardId) {
+    jobcardIds.push(state.activeShift.jobcardId);
+  }
+  const logs = state.logs
+    .filter((l) => l.workerId === workerId && l.jobcardId)
+    .sort((a, b) => b.startTime.localeCompare(a.startTime));
+  for (const log of logs) jobcardIds.push(log.jobcardId!);
+
+  const result: Job[] = [];
+  const seen = new Set<string>();
+  for (const cardId of jobcardIds) {
+    if (result.length >= limit) break;
+    const jobId = state.jobcards.find((c) => c.id === cardId)?.jobId;
+    if (!jobId || seen.has(jobId)) continue;
+    seen.add(jobId);
+    const job = state.jobs.find((j) => j.id === jobId);
+    if (job) result.push(job);
+  }
+  return result;
 }
 
 /** Hook: the effective worker (impersonated for the Developer, else self), or null when signed out. */

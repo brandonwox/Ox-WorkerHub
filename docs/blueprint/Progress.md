@@ -305,3 +305,27 @@ during 7d.
   by both the mobile tabs and the new installer desktop pages (centered column).
   Jobcard/job/worker **creation** remains desktop-only for now (the desktop
   modals aren't phone-sized yet) — a known follow-up.
+- **2026-07-09 — Job photos ("Pics"): installer camera + per-job photo walls.**
+  New feature (not in the original blueprint). Installers get a **Pics** tab
+  (mobile tab + `/installer-pics` desktop page): last 10 distinct clocked-in
+  jobs (active shift first) via the new `recentClockedJobs` selector, plus a
+  name search over **every** job (archived included). Opening a job lands on the
+  new **`/job-site/[id]`** page (job name, location, Field Supers, day-grouped
+  5-across photo grid) with an in-app **camera** (`/camera/[jobId]`,
+  expo-camera, native only — multi-shot, latest-shot thumbnail bottom-left with
+  a per-photo note input, saves instantly) and gallery/file upload
+  (expo-image-picker; the only path on web). Every image is compressed to
+  ≤1600px JPEG (expo-image-manipulator) and rides an **offline-tolerant upload
+  queue**: files stashed in app storage, queue mirrored to AsyncStorage,
+  auto-retry every 30s, survives app restarts (`pendingPhotos` +
+  `processPhotoQueue` in the store). Data model: `job_photos` table + public
+  `job-photos` storage bucket (migration `20260709140000_job_photos.sql`) —
+  photos attach to the **parent job**, optionally linked to the jobcard they
+  were taken from (the jobcard modal's placeholder "Upload Images" button is now
+  wired: Take Photos / Upload Images / View job photos). Viewer modal shows
+  photographer, time, note (owner-editable), jobcard chip; **delete = owner, or
+  any photo for Field Supers/Operator** (matching RLS). Field Supers see job
+  pics via their Jobs pages (desktop button + mobile "Job pics"); the Scheduler
+  via the Jobcards page's group-by-job headers. Realtime streams new photos into
+  open sessions; photo fetch degrades gracefully if the migration isn't applied.
+  **Awaiting user:** `supabase db push --linked` to create the table + bucket.

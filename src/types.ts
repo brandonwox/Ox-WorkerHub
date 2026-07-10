@@ -270,6 +270,54 @@ export interface ActiveShift {
   startTime: string;
 }
 
+// --- Job photos --------------------------------------------------------------
+
+/**
+ * A photo of the work on a jobsite. Always attached to the parent {@link Job}
+ * (that's where crews and the office browse them); optionally linked to the
+ * {@link Jobcard} it was taken for when captured from a jobcard's screen. The
+ * image bytes live in the `job-photos` Supabase Storage bucket; this record is
+ * the metadata.
+ */
+export interface JobPhoto {
+  id: string;
+  /** Parent Job (jobsite) the photo documents. */
+  jobId: string;
+  /** The jobcard the photo was taken for, when captured from its screen. */
+  jobcardId?: string;
+  /** Worker who took/uploaded the photo. */
+  workerId: string;
+  /** Object path inside the job-photos bucket ("<jobId>/<photoId>.jpg"). */
+  storagePath: string;
+  /** Renderable image URL (public bucket URL; a local uri in local dev mode). */
+  url: string;
+  /** Caption written by the photographer (editable by them only). */
+  note?: string;
+  /** ISO datetime the photo was taken. */
+  takenAt: string;
+}
+
+/** Upload lifecycle of a photo that hasn't reached the backend yet. */
+export type PendingPhotoState = 'queued' | 'uploading' | 'failed';
+
+/**
+ * A photo captured on device but not yet delivered to Supabase. Kept separate
+ * from {@link JobPhoto} so a realtime refetch never wipes queue state. Jobsites
+ * have dead zones, so uploads queue and retry automatically until they land.
+ */
+export interface PendingJobPhoto {
+  id: string;
+  jobId: string;
+  jobcardId?: string;
+  workerId: string;
+  /** Local file uri (native) or blob uri (web) of the compressed image. */
+  localUri: string;
+  note?: string;
+  /** ISO datetime the photo was taken. */
+  takenAt: string;
+  state: PendingPhotoState;
+}
+
 // --- QuickBooks Time integration ---
 
 /**

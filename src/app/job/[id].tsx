@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
+import { pickJobPhotos } from '@/lib/photoCapture';
 import { priorityMeta } from '@/lib/priority';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -28,11 +30,14 @@ const statusColors: Record<JobcardStatus, { bg: string; fg: string }> = {
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const job = useAppStore((s) => s.jobcards.find((j) => j.id === id));
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
   const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
+  const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
+  const [picking, setPicking] = useState(false);
   const statusWrapRef = useRef<View>(null);
 
   if (!job) {
@@ -200,12 +205,68 @@ export default function JobDetailsScreen() {
         />
       </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadPressed]}
-      >
-        <Feather name="camera" size={18} color={colors.primary} />
-        <Text style={styles.uploadText}>Upload Images</Text>
-      </Pressable>
+      {/* Photos taken here land on the PARENT job's photo wall, each linked
+          back to this jobcard. Hidden for legacy cards with no parent job. */}
+      {job.jobId && (
+        <View style={styles.photoActions}>
+          {Platform.OS !== 'web' && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.cameraButton,
+                pressed && styles.cameraPressed,
+              ]}
+              onPress={() =>
+                router.push({
+                  pathname: '/camera/[jobId]',
+                  params: { jobId: job.jobId!, jobcardId: job.id },
+                })
+              }
+            >
+              <Feather name="camera" size={18} color={colors.textPrimary} />
+              <Text style={styles.cameraText}>Take Photos</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={({ pressed }) => [
+              styles.uploadButton,
+              pressed && styles.uploadPressed,
+            ]}
+            disabled={picking}
+            onPress={async () => {
+              if (picking) return;
+              setPicking(true);
+              try {
+                const uris = await pickJobPhotos();
+                if (uris.length) {
+                  await addJobPhotos({
+                    jobId: job.jobId!,
+                    jobcardId: job.id,
+                    localUris: uris,
+                  });
+                }
+              } finally {
+                setPicking(false);
+              }
+            }}
+          >
+            <Feather name="upload" size={18} color={colors.primary} />
+            <Text style={styles.uploadText}>
+              {picking ? 'Opening…' : 'Upload Images'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [pressed && styles.uploadPressed]}
+            onPress={() =>
+              router.push({
+                pathname: '/job-site/[id]',
+                params: { id: job.jobId! },
+              })
+            }
+          >
+            <Text style={styles.viewPhotosText}>View job photos</Text>
+          </Pressable>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -376,6 +437,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlignVertical: 'top',
   },
+  photoActions: {
+    gap: spacing.md,
+  },
+  cameraButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.lg,
+  },
+  cameraPressed: {
+    opacity: 0.85,
+  },
+  cameraText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 15,
+  },
   uploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -393,5 +474,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.bold,
     fontSize: 15,
+  },
+  viewPhotosText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
 });
