@@ -7,9 +7,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { captureSingleJobPhoto, pickSingleJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -33,6 +36,7 @@ interface Props {
  */
 export function FlashingPhotoField({ job, editable = false }: Props) {
   const setJobFlashingPhoto = useAppStore((s) => s.setJobFlashingPhoto);
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
   const [busy, setBusy] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
 
@@ -95,17 +99,15 @@ export function FlashingPhotoField({ job, editable = false }: Props) {
         animationType="fade"
         onRequestClose={() => setViewerOpen(false)}
       >
-        <View style={styles.viewerBackdrop}>
+        {/* RN Modals don't inherit the app root's gesture root — mount our own
+            so pinch-to-zoom works inside the viewer. */}
+        <GestureHandlerRootView style={styles.viewerBackdrop}>
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={() => setViewerOpen(false)}
           />
           {url && (
-            <Image
-              source={{ uri: url }}
-              style={styles.viewerImage}
-              contentFit="contain"
-            />
+            <ZoomableImage uri={url} width={winWidth} height={winHeight} />
           )}
           <View style={styles.viewerTopBar}>
             <Text style={styles.viewerTitle} numberOfLines={1}>
@@ -124,7 +126,7 @@ export function FlashingPhotoField({ job, editable = false }: Props) {
               <Text style={styles.viewerCaption}>{job.flashingMaterial}</Text>
             </View>
           ) : null}
-        </View>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );
@@ -173,10 +175,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  viewerImage: {
-    width: '100%',
-    height: '100%',
   },
   viewerTopBar: {
     position: 'absolute',

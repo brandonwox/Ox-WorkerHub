@@ -81,7 +81,13 @@ export default function JobSiteScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
+          of the page and it can't be scrolled fully into view. */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.title}>{job.name}</Text>
           {job.status === 'Finished' && (

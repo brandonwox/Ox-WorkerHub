@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
 import { Backlog } from '@/components/desktop/scheduler/Backlog';
+import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
@@ -47,6 +48,8 @@ export function CalendarBoard({ canAssign }: Props) {
   const [multiAssign, setMultiAssign] = useState(false);
   const [placingCardId, setPlacingCardId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  // The Work Requests pool expanded into its large month-calendar view.
+  const [backlogCalendarOpen, setBacklogCalendarOpen] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
 
@@ -312,6 +315,7 @@ export function CalendarBoard({ canAssign }: Props) {
             placingCardId={placingCardId}
             onTogglePlacing={togglePlacing}
             onOpenCard={(card) => setViewingId(card.id)}
+            onExpandCalendar={() => setBacklogCalendarOpen(true)}
             canSchedule={canAssign}
             activeCrews={activeCrews.map((c) => ({
               id: c.id,
@@ -328,6 +332,16 @@ export function CalendarBoard({ canAssign }: Props) {
           onClose={() => setManageOpen(false)}
         />
       )}
+
+      {/* Rendered before JobcardQuickView so an opened request's details stack
+          on top of the expanded calendar. */}
+      <BacklogCalendar
+        visible={backlogCalendarOpen}
+        onClose={() => setBacklogCalendarOpen(false)}
+        cards={unassigned}
+        jobNameFor={jobNameFor}
+        onOpenCard={(card) => setViewingId(card.id)}
+      />
 
       <JobcardQuickView
         jobcardId={viewingId}

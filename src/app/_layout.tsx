@@ -11,6 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useSupabaseSession } from '@/integrations/supabase/session';
 import { colors, fonts } from '@/theme';
@@ -68,40 +69,43 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <ThemeProvider value={appTheme}>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(mobile)" />
-        <Stack.Screen name="(desktop)" />
-        <Stack.Screen name="set-password" />
-        {/* Full-screen login gate (no modal/header) — it's the logged-out landing. */}
-        <Stack.Screen name="sign-in" />
-        {/* Jobcard details renders its own close (X) button — no nav header. */}
-        <Stack.Screen
-          name="job/[id]"
-          options={{ presentation: 'modal', headerShown: false }}
-        />
-        {/* A parent Job's page (jobsite info + photo wall), opened from the
-            installer Pics tab. */}
-        <Stack.Screen
-          name="job-site/[id]"
-          options={{
-            headerShown: true,
-            headerTitle: 'Job Photos',
-            headerTitleStyle: {
-              fontFamily: fonts.bold,
-              color: colors.textPrimary,
-            },
-            headerStyle: { backgroundColor: colors.surface },
-            headerTintColor: colors.primary,
-          }}
-        />
-        {/* Full-screen in-app camera (native only). */}
-        <Stack.Screen
-          name="camera/[jobId]"
-          options={{ presentation: 'fullScreenModal', animation: 'fade' }}
-        />
-      </Stack>
-    </ThemeProvider>
+    // Gesture root for react-native-gesture-handler (pinch-to-zoom on photos).
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={appTheme}>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(mobile)" />
+          <Stack.Screen name="(desktop)" />
+          <Stack.Screen name="set-password" />
+          {/* Full-screen login gate (no modal/header) — it's the logged-out landing. */}
+          <Stack.Screen name="sign-in" />
+          {/* Jobcard details renders its own close (X) button — no nav header. */}
+          <Stack.Screen
+            name="job/[id]"
+            options={{ presentation: 'modal', headerShown: false }}
+          />
+          {/* A parent Job's page (jobsite info + photo wall), opened from the
+              installer Pics tab. */}
+          <Stack.Screen
+            name="job-site/[id]"
+            options={{
+              headerShown: true,
+              headerTitle: 'Job Photos',
+              headerTitleStyle: {
+                fontFamily: fonts.bold,
+                color: colors.textPrimary,
+              },
+              headerStyle: { backgroundColor: colors.surface },
+              headerTintColor: colors.primary,
+            }}
+          />
+          {/* Full-screen in-app camera (native only). */}
+          <Stack.Screen
+            name="camera/[jobId]"
+            options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+          />
+        </Stack>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

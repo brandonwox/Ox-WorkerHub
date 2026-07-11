@@ -4,10 +4,6 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
-installers on mobile (and elsewhere) -> jobcards -> if a dropdown is open and the user clicks elsewhere the dropdown should go away.
-
-workers on mobile: clicking into an editable text input pulls up the keyboard, but when the keyboard is open I can't scroll down enough to see the bottom of what i need to see. (this is a problem for installers viewing jobcards, and possibly elsewhere.)
-
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
 2. The finance manager should have a jobs tab.
@@ -15,19 +11,7 @@ create finance manager role.
 4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job. and those numbers should show up for the finance manager.
 5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
 
-each task created in the jobcard by the scheduler/field super should be a task that the installers have to check off on their phone. (installer roles -> mobile view -> jobcard -> show each task in a list. each task can be checked off as completed or issues can be created for each task.) (move the issues list, rather than a separate row in the jobcard, the issues list should be per task, issues can be added per task.)
-
-installer camera: add zoom buttons (0.5 if available on their device or 0.7, 1, 1.5, 3). The user should also be able to grab and drag the numbers to scroll through more defined zoom ranging from the most zoomed out their device works on, and all the way to 5x zoom in.
-
-photos on mobile: users on mobile should be able to pinch to zoom in/out on any photo while viewing it on mobile, no matter where they're viewing from.
-
-kim(scheduler) creates jobcards (not field supers)
-
 operator: deleting a job should require the operator to type the name of the job and click a confirmation button. there should also be a warning that tells the operator that the job can be restored if they proceed.
-
-scheduler calendar: clicking on a jobcard in the calendar should open the jobcard details in a popup modal. but it should also open a second modal to the right of the other. The second modal is a calendar modal for the jobcard with options to change the assigned crews.
-
-scheduler: crew pills: rather than have to click through a cycle off -> on -> assigning -> off. can we instead just make so the crew pills are just a toggle on and off pill to see the crew calendars and separate the assinging functionality directly below the crew pill row. on the left of the row should be an input field. when click it opens a dropdown menu of all the crews. the scheduler can 
 
 calendar (scheduler): make the days in the month calendar a little larger. and when 
 
@@ -39,17 +23,9 @@ jobcard creation: field super is required to click either "Yes" or "No" for an o
 
 field super cannot create a jobcard if they have not specified a "Window Opening Flashing Material" and a "Jobsite address" for the parent job.
 
-the work requests should be expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
-
-Scheduler: each crew should have a color. this color will be used to faintly color the bg of scheduled jobcards. (the bg of each jobcard should be colored according to the crew's color). Along with this update, the scheduler should now be able to toggle the filter mode of the calendar. Rather than selecting what crew the scheduler wants to see, they should instead simply click on any crew they want and it will toggle them on or off in the calendar view.
-
 ask the office some important questions that will determine the flow of Ox WorkerHub:
 - How does job assignment work? (How do they decide the Field Super for a new job)
 - 
-
-the scheduler doesn't need to see the flashing material. (the only thing the scheduler needs to see on their version of the jobcards is the jobcard title and the parent job.) (HOWEVER. If they are viewing the expanded details of the jobcard, they should see all jobcard details.)
-
-the scheduler needs to be able to click on jobcards to expand them (they should open up big and show all the details of the jobcard). there should be a button on the card in the scheduler view that when clicked and active allows the scheduler to click on a day on the calendar to schedule it. The button should also be visible and useable while the jobcard is in the calendar view.
 
 in supabase -> authentication -> users -> send password reset email -> when the user clicks the link in the email, they should be prompted to enter a new password, but instead they are immediately logged in without any option to reset their password.
 
@@ -72,6 +48,28 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+installers on mobile (and elsewhere) -> jobcards -> if a dropdown is open and the user clicks elsewhere the dropdown should go away.
+
+workers on mobile: clicking into an editable text input pulls up the keyboard, but when the keyboard is open I can't scroll down enough to see the bottom of what i need to see. (fixed on the jobcard details and job-site pages via keyboard insets)
+
+installer camera: add zoom buttons (0.5 if available on their device, 1, 1.5, 3). The user can also grab and drag the numbers to scrub continuous zoom from the device's widest view up to 5x. (zoom factors are approximate — expo-camera does not expose the device's true max zoom)
+
+photos on mobile: users on mobile can pinch to zoom in/out on any photo while viewing it (photo browser + flashing material viewer), plus double-tap to zoom.
+
+the work requests are expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
+
+scheduler calendar: clicking on a jobcard in the calendar should open the jobcard details in a popup modal. but it should also open a second modal to the right of the other. The second modal is a calendar modal for the jobcard with options to change the assigned crews. (was already working as desired)
+
+the scheduler needs to be able to click on jobcards to expand them (they should open up big and show all the details of the jobcard). there should be a button on the card in the scheduler view that when clicked and active allows the scheduler to click on a day on the calendar to schedule it. The button should also be visible and useable while the jobcard is in the calendar view. (was already working as desired)
+
+Scheduler: each crew should have a color. this color will be used to faintly color the bg of scheduled jobcards. Along with this update, the scheduler should now be able to toggle crews on or off in the calendar view by clicking them. (was already working as desired)
+
+the scheduler doesn't need to see the flashing material. (the only thing the scheduler needs to see on their version of the jobcards is the jobcard title and the parent job. If they are viewing the expanded details of the jobcard, they should see all jobcard details.) (was already working as desired)
+
+each task created in the jobcard by the scheduler/field super should be a task that the installers have to check off on their phone. issues are now per task rather than a separate row in the jobcard.
+
+jobcard creation: both schedulers and field-supers can create jobcards.
 
 for the desktop user roles (operator, scheduler, field super) the popup modals are pretty thin, but since these roles are used on the desktop, they can be a lot wider. for example the create jobcard popup is pretty thin. (was already implemented)
 

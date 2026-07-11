@@ -14,6 +14,11 @@ import {
   View,
 } from 'react-native';
 
+import {
+  CameraZoomControl,
+  cameraPropsForFactor,
+  ULTRA_WIDE_LENS,
+} from '@/components/CameraZoomControl';
 import { compressJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
@@ -40,6 +45,10 @@ export default function JobCameraScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
+  // Nominal zoom factor (1 = no zoom). Whether 0.5x exists comes from the
+  // available-lenses callback (iOS only — Android never reports an ultra-wide).
+  const [zoomFactor, setZoomFactor] = useState(1);
+  const [hasUltraWide, setHasUltraWide] = useState(false);
   const [capturing, setCapturing] = useState(false);
   // Every shot taken this session (oldest first); the last one is the
   // thumbnail. Deleting the latest falls back to the one before it.
@@ -152,9 +161,24 @@ export default function JobCameraScreen() {
     setPreviewOpen(false);
   };
 
+  // Zoom only applies to the back camera; the front lens stays at 1x.
+  const zoomProps =
+    facing === 'back'
+      ? cameraPropsForFactor(zoomFactor, hasUltraWide)
+      : { zoom: 0, selectedLens: undefined };
+
   return (
     <View style={styles.screen}>
-      <CameraView ref={cameraRef} style={styles.camera} facing={facing} />
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing={facing}
+        zoom={zoomProps.zoom}
+        selectedLens={zoomProps.selectedLens}
+        onAvailableLensesChanged={({ lenses }) =>
+          setHasUltraWide(lenses.includes(ULTRA_WIDE_LENS))
+        }
+      />
 
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -210,6 +234,15 @@ export default function JobCameraScreen() {
                 returnKeyType="done"
               />
             </View>
+          )}
+
+          {/* Zoom presets + drag-to-scrub (back camera only). */}
+          {facing === 'back' && (
+            <CameraZoomControl
+              factor={zoomFactor}
+              minFactor={hasUltraWide ? 0.5 : 1}
+              onChange={setZoomFactor}
+            />
           )}
 
           {/* Shutter, with Done on its right to leave the camera. */}

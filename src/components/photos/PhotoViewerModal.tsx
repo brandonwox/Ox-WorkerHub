@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
@@ -15,8 +14,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { DisplayPhoto } from '@/components/photos/useJobPhotos';
+import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 
@@ -44,6 +45,9 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
 
   const [index, setIndex] = useState(initialIndex ?? 0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // True while the current photo is pinch-zoomed in — locks the pager so a
+  // drag pans the photo instead of swiping to the neighbour.
+  const [photoZoomed, setPhotoZoomed] = useState(false);
   const listRef = useRef<FlatList<DisplayPhoto>>(null);
 
   // Re-sync when the viewer (re)opens on a different photo — the render-phase
@@ -54,6 +58,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
     if (initialIndex != null) {
       setIndex(initialIndex);
       setConfirmingDelete(false);
+      setPhotoZoomed(false);
     }
   }
 
@@ -91,7 +96,9 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      {/* RN Modals don't inherit the app root's gesture root — mount our own
+          so pinch-to-zoom works inside the viewer. */}
+      <GestureHandlerRootView style={styles.backdrop}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -102,6 +109,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
             keyExtractor={(p) => p.id}
             horizontal
             pagingEnabled
+            scrollEnabled={!photoZoomed}
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={Math.min(initialIndex, photos.length - 1)}
             getItemLayout={(_, i) => ({
@@ -120,10 +128,11 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
               // Explicit height: on web, list cells have no intrinsic height,
               // so the image's percentage height collapses to 0 (black screen).
               <View style={[styles.page, { width, height }]}>
-                <Image
-                  source={{ uri: item.url }}
-                  style={styles.image}
-                  contentFit="contain"
+                <ZoomableImage
+                  uri={item.url}
+                  width={width}
+                  height={height}
+                  onZoomChange={setPhotoZoomed}
                 />
               </View>
             )}
@@ -199,7 +208,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
             </View>
           )}
         </KeyboardAvoidingView>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -238,10 +247,6 @@ const styles = StyleSheet.create({
   page: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
   },
   topBar: {
     position: 'absolute',

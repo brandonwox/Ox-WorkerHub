@@ -1,5 +1,12 @@
 import { ReactNode, RefObject, useEffect, useRef, useState } from 'react';
-import { View, ViewStyle } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 /**
  * `react-dom` only exists on web (Expo web). Resolved lazily and guarded on
@@ -56,6 +63,23 @@ export function DropdownPortal({
 }: Props) {
   const menuRef = useRef<View>(null);
   const [rect, setRect] = useState<Rect | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  // Native anchor position, measured in window coordinates each time the menu
+  // opens (the native fallback renders inside a Modal, which spans the window).
+  const [nativeRect, setNativeRect] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!open || createPortal) return;
+    anchorRef.current?.measureInWindow((x, y, width, height) =>
+      setNativeRect({ x, y, width, height })
+    );
+    return () => setNativeRect(null);
+  }, [open, anchorRef]);
 
   // Keep the menu glued to the trigger while open (scroll / resize reflow).
   useEffect(() => {
@@ -96,21 +120,28 @@ export function DropdownPortal({
 
   if (!open) return null;
 
-  // Native fallback: no portal, render an inline absolutely-positioned menu.
+  // Native fallback: a transparent Modal whose full-screen backdrop dismisses
+  // the menu on any outside tap — the same behaviour the web path gets from
+  // its document-level mousedown listener.
   if (!createPortal) {
-    const inline: ViewStyle = {
+    if (!nativeRect) return null;
+    const menuStyle: ViewStyle = {
       position: 'absolute',
-      top: '100%',
-      marginTop: offset,
-      left: align === 'right' ? undefined : 0,
-      right: align === 'left' ? undefined : 0,
-      minWidth,
-      zIndex: 1000,
+      top: nativeRect.y + nativeRect.height + offset,
+      minWidth: minWidth ?? nativeRect.width,
+      ...(align === 'stretch'
+        ? { left: nativeRect.x, width: nativeRect.width }
+        : align === 'right'
+          ? { right: windowWidth - (nativeRect.x + nativeRect.width) }
+          : { left: nativeRect.x }),
     };
     return (
-      <View ref={menuRef} style={inline}>
-        {children}
-      </View>
+      <Modal visible transparent animationType="none" onRequestClose={onClose}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View ref={menuRef} style={menuStyle}>
+          {children}
+        </View>
+      </Modal>
     );
   }
 

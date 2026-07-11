@@ -86,7 +86,13 @@ export default function JobDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
+          of the page and it can't be scrolled fully into view. */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.topRow}>
           <Pressable
             style={({ pressed }) => [pressed && styles.closePressed]}

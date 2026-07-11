@@ -15,6 +15,8 @@ interface Props {
   onTogglePlacing: (cardId: string) => void;
   /** Open the jobcard to view / edit its details. */
   onOpenCard: (card: Jobcard) => void;
+  /** Expand the pool into the large month-calendar view. */
+  onExpandCalendar?: () => void;
   /**
    * Whether the "Schedule" (activate calendar placement) button is shown. Field
    * Supers view the same board but can't assign work to crews, so it's hidden.
@@ -35,6 +37,7 @@ export function Backlog({
   placingCardId,
   onTogglePlacing,
   onOpenCard,
+  onExpandCalendar,
   canSchedule = true,
   activeCrews = [],
 }: Props) {
@@ -62,6 +65,15 @@ export function Backlog({
         <View style={styles.countPill}>
           <Text style={styles.countText}>{cards.length}</Text>
         </View>
+        {onExpandCalendar && (
+          <Pressable
+            style={({ pressed }) => [styles.expandBtn, pressed && styles.pressed]}
+            onPress={onExpandCalendar}
+            hitSlop={6}
+          >
+            <Feather name="maximize-2" size={13} color={colors.textSecondary} />
+          </Pressable>
+        )}
       </View>
       <Text style={styles.hint}>
         {canSchedule
@@ -206,6 +218,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.semiBold,
     fontSize: 12,
+  },
+  expandBtn: {
+    marginLeft: 'auto',
+    width: 26,
+    height: 26,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hint: {
     color: colors.textTertiary,
