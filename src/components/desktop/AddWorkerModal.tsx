@@ -5,7 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormInput } from '@/components/FormInput';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { ROLE_LABELS } from '@/roles';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import { AppRole } from '@/types';
 
 export interface NewWorkerInput {
@@ -153,12 +153,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 580,
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

@@ -21,7 +21,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
 import { useAppStore, uuid } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import {
   Job,
   JOB_SCOPES,
@@ -1014,13 +1014,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 560,
     maxHeight: '90%',
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

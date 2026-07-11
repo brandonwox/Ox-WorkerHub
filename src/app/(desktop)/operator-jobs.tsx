@@ -88,7 +88,7 @@ export default function JobsScreen() {
 
 /** Square-ish job card shown in the grid; the edit button opens the full editor. */
 function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
-  const archived = job.status === 'Archived';
+  const archived = job.status === 'Finished';
   const unmapped = !job.qbtJobcodeId;
   const fieldSuperCount = job.fieldSuperIds?.length ?? 0;
 

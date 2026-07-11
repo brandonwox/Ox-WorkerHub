@@ -112,9 +112,9 @@ export function JobPicsList({ onSelectJob }: Props) {
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {job.name}
                     </Text>
-                    {job.status === 'Archived' && (
+                    {job.status === 'Finished' && (
                       <View style={styles.archivedPill}>
-                        <Text style={styles.archivedText}>Archived</Text>
+                        <Text style={styles.archivedText}>Finished</Text>
                       </View>
                     )}
                   </View>

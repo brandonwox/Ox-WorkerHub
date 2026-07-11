@@ -41,14 +41,6 @@ field super cannot create a jobcard if they have not specified a "Window Opening
 
 the work requests should be expandable into a large calendar view that doesn't effect the crew's schedules (collapsed view remains the same)
 
-when a popup modal (e.g. to create a jobcard) appears it adds an overlay that darkens the rest of the screen, can you get rid of that and instead just add a slight dropshadow to the popup modal?
-
-in the scheduler role's notifications: when they get the message "Priority "Now" jobcard" can we change it to "New Priority Jobcard". 
-
-on the sign in page i should be able to hit enter to sign in (rather than having to click the sign in button with the mouse)
-
-the backlog view in scheduler-calendar -> the jobcards in the backlog should show the priority of the jobcard. and the backlog should be filtered to top bottom of priority. (among jobcards in the same priority it should then be filtered by how long each jobcard has been waiting in the backlog)
-
 Scheduler: each crew should have a color. this color will be used to faintly color the bg of scheduled jobcards. (the bg of each jobcard should be colored according to the crew's color). Along with this update, the scheduler should now be able to toggle the filter mode of the calendar. Rather than selecting what crew the scheduler wants to see, they should instead simply click on any crew they want and it will toggle them on or off in the calendar view.
 
 ask the office some important questions that will determine the flow of Ox WorkerHub:
@@ -59,17 +51,11 @@ the scheduler doesn't need to see the flashing material. (the only thing the sch
 
 the scheduler needs to be able to click on jobcards to expand them (they should open up big and show all the details of the jobcard). there should be a button on the card in the scheduler view that when clicked and active allows the scheduler to click on a day on the calendar to schedule it. The button should also be visible and useable while the jobcard is in the calendar view.
 
-the "Create a crew befor assigning work" popup displays behind the calendar. fix the ui ux so the message appears in the bottom left of the left sidebar. (we already have a popup message that appears there whenever changes are saved that says "Changes saved". so you should use that same system. the bottom left of the left sidebar is where i want all system messages to appear)
-
 in supabase -> authentication -> users -> send password reset email -> when the user clicks the link in the email, they should be prompted to enter a new password, but instead they are immediately logged in without any option to reset their password.
-
-change the "Archived" job status to "Finished".
 
 Field Super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
 
 installers can set the completion status of a jobcard to "Issues", "In-Progress", or "Complete". If the installer sets the status to "Issues", the jobcard will be highlighted in red and the Field Super will be notified. If the installer sets the status to "Issues", the installer must write at least 1 issue in the issue field.
-
-for the desktop user roles (operator, scheduler, field super) the popup modals are pretty thin, but since these roles are used on the desktop, they can be a lot wider. for example the create jobcard popup is pretty thin.
 
 add profit sharing tab for installers, so installers can see their profit sharing checks (past and upcoming). installers should also be able to see the profit sharing remaining on any job.
 
@@ -86,6 +72,20 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+for the desktop user roles (operator, scheduler, field super) the popup modals are pretty thin, but since these roles are used on the desktop, they can be a lot wider. for example the create jobcard popup is pretty thin. (was already implemented)
+
+when a popup modal (e.g. to create a jobcard) appears it adds an overlay that darkens the rest of the screen, can you get rid of that and instead just add a slight dropshadow to the popup modal?
+
+in the scheduler role's notifications: when they get the message "Priority "Now" jobcard" can we change it to "New Priority Jobcard". 
+
+on the sign in page i should be able to hit enter to sign in (rather than having to click the sign in button with the mouse)
+
+the backlog view in scheduler-calendar -> the jobcards in the backlog should show the priority of the jobcard. and the backlog should be filtered to top bottom of priority. (among jobcards in the same priority it should then be filtered by how long each jobcard has been waiting in the backlog) (was mostly already implemented; wait-time tiebreak now uses real created-at)
+
+the "Create a crew befor assigning work" popup displays behind the calendar. fix the ui ux so the message appears in the bottom left of the left sidebar. (we already have a popup message that appears there whenever changes are saved that says "Changes saved". so you should use that same system. the bottom left of the left sidebar is where i want all system messages to appear) (was already implemented)
+
+change the "Archived" job status to "Finished".
 
 1. only let crew names be a single letter.
 2. if multiple crews are assigned to a single jobcard, and the scheduler is viewing multiple crew calendars, the jobcard currently would show the same jobcard multiple times, instead it should only show the one jobcard. that jobcard - because it has multiple crews assigned - should have the crew name of each assigned crew listed on the end of the jobcard.

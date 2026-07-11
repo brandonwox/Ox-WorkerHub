@@ -5,7 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormInput } from '@/components/FormInput';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import { Job, JobStatus, Worker } from '@/types';
 
 export interface JobChanges {
@@ -27,7 +27,7 @@ interface Props {
 
 const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
   { value: 'Active', label: 'Active' },
-  { value: 'Archived', label: 'Archived' },
+  { value: 'Finished', label: 'Finished' },
 ];
 
 export function EditJobModal({
@@ -197,12 +197,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 680,
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

@@ -51,7 +51,7 @@ export function OperatorJobsMobile() {
         renderItem={({ item }) => {
           const cardCount = cardCountFor(item);
           const supers = superNamesFor(item);
-          const archived = item.status === 'Archived';
+          const archived = item.status === 'Finished';
           return (
             <View style={[styles.card, archived && styles.cardArchived]}>
               <View style={styles.topRow}>

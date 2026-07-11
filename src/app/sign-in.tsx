@@ -99,6 +99,7 @@ export default function SignInScreen() {
             placeholder="you@ox-glass.com"
             keyboardType="email-address"
             autoCapitalize="none"
+            onSubmitEditing={submit}
           />
           <FormInput
             label="Password"
@@ -107,6 +108,7 @@ export default function SignInScreen() {
             placeholder="Your password"
             secureTextEntry
             autoCapitalize="none"
+            onSubmitEditing={submit}
           />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}

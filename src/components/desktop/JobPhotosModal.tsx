@@ -14,7 +14,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import { Job } from '@/types';
 
 interface Props {
@@ -137,13 +137,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 860,
     maxHeight: '90%',
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

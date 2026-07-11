@@ -57,7 +57,9 @@ export type User = Worker;
  * A Job is a jobsite / project the company works on (the parent entity the
  * Operator creates and maps to QuickBooks Time). Jobcards hang off a Job.
  */
-export type JobStatus = 'Active' | 'Archived';
+// 'Finished' replaced the old 'Archived' value — legacy DB rows are mapped on
+// read (see supabase/data.ts) and a migration renames the stored value.
+export type JobStatus = 'Active' | 'Finished';
 
 export interface Job {
   id: string;

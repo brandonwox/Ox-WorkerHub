@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { JobcardRow } from '@/components/desktop/JobcardRow';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import { Job, Jobcard } from '@/types';
 
 interface Props {
@@ -83,13 +83,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 720,
     maxHeight: '90%',
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

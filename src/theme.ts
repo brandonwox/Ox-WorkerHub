@@ -39,3 +39,15 @@ export const radii = {
   lg: 12,
   pill: 999,
 };
+
+/**
+ * Soft drop shadow for desktop popup modals — they float over the page without
+ * darkening it (no dimmed overlay), so the shadow does the lifting.
+ */
+export const modalShadow = {
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.55,
+  shadowRadius: 28,
+  elevation: 16,
+} as const;

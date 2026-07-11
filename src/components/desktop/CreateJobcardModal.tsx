@@ -13,7 +13,7 @@ import {
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import {
   Job,
   JobScope,
@@ -401,13 +401,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 760,
     maxHeight: '90%',
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

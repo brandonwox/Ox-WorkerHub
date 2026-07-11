@@ -295,7 +295,7 @@ export const mockJobs: Job[] = [
     id: 'job-6',
     name: 'Prairie Ave Condos',
     location: '1255 S Prairie Ave, Chicago, IL',
-    status: 'Archived',
+    status: 'Finished',
     qbtJobcodeId: '88004',
     fieldSuperIds: ['w-fs'],
   },

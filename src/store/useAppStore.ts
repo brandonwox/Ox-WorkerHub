@@ -79,7 +79,7 @@ function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
   get().pushNotification({
     recipientIds: recipients,
     type: 'jobcard_now',
-    title: 'Priority "Now" jobcard',
+    title: 'New Priority Jobcard',
     body: `${card.title}${jobName ? ` · ${jobName}` : ''} needs scheduling now.`,
     data: { jobcardId: card.id },
   });

@@ -11,7 +11,7 @@ import {
 
 import { FormInput } from '@/components/FormInput';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
 import { Worker } from '@/types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -272,13 +272,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
   },
   card: {
     width: '100%',
     maxWidth: 520,
     maxHeight: '86%',
     backgroundColor: colors.surface,
+    ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,

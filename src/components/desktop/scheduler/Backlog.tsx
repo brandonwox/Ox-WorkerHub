@@ -43,14 +43,14 @@ export function Backlog({
   const crewTint =
     activeCrews.length === 1 ? activeCrews[0].color : colors.textSecondary;
   // Highest priority first; within a priority, the card that has been waiting
-  // longest first. There's no created-at timestamp, so the target `date` is the
-  // proxy for wait time — an earlier/overdue date has been waiting the longest.
+  // longest first (oldest createdAt). Legacy cards without a created-at fall
+  // back to the target `date` as the wait-time proxy.
   const sorted = useMemo(
     () =>
       [...cards].sort((a, b) => {
         const rank = priorityRank(a.priority) - priorityRank(b.priority);
         if (rank !== 0) return rank;
-        return a.date.localeCompare(b.date);
+        return (a.createdAt ?? a.date).localeCompare(b.createdAt ?? b.date);
       }),
     [cards]
   );

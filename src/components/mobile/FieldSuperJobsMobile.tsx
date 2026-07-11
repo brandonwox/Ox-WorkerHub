@@ -113,7 +113,7 @@ function JobRow({
     setSaved(true);
   };
 
-  const archived = job.status === 'Archived';
+  const archived = job.status === 'Finished';
 
   return (
     <View style={[styles.card, archived && styles.cardArchived]}>
@@ -125,7 +125,7 @@ function JobRow({
           <Text style={styles.cardSub} numberOfLines={1}>
             {counts.total} {counts.total === 1 ? 'jobcard' : 'jobcards'} ·{' '}
             {counts.scheduled} on calendar
-            {archived ? ' · Archived' : ''}
+            {archived ? ' · Finished' : ''}
           </Text>
         </View>
         <Feather

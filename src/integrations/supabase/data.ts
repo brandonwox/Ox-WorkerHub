@@ -144,7 +144,8 @@ function rowToJob(r: JobRow): Job {
     id: r.id,
     name: r.name,
     location: r.location,
-    status: r.status as JobStatus,
+    // Legacy rows read before the rename migration ran still say 'Archived'.
+    status: (r.status === 'Archived' ? 'Finished' : r.status) as JobStatus,
     qbtJobcodeId: r.qbt_jobcode_id ?? undefined,
     flashingMaterial: r.flashing_material ?? undefined,
     flashingPhotoPath: r.flashing_photo_path ?? undefined,
