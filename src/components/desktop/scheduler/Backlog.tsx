@@ -120,7 +120,7 @@ export function Backlog({
                     ]}
                     onPress={() => onOpenCard(card)}
                   >
-                    <Feather name="edit-2" size={12} color={colors.textPrimary} />
+                    <Feather name="edit-2" size={10} color={colors.textPrimary} />
                     <Text style={styles.actionText}>Open</Text>
                   </Pressable>
                   {canSchedule && (
@@ -139,7 +139,7 @@ export function Backlog({
                     >
                       <Feather
                         name={selected ? 'crosshair' : 'calendar'}
-                        size={12}
+                        size={10}
                         color={colors.textPrimary}
                       />
                       <Text style={styles.actionText} numberOfLines={1}>
@@ -289,13 +289,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    alignSelf: 'flex-start',
+    gap: 3,
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
   scheduleBtn: {
     backgroundColor: colors.primary,
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   actionText: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: 10,
   },
   placingLabel: {
     color: colors.textSecondary,

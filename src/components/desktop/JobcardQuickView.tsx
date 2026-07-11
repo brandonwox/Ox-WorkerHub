@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
+import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
@@ -30,6 +31,7 @@ import {
   PRIORITY_PRESETS,
   READINESS_PRESETS,
 } from '@/types';
+import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
 import { formatJobWindow } from '@/utils/time';
 
 const MIN_TASK_LEN = 15;
@@ -81,9 +83,15 @@ export function JobcardQuickView({
 }: Props) {
   // Read the live card from the store so autosaved edits render back instantly.
   const jobcard = useAppStore((s) => s.jobcards.find((c) => c.id === jobcardId));
+  const jobIssues = useAppStore((s) => s.jobIssues);
   const updateJobcard = useAppStore((s) => s.updateJobcard);
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
   const flash = useAppStore((s) => s.flash);
+  const crews = useAppStore((s) => s.crews);
+  const dailyCrews = useAppStore((s) => s.dailyCrews);
+  const assignments = useAppStore((s) => s.assignments);
+  const assignJobcard = useAppStore((s) => s.assignJobcard);
+  const unassignJobcard = useAppStore((s) => s.unassignJobcard);
 
   const [editing, setEditing] = useState<EditField | null>(null);
   /** Text draft for whichever text field is being edited; committed on blur. */
@@ -92,6 +100,8 @@ export function JobcardQuickView({
   const [pendingStatus, setPendingStatus] = useState<JobcardStatus | null>(null);
   const [pendingReadinessNow, setPendingReadinessNow] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [crewMenuOpen, setCrewMenuOpen] = useState(false);
+  const [crewSquareHovered, setCrewSquareHovered] = useState(false);
 
   const photos = useJobcardPhotos(jobcard?.id);
   const [viewer, setViewer] = useState<{
@@ -107,7 +117,16 @@ export function JobcardQuickView({
     setPendingStatus(null);
     setPendingReadinessNow(false);
     setConfirmDelete(false);
+    setCrewMenuOpen(false);
+    setCrewSquareHovered(false);
   }, [jobcardId]);
+
+  // An armed delete disarms itself after 4s if the second click never comes.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = setTimeout(() => setConfirmDelete(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
 
   if (!jobcard) return null;
 
@@ -124,8 +143,39 @@ export function JobcardQuickView({
   ).map((j) => ({ value: j.id, label: j.name }));
   const tasks = jobcard.tasks ?? [];
   const scopes = jobcard.scopes ?? [];
+  // Installer-raised issues on this card, newest first — nested under the task
+  // they were raised for, mirroring the installer's jobcard screen.
+  const cardIssues = jobIssues
+    .filter((issue) => issue.jobcardId === jobcard.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Issues whose task is gone (or that predate per-task issues) — shown in a
+  // fallback section instead of silently disappearing.
+  const orphanIssues = cardIssues.filter(
+    (issue) => !issue.taskId || !tasks.some((t) => t.id === issue.taskId)
+  );
+  const openPhoto = (photo: DisplayPhoto, all: DisplayPhoto[]) =>
+    setViewer({
+      photos: all,
+      index: all.findIndex((p) => p.id === photo.id),
+    });
   const includesWindows = scopes.includes('Windows');
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
+  // Crew assignment drives the title square: permanent crews first so colors
+  // match the scheduler calendar (same ordering as CalendarBoard).
+  const cardAssignments = assignments.filter((a) => a.jobcardId === jobcard.id);
+  const allCrews = [...crews, ...dailyCrews];
+  const crewColorMap = buildCrewColorMap(allCrews.map((c) => c.id));
+  const assignedCrewIds = [...new Set(cardAssignments.map((a) => a.crewId))];
+  const crewNameFor = (id: string) =>
+    allCrews.find((c) => c.id === id)?.name ?? 'Unknown crew';
+  const crewSquareColor =
+    assignedCrewIds.length > 0
+      ? crewColorFrom(crewColorMap, assignedCrewIds[0])
+      : undefined;
+  const crewTooltip =
+    assignedCrewIds.length > 0
+      ? assignedCrewIds.map(crewNameFor).join(', ')
+      : 'No crew assigned';
 
   const startEdit = (field: EditField, initial: string) => {
     setEditing(field);
@@ -281,6 +331,27 @@ export function JobcardQuickView({
     onClose();
   };
 
+  const toggleCrewMenu = () => {
+    if (cardAssignments.length === 0) {
+      flash(
+        'Not on the calendar yet — schedule this card to assign a crew.',
+        'warning'
+      );
+      return;
+    }
+    setCrewMenuOpen((open) => !open);
+  };
+
+  /** Swap which crew the card is assigned to; every scheduled date is kept. */
+  const changeCrew = (crewId: string) => {
+    setCrewMenuOpen(false);
+    if (assignedCrewIds.length === 1 && assignedCrewIds[0] === crewId) return;
+    const dates = [...new Set(cardAssignments.map((a) => a.date))];
+    cardAssignments.forEach((a) => unassignJobcard(a.id));
+    dates.forEach((date) => assignJobcard(jobcard.id, crewId, date));
+    flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
+  };
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -320,10 +391,81 @@ export function JobcardQuickView({
             style={styles.scroll}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
+            // Any click in the body disarms a pending delete (returning false
+            // leaves the click itself untouched).
+            onStartShouldSetResponderCapture={() => {
+              if (confirmDelete) setConfirmDelete(false);
+              return false;
+            }}
           >
-            {/* Title, led by a status-colored dot (the GCal event square). */}
+            {/* Title, led by the crew square (the GCal event square): colored
+                by the assigned crew, gray + slash when unassigned. Hover shows
+                the crew name(s); click swaps the assigned crew. */}
             <View style={styles.titleRow}>
-              <View style={[styles.titleDot, { backgroundColor: palette.fg }]} />
+              <View style={styles.crewSquareWrap}>
+                <Pressable
+                  onPress={toggleCrewMenu}
+                  onHoverIn={() => setCrewSquareHovered(true)}
+                  onHoverOut={() => setCrewSquareHovered(false)}
+                  style={[
+                    styles.titleDot,
+                    crewSquareColor
+                      ? { backgroundColor: crewSquareColor }
+                      : styles.titleDotEmpty,
+                  ]}
+                >
+                  {!crewSquareColor && <View style={styles.titleDotSlash} />}
+                </Pressable>
+                {crewSquareHovered && !crewMenuOpen && (
+                  <View style={styles.crewTooltip}>
+                    <Text style={styles.crewTooltipText}>{crewTooltip}</Text>
+                  </View>
+                )}
+                {crewMenuOpen && (
+                  <View style={styles.crewMenu}>
+                    {allCrews.map((crew) => {
+                      const active = assignedCrewIds.includes(crew.id);
+                      return (
+                        <Pressable
+                          key={crew.id}
+                          style={({ pressed, hovered }: PressState) => [
+                            styles.menuItem,
+                            (hovered || pressed) && styles.menuItemHover,
+                          ]}
+                          onPress={() => changeCrew(crew.id)}
+                        >
+                          <View
+                            style={[
+                              styles.menuDot,
+                              {
+                                backgroundColor: crewColorFrom(
+                                  crewColorMap,
+                                  crew.id
+                                ),
+                              },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.menuText,
+                              active && styles.menuTextActive,
+                            ]}
+                          >
+                            {crew.name}
+                          </Text>
+                          {active && (
+                            <Feather
+                              name="check"
+                              size={14}
+                              color={colors.primary}
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
               {editing === 'title' ? (
                 <TextInput
                   style={styles.titleInput}
@@ -371,29 +513,14 @@ export function JobcardQuickView({
               </Text>
             </Row>
             <Row icon="calendar">
-              <View style={styles.inlineWrap}>
-                <Text style={styles.mutedText}>
-                  {format(
-                    parse(jobcard.date, 'yyyy-MM-dd', new Date()),
-                    'EEEE, MMMM d'
-                  )}
-                </Text>
-                <View
-                  style={[
-                    styles.calendarPill,
-                    scheduled ? styles.calendarPillOn : styles.calendarPillOff,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.calendarPillText,
-                      { color: scheduled ? colors.success : colors.textTertiary },
-                    ]}
-                  >
-                    {scheduled ? 'On calendar' : 'Not on calendar'}
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.mutedText}>
+                {scheduled
+                  ? format(
+                      parse(jobcard.date, 'yyyy-MM-dd', new Date()),
+                      'EEEE, MMMM d'
+                    )
+                  : 'Not on calendar'}
+              </Text>
             </Row>
             {timeWindow ? (
               <Row icon="clock">
@@ -500,34 +627,50 @@ export function JobcardQuickView({
             {/* Tasks */}
             <Row icon="check-square" label="Tasks">
               <View style={styles.taskStack}>
-                {tasks.map((task, index) =>
-                  editing === `task-${index}` ? (
-                    <TextInput
-                      key={task.id}
-                      style={styles.textEditor}
-                      value={draft}
-                      onChangeText={setDraft}
-                      onBlur={() => commitTask(index)}
-                      autoFocus
-                      multiline
-                    />
-                  ) : (
-                    <Editable
-                      key={task.id}
-                      onPress={() => startEdit(`task-${index}`, task.text)}
-                    >
-                      <Text
-                        style={[
-                          styles.valueText,
-                          task.done && styles.taskDoneText,
-                        ]}
-                      >
-                        {task.done ? '✓  ' : '•  '}
-                        {task.text}
-                      </Text>
-                    </Editable>
-                  )
-                )}
+                {tasks.map((task, index) => {
+                  const taskIssues = cardIssues.filter(
+                    (issue) => issue.taskId === task.id
+                  );
+                  return (
+                    <View key={task.id} style={styles.taskBlock}>
+                      {editing === `task-${index}` ? (
+                        <TextInput
+                          style={styles.textEditor}
+                          value={draft}
+                          onChangeText={setDraft}
+                          onBlur={() => commitTask(index)}
+                          autoFocus
+                          multiline
+                        />
+                      ) : (
+                        <Editable
+                          onPress={() => startEdit(`task-${index}`, task.text)}
+                        >
+                          <Text
+                            style={[
+                              styles.valueText,
+                              task.done && styles.taskDoneText,
+                            ]}
+                          >
+                            {task.done ? '✓  ' : '•  '}
+                            {task.text}
+                          </Text>
+                        </Editable>
+                      )}
+                      {taskIssues.length > 0 && (
+                        <View style={styles.taskIssues}>
+                          {taskIssues.map((issue) => (
+                            <IssueCard
+                              key={issue.id}
+                              issue={issue}
+                              onPhotoPress={openPhoto}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
                 {editing === 'new-task' ? (
                   <TextInput
                     style={styles.textEditor}
@@ -550,6 +693,22 @@ export function JobcardQuickView({
                 )}
               </View>
             </Row>
+
+            {/* Issues that no longer belong to a task (task deleted, or raised
+                before per-task issues) — kept visible instead of vanishing. */}
+            {orphanIssues.length > 0 && (
+              <Row icon="alert-triangle" label="Issues">
+                <View style={styles.issueStack}>
+                  {orphanIssues.map((issue) => (
+                    <IssueCard
+                      key={issue.id}
+                      issue={issue}
+                      onPhotoPress={openPhoto}
+                    />
+                  ))}
+                </View>
+              </Row>
+            )}
 
             {/* Readiness + priority side by side. */}
             <Row icon="flag">
@@ -591,11 +750,12 @@ export function JobcardQuickView({
                   ) : (
                     <Editable onPress={() => setEditing('priority')}>
                       <Text
-                        style={
+                        style={[
                           jobcard.priority
                             ? styles.valueText
-                            : styles.placeholderText
-                        }
+                            : styles.placeholderText,
+                          jobcard.priority === 'Now' && styles.priorityNow,
+                        ]}
                       >
                         {jobcard.priority || 'Set priority…'}
                       </Text>
@@ -739,6 +899,12 @@ export function JobcardQuickView({
                 />
               )}
             </Row>
+
+            {jobcard.createdAt ? (
+              <Text style={styles.createdOn}>
+                Created on {format(new Date(jobcard.createdAt), 'MMMM d, yyyy')}
+              </Text>
+            ) : null}
           </ScrollView>
         </View>
       </View>
@@ -902,12 +1068,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingRight: spacing.md,
+    // Keep the crew tooltip/menu above the rows that follow.
+    zIndex: 30,
+  },
+  crewSquareWrap: {
+    marginLeft: 5,
   },
   titleDot: {
     width: 14,
     height: 14,
     borderRadius: 4,
-    marginLeft: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  titleDotEmpty: {
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.textTertiary,
+  },
+  titleDotSlash: {
+    width: 18,
+    height: 1.5,
+    backgroundColor: colors.textTertiary,
+    transform: [{ rotate: '-45deg' }],
+  },
+  crewTooltip: {
+    position: 'absolute',
+    top: 20,
+    left: -4,
+    width: 160,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  crewTooltipText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  crewMenu: {
+    position: 'absolute',
+    top: 20,
+    left: -4,
+    width: 200,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.xs,
   },
   titleEditable: {
     flex: 1,
@@ -981,30 +1193,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 20,
-  },
-  inlineWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  calendarPill: {
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 1,
-  },
-  calendarPillOn: {
-    borderColor: colors.success,
-    backgroundColor: colors.successDim,
-  },
-  calendarPillOff: {
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceLight,
-  },
-  calendarPillText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 11,
   },
   statusEditable: {
     paddingHorizontal: 3,
@@ -1137,6 +1325,17 @@ const styles = StyleSheet.create({
   taskStack: {
     gap: 2,
   },
+  taskBlock: {
+    gap: spacing.xs,
+  },
+  taskIssues: {
+    marginLeft: spacing.lg,
+    marginBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  issueStack: {
+    gap: spacing.sm,
+  },
   taskDoneText: {
     color: colors.textTertiary,
     textDecorationLine: 'line-through',
@@ -1173,6 +1372,17 @@ const styles = StyleSheet.create({
   pairRow: {
     flexDirection: 'row',
     gap: spacing.lg,
+  },
+  priorityNow: {
+    color: colors.danger,
+    fontFamily: fonts.semiBold,
+  },
+  createdOn: {
+    textAlign: 'center',
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    paddingTop: spacing.sm,
   },
   pairCol: {
     flex: 1,

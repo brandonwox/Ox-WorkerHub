@@ -912,6 +912,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         card.flashingMaterial !== undefined
           ? card.flashingMaterial
           : parentJob?.flashingMaterial,
+      // The DB stamps its own created_at on insert; this local stamp keeps the
+      // in-memory card (and offline mode) consistent until the next refetch.
+      createdAt: card.createdAt ?? new Date().toISOString(),
     };
     set({ jobcards: [created, ...state.jobcards] });
     if (isBackend) write(backend.insertJobcard(created));

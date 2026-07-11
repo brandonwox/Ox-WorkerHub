@@ -34,7 +34,7 @@ interface Props {
  * Supers / the Operator) can delete.
  */
 export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const me = useCurrentWorker();
   const workers = useAppStore((s) => s.workers);
   const jobcards = useAppStore((s) => s.jobcards);
@@ -117,7 +117,9 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
               }
             }}
             renderItem={({ item }) => (
-              <View style={[styles.page, { width }]}>
+              // Explicit height: on web, list cells have no intrinsic height,
+              // so the image's percentage height collapses to 0 (black screen).
+              <View style={[styles.page, { width, height }]}>
                 <Image
                   source={{ uri: item.url }}
                   style={styles.image}
@@ -234,7 +236,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   page: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

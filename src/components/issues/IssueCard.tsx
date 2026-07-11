@@ -70,6 +70,21 @@ export function IssueCard({
   const resolved = issue.status === 'resolved';
   const isCreator = me?.id === issue.workerId;
   const canResolve = role === 'field_super';
+  // Issues sit collapsed (one description line + a chevron) until opened. A
+  // brand-new issue starts expanded so its creator can describe it right away.
+  const [expanded, setExpanded] = useState(
+    editable && isCreator && !issue.description
+  );
+
+  const collapse = () => {
+    // Collapsing unmounts the description editor before its onBlur can fire —
+    // commit any unsaved edit so the draft isn't silently dropped.
+    if (editable && isCreator && description !== issue.description) {
+      updateJobIssueDescription(issue.id, description);
+    }
+    setConfirmingDelete(false);
+    setExpanded(false);
+  };
   // The jobcard task the issue was raised for (shown on the parent job page,
   // where the issue appears away from its task list).
   const task = jobcard?.tasks?.find((t) => t.id === issue.taskId);
@@ -92,9 +107,40 @@ export function IssueCard({
     }
   };
 
+  if (!expanded) {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.card,
+          styles.cardCollapsed,
+          resolved && styles.cardResolved,
+          pressed && styles.pressed,
+        ]}
+        onPress={() => setExpanded(true)}
+      >
+        <Feather name="chevron-right" size={16} color={colors.textSecondary} />
+        <Text
+          style={[
+            styles.collapsedText,
+            !issue.description && styles.descriptionEmpty,
+          ]}
+          numberOfLines={1}
+        >
+          {issue.description || 'No description yet.'}
+        </Text>
+        {resolved && (
+          <Feather name="check" size={14} color={colors.success} />
+        )}
+      </Pressable>
+    );
+  }
+
   return (
     <View style={[styles.card, resolved && styles.cardResolved]}>
       <View style={styles.headerRow}>
+        <Pressable hitSlop={8} onPress={collapse}>
+          <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+        </Pressable>
         <View style={styles.headerText}>
           {showJobcardLink && jobcard && (
             <Pressable
@@ -271,6 +317,18 @@ const styles = StyleSheet.create({
   },
   cardResolved: {
     opacity: 0.65,
+  },
+  cardCollapsed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  collapsedText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
   },
   headerRow: {
     flexDirection: 'row',

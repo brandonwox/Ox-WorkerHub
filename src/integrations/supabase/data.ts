@@ -72,6 +72,7 @@ interface JobcardRow {
     managerName?: string;
     managerPhone?: string;
   } | null;
+  created_at: string;
 }
 
 interface CrewRow {
@@ -192,6 +193,7 @@ function rowToJobcard(r: JobcardRow): Jobcard {
       managerName: r.details?.managerName ?? '',
       managerPhone: r.details?.managerPhone ?? '',
     },
+    createdAt: r.created_at ?? undefined,
   };
 }
 

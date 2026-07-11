@@ -236,6 +236,11 @@ export interface Jobcard {
    * a stand-in to keep the installer app working until crew scheduling lands.
    */
   assignedInstallerId?: string;
+  /**
+   * ISO timestamp of when the card was created. Backend rows carry the DB's
+   * `created_at`; absent on legacy local cards that predate the field.
+   */
+  createdAt?: string;
   details: {
     generalContractor: string;
     managerName: string;
