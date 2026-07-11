@@ -31,6 +31,8 @@ interface Props {
   placing: boolean;
   onAssignToDate: (date: string) => void;
   onUnassign: (assignmentId: string) => void;
+  /** Open a day's schedule (the sidebar). Fires only when not placing. */
+  onOpenDay?: (date: string) => void;
   /** Open a placed jobcard (same quick view the Jobcards pages use). */
   onOpenCard: (jobcardId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
@@ -56,6 +58,7 @@ export function MonthCalendar({
   placing,
   onAssignToDate,
   onUnassign,
+  onOpenDay,
   onOpenCard,
   canUnassign = true,
   canAssign = true,
@@ -162,7 +165,13 @@ export function MonthCalendar({
             <Pressable
               key={dateStr}
               style={styles.cell}
-              onPress={placing ? () => onAssignToDate(dateStr) : undefined}
+              onPress={
+                placing
+                  ? () => onAssignToDate(dateStr)
+                  : onOpenDay
+                    ? () => onOpenDay(dateStr)
+                    : undefined
+              }
             >
               <View style={styles.cellHead}>
                 <Text
@@ -322,11 +331,11 @@ const styles = StyleSheet.create({
   },
   cellBlank: {
     width: '14.2857%',
-    minHeight: 92,
+    minHeight: 116,
   },
   cell: {
     width: '14.2857%',
-    minHeight: 92,
+    minHeight: 116,
     padding: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,

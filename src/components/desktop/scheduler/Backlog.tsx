@@ -1,11 +1,20 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { priorityColor, priorityRank } from '@/utils/priority';
+
+/**
+ * Whether a request is ready for installers — only these show in the main Work
+ * Requests list/calendar. Legacy cards without a readiness stay visible; a
+ * custom readiness string counts as not-ready until it's flipped to 'Now'.
+ */
+export function isReadyNow(card: Jobcard): boolean {
+  return card.readiness == null || card.readiness === 'Now';
+}
 
 interface Props {
   /** Unassigned jobcards (no row in `assignments`). */
@@ -45,6 +54,9 @@ export function Backlog({
   // → stay neutral grey. The crew names themselves render in their own colors.
   const crewTint =
     activeCrews.length === 1 ? activeCrews[0].color : colors.textSecondary;
+  // Requests that aren't ready for installers sit in a collapsed section at the
+  // bottom instead of the main list, so they don't silently vanish.
+  const [notReadyOpen, setNotReadyOpen] = useState(false);
   // Highest priority first; within a priority, the card that has been waiting
   // longest first (oldest createdAt). Legacy cards without a created-at fall
   // back to the target `date` as the wait-time proxy.
@@ -57,13 +69,106 @@ export function Backlog({
       }),
     [cards]
   );
+  const ready = useMemo(() => sorted.filter(isReadyNow), [sorted]);
+  const notReady = useMemo(() => sorted.filter((c) => !isReadyNow(c)), [sorted]);
+
+  const renderCard = (card: Jobcard, showReadiness = false) => {
+    const selected = placingCardId === card.id;
+    const accent = priorityColor(card.priority);
+    return (
+      <View
+        key={card.id}
+        style={[
+          styles.card,
+          selected && styles.cardSelected,
+          selected && {
+            borderColor: crewTint,
+            backgroundColor: withAlpha(crewTint, 0.14),
+          },
+        ]}
+      >
+        <View style={styles.cardTop}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {card.title}
+          </Text>
+          <View style={[styles.priorityBadge, { borderColor: accent }]}>
+            <View style={[styles.priorityDot, { backgroundColor: accent }]} />
+            <Text style={[styles.priorityText, { color: accent }]}>
+              {card.priority}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.cardJob} numberOfLines={1}>
+          {jobNameFor(card.jobId)}
+        </Text>
+        {showReadiness && card.readiness ? (
+          <Text style={styles.readinessNote} numberOfLines={1}>
+            Ready for installers: {card.readiness}
+          </Text>
+        ) : null}
+
+        <View style={styles.cardActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionBtn,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => onOpenCard(card)}
+          >
+            <Feather name="edit-2" size={10} color={colors.textPrimary} />
+            <Text style={styles.actionText}>Open</Text>
+          </Pressable>
+          {canSchedule && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.scheduleBtn,
+                selected && styles.scheduleBtnActive,
+                selected && {
+                  backgroundColor: withAlpha(crewTint, 0.18),
+                  borderColor: crewTint,
+                },
+                pressed && styles.pressed,
+              ]}
+              onPress={() => onTogglePlacing(card.id)}
+            >
+              <Feather
+                name={selected ? 'crosshair' : 'calendar'}
+                size={10}
+                color={colors.textPrimary}
+              />
+              <Text style={styles.actionText} numberOfLines={1}>
+                {selected ? (
+                  <>
+                    <Text style={styles.placingLabel}>Placing — </Text>
+                    {activeCrews.length > 0 ? (
+                      activeCrews.map((c, i) => (
+                        <Text key={c.id} style={{ color: c.color }}>
+                          {c.name}
+                          {i < activeCrews.length - 1 ? ', ' : ''}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text style={styles.placingLabel}>pick a day</Text>
+                    )}
+                  </>
+                ) : (
+                  'Schedule'
+                )}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Text style={styles.title}>Work Requests</Text>
         <View style={styles.countPill}>
-          <Text style={styles.countText}>{cards.length}</Text>
+          <Text style={styles.countText}>{ready.length}</Text>
         </View>
         {onExpandCalendar && (
           <Pressable
@@ -82,7 +187,7 @@ export function Backlog({
       </Text>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {cards.length === 0 ? (
+        {ready.length === 0 && notReady.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="check-circle" size={24} color={colors.success} />
             <Text style={styles.emptyText}>
@@ -90,95 +195,40 @@ export function Backlog({
             </Text>
           </View>
         ) : (
-          sorted.map((card) => {
-            const selected = placingCardId === card.id;
-            const accent = priorityColor(card.priority);
-            return (
-              <View
-                key={card.id}
-                style={[
-                  styles.card,
-                  selected && styles.cardSelected,
-                  selected && {
-                    borderColor: crewTint,
-                    backgroundColor: withAlpha(crewTint, 0.14),
-                  },
-                ]}
-              >
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {card.title}
-                  </Text>
-                  <View
-                    style={[styles.priorityBadge, { borderColor: accent }]}
-                  >
-                    <View
-                      style={[styles.priorityDot, { backgroundColor: accent }]}
-                    />
-                    <Text style={[styles.priorityText, { color: accent }]}>
-                      {card.priority}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.cardJob} numberOfLines={1}>
-                  {jobNameFor(card.jobId)}
-                </Text>
+          <>
+            {ready.length === 0 ? (
+              <Text style={styles.noReadyText}>
+                No requests are ready for installers right now.
+              </Text>
+            ) : (
+              ready.map((card) => renderCard(card))
+            )}
 
-                <View style={styles.cardActions}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => onOpenCard(card)}
-                  >
-                    <Feather name="edit-2" size={10} color={colors.textPrimary} />
-                    <Text style={styles.actionText}>Open</Text>
-                  </Pressable>
-                  {canSchedule && (
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.actionBtn,
-                        styles.scheduleBtn,
-                        selected && styles.scheduleBtnActive,
-                        selected && {
-                          backgroundColor: withAlpha(crewTint, 0.18),
-                          borderColor: crewTint,
-                        },
-                        pressed && styles.pressed,
-                      ]}
-                      onPress={() => onTogglePlacing(card.id)}
-                    >
-                      <Feather
-                        name={selected ? 'crosshair' : 'calendar'}
-                        size={10}
-                        color={colors.textPrimary}
-                      />
-                      <Text style={styles.actionText} numberOfLines={1}>
-                        {selected ? (
-                          <>
-                            <Text style={styles.placingLabel}>Placing — </Text>
-                            {activeCrews.length > 0 ? (
-                              activeCrews.map((c, i) => (
-                                <Text key={c.id} style={{ color: c.color }}>
-                                  {c.name}
-                                  {i < activeCrews.length - 1 ? ', ' : ''}
-                                </Text>
-                              ))
-                            ) : (
-                              <Text style={styles.placingLabel}>pick a day</Text>
-                            )}
-                          </>
-                        ) : (
-                          'Schedule'
-                        )}
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-            );
-          })
+            {/* Requests whose readiness isn't "Now" — kept out of the main
+                list but never silently hidden. */}
+            {notReady.length > 0 && (
+              <>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.notReadyToggle,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setNotReadyOpen((open) => !open)}
+                >
+                  <Feather
+                    name={notReadyOpen ? 'chevron-down' : 'chevron-right'}
+                    size={14}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.notReadyTitle}>Not ready yet</Text>
+                  <View style={styles.countPill}>
+                    <Text style={styles.countText}>{notReady.length}</Text>
+                  </View>
+                </Pressable>
+                {notReadyOpen && notReady.map((card) => renderCard(card, true))}
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -298,6 +348,30 @@ const styles = StyleSheet.create({
   cardJob: {
     color: colors.textSecondary,
     fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  readinessNote: {
+    color: colors.warning,
+    fontFamily: fonts.medium,
+    fontSize: 11,
+  },
+  noReadyText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    paddingVertical: spacing.sm,
+    textAlign: 'center',
+  },
+  notReadyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  notReadyTitle: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
     fontSize: 12,
   },
   cardActions: {

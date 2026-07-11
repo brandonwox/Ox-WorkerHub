@@ -1,11 +1,12 @@
 import { Feather } from '@expo/vector-icons';
 import { addMonths, format, parseISO, subMonths } from 'date-fns';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
-import { Backlog } from '@/components/desktop/scheduler/Backlog';
+import { Backlog, isReadyNow } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
+import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
@@ -48,10 +49,50 @@ export function CalendarBoard({ canAssign }: Props) {
   const [multiAssign, setMultiAssign] = useState(false);
   const [placingCardId, setPlacingCardId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
-  // The Work Requests pool expanded into its large month-calendar view.
-  const [backlogCalendarOpen, setBacklogCalendarOpen] = useState(false);
+  // The Work Requests column expanded in place into its large month-calendar
+  // view (the crew calendar squeezes down to make room).
+  const [backlogExpanded, setBacklogExpanded] = useState(false);
+  // The day whose schedule shows in the sidebar, or null when closed.
+  const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
+
+  // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
+  // Work Requests container visibly grows leftward across the board.
+  const expandAnim = useRef(new Animated.Value(0)).current;
+  const calFlex = expandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 1],
+  });
+  const backlogFlex = expandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 2.5],
+  });
+  const backlogMaxWidth = expandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [360, 4000],
+  });
+
+  // The expanded requests calendar and the day sidebar share the board's width,
+  // so opening one closes the other. Expanding also cancels a pending placement
+  // (its "Placing" indicator lives in the hidden list).
+  const toggleBacklogExpanded = (open: boolean) => {
+    setBacklogExpanded(open);
+    if (open) {
+      setDayFocus(null);
+      setPlacingCardId(null);
+    }
+    Animated.timing(expandAnim, {
+      toValue: open ? 1 : 0,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const openDay = (date: string) => {
+    setDayFocus(date);
+    if (backlogExpanded) toggleBacklogExpanded(false);
+  };
 
   // Permanent crews plus every Daily Crew (one-day overrides), so daily crews
   // sit in the chip row and can be shown, hidden, and assigned to like any other
@@ -169,6 +210,12 @@ export function CalendarBoard({ canAssign }: Props) {
   const unassigned = useMemo(
     () => jobcards.filter((c) => assignments.every((a) => a.jobcardId !== c.id)),
     [jobcards, assignments]
+  );
+  // The expanded calendar shows only ready requests — same filter as the list's
+  // main section (the list handles the "Not ready yet" leftovers itself).
+  const readyUnassigned = useMemo(
+    () => unassigned.filter(isReadyNow),
+    [unassigned]
   );
 
   // Every assignment belonging to a visible (not toggled-off) crew.
@@ -288,7 +335,7 @@ export function CalendarBoard({ canAssign }: Props) {
       )}
 
       <View style={styles.board}>
-        <View style={styles.calCol}>
+        <Animated.View style={[styles.calCol, { flex: calFlex }]}>
           <MonthCalendar
             month={month}
             onPrevMonth={() => setMonth((m) => subMonths(m, 1))}
@@ -300,30 +347,66 @@ export function CalendarBoard({ canAssign }: Props) {
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
             onUnassign={handleUnassign}
-            onOpenCard={setViewingId}
+            onOpenDay={openDay}
+            onOpenCard={(id) => {
+              // Opening a card from the main calendar also closes the day
+              // sidebar.
+              setViewingId(id);
+              setDayFocus(null);
+            }}
             canUnassign={canAssign}
             canAssign={canAssign}
             crewNameFor={(crewId) =>
               allCrews.find((c) => c.id === crewId)?.name ?? '?'
             }
           />
-        </View>
-        <View style={styles.backlogCol}>
-          <Backlog
-            cards={unassigned}
+        </Animated.View>
+
+        {dayFocus != null && (
+          <DaySidebar
+            date={dayFocus}
+            assignments={visibleAssignments.filter((a) => a.date === dayFocus)}
+            jobcards={jobcards}
             jobNameFor={jobNameFor}
-            placingCardId={placingCardId}
-            onTogglePlacing={togglePlacing}
-            onOpenCard={(card) => setViewingId(card.id)}
-            onExpandCalendar={() => setBacklogCalendarOpen(true)}
-            canSchedule={canAssign}
-            activeCrews={activeCrews.map((c) => ({
-              id: c.id,
-              name: c.name,
-              color: colorForCrew(c.id),
-            }))}
+            colorForCrew={colorForCrew}
+            crewNameFor={(crewId) =>
+              allCrews.find((c) => c.id === crewId)?.name ?? '?'
+            }
+            onOpenCard={setViewingId}
+            onClose={() => setDayFocus(null)}
           />
-        </View>
+        )}
+
+        <Animated.View
+          style={[
+            styles.backlogCol,
+            { flex: backlogFlex, maxWidth: backlogMaxWidth },
+          ]}
+        >
+          {backlogExpanded ? (
+            <BacklogCalendar
+              cards={readyUnassigned}
+              jobNameFor={jobNameFor}
+              onOpenCard={(card) => setViewingId(card.id)}
+              onCollapse={() => toggleBacklogExpanded(false)}
+            />
+          ) : (
+            <Backlog
+              cards={unassigned}
+              jobNameFor={jobNameFor}
+              placingCardId={placingCardId}
+              onTogglePlacing={togglePlacing}
+              onOpenCard={(card) => setViewingId(card.id)}
+              onExpandCalendar={() => toggleBacklogExpanded(true)}
+              canSchedule={canAssign}
+              activeCrews={activeCrews.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: colorForCrew(c.id),
+              }))}
+            />
+          )}
+        </Animated.View>
       </View>
 
       {canAssign && (
@@ -332,16 +415,6 @@ export function CalendarBoard({ canAssign }: Props) {
           onClose={() => setManageOpen(false)}
         />
       )}
-
-      {/* Rendered before JobcardQuickView so an opened request's details stack
-          on top of the expanded calendar. */}
-      <BacklogCalendar
-        visible={backlogCalendarOpen}
-        onClose={() => setBacklogCalendarOpen(false)}
-        cards={unassigned}
-        jobNameFor={jobNameFor}
-        onOpenCard={(card) => setViewingId(card.id)}
-      />
 
       <JobcardQuickView
         jobcardId={viewingId}

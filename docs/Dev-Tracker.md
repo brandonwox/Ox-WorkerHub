@@ -4,6 +4,12 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+The clock in for installers:
+1. when selecting or adjusting time, you should not type the time, it should pull up the standard iPhone time selector, and on android it should also pull up the standard android time picker.
+2. theres also a ui ux issue where the start time doesnt fit in the pill its in.
+
+jobcard task checkbox button glitches when clicked. Maybe we need to make the checkbox button for tasks not push to the database until it has been unchanged for 5 seconds.
+
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
 2. The finance manager should have a jobs tab.
@@ -11,29 +17,36 @@ create finance manager role.
 4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job. and those numbers should show up for the finance manager.
 5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
 
-calendar (scheduler): make the days in the month calendar a little larger. and when 
+Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
 
-add a "False Start" button the installer can click at the bottom of a jobcard to mark it as a false start. This will ping the field super in charge of the jobcard to let them know the jobcard was marked as a false start.
+at the top of the field super jobcard page there should be a counter that displays the number of false starts so far per week. (shows the number of jobcards that installers have set the status to "False Start".)
 
-Priority of jobcards should be a range. It should have a start date and a finish date. In the Work Requests view, the displayed priority should still be the start date, but when hovering over it, it should display the start date and the finish date.
+jobcard web view: clicking on the priority status should open up the dropdown menu immediately without having to click again.
 
-ask the office some important questions that will determine the flow of Ox WorkerHub:
-- How does job assignment work? (How do they decide the Field Super for a new job)
-- 
+Priority of jobcards should be a range. It should have a start date and a finish date. In the Work Requests view, the displayed priority should still be the start date, but when hovering over it, it should display the start date and the finish date. (start date can still be set to "Now" and the now priority should retain all of its current functionality.)
 
-Field Super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
+if a dropdown, editable input, or similar is open/active and the user clicks outside/elsewhere the active element should close. (This should be the case for most things, use discretion when unsure.) (just one example case: jobcard priority dropdown)
 
-installers can set the completion status of a jobcard to "Issues", "In-Progress", or "Complete". If the installer sets the status to "Issues", the jobcard will be highlighted in red and the Field Super will be notified. If the installer sets the status to "Issues", the installer must write at least 1 issue in the issue field.
+field super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
 
-add profit sharing tab for installers, so installers can see their profit sharing checks (past and upcoming). installers should also be able to see the profit sharing remaining on any job.
-
-create sms provider account (twilio is the standard). This would allow us to send text messages to schedulers when a Field Super creates a jobcard with a priority of "Now".
+add "profit sharing" tab for installers: (DO NOT IMPLEMENT UNTIL I DETAIL THIS PLAN MORE (e.g. HOW WILL PROFIT SHARING BE TRACKED))
+1. installers should be able to see their profit sharing in a list of all most recent to oldest. They should also be able to sort through jobs and see profit sharing progress for each job (each profit sharing check they've received so far).
 
 # Unsure
+
+create sms provider account (twilio is the standard). This would allow us to send text messages to schedulers when a Field Super creates a jobcard with a priority of "Now".
 
 
 
 # DONE
+
+calendar view on web: the days in the month calendar are a little larger.
+
+only jobcards with the "Ready for installers" readiness set to "Now" are displayed in the work requests view. Requests that aren't ready sit in a collapsed "Not ready yet (n)" section at the bottom of the list so they don't silently vanish. (legacy cards with no readiness recorded still show as ready)
+
+scheduler-calendar: expanding the work requests calendar no longer opens a popup — the work requests container expands in place across the screen to the left (animated), hiding the list content and pushing the standard calendar to a smaller width.
+
+scheduler-calendar: clicking a day in the calendar opens a sidebar (between the standard calendar and the work requests view) showing that day's schedule, with a large X to close. Clicking a jobcard in the main calendar closes the daily sidebar. Opening the sidebar and expanding the work requests calendar are mutually exclusive (each closes the other).
 
 jobs now have scopes: the operator picks them at job creation (editable later from Edit job). If Windows is not a scope of the job, the Window Opening Flashing Material never shows for the job or its jobcards. (requires applying the new Supabase migration)
 
