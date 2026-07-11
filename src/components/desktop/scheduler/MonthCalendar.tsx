@@ -35,6 +35,13 @@ interface Props {
   onOpenCard: (jobcardId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
   canUnassign?: boolean;
+  /**
+   * Whether the viewer assigns work. Field Supers only look at the calendar,
+   * so the "Assigning to …" header line is hidden for them.
+   */
+  canAssign?: boolean;
+  /** Crew display name (a single letter) for the multi-crew tags on cards. */
+  crewNameFor: (crewId: string) => string;
 }
 
 /** Month grid showing the visible crews' assignments per day, colored by crew. */
@@ -51,6 +58,8 @@ export function MonthCalendar({
   onUnassign,
   onOpenCard,
   canUnassign = true,
+  canAssign = true,
+  crewNameFor,
 }: Props) {
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
@@ -80,13 +89,15 @@ export function MonthCalendar({
       <View style={styles.header}>
         <View>
           <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
-          <Text style={styles.viewing}>
-            {activeCrews.length > 0 ? (
-              <>Assigning to {crewNameSpans}</>
-            ) : (
-              'No active crew — tap one to assign'
-            )}
-          </Text>
+          {canAssign && (
+            <Text style={styles.viewing}>
+              {activeCrews.length > 0 ? (
+                <>Assigning to {crewNameSpans}</>
+              ) : (
+                'No active crew — tap one to assign'
+              )}
+            </Text>
+          )}
         </View>
         <View style={styles.navBtns}>
           <Pressable
@@ -134,6 +145,18 @@ export function MonthCalendar({
           const dayAssignments = visibleAssignments.filter(
             (a) => a.date === dateStr
           );
+          // One chip per jobcard even when several visible crews share it —
+          // the crew letters on the end of the chip say who it belongs to.
+          const dayCards: { card: Jobcard; group: ScheduleAssignment[] }[] = [];
+          for (const a of dayAssignments) {
+            const entry = dayCards.find((e) => e.card.id === a.jobcardId);
+            if (entry) {
+              entry.group.push(a);
+              continue;
+            }
+            const card = cardById(a.jobcardId);
+            if (card) dayCards.push({ card, group: [a] });
+          }
 
           return (
             <Pressable
@@ -150,13 +173,11 @@ export function MonthCalendar({
               </View>
 
               <View style={styles.cellCards}>
-                {dayAssignments.map((a) => {
-                  const card = cardById(a.jobcardId);
-                  if (!card) return null;
-                  const crewColor = colorForCrew(a.crewId);
+                {dayCards.map(({ card, group }) => {
+                  const crewColor = colorForCrew(group[0].crewId);
                   return (
                     <Pressable
-                      key={a.id}
+                      key={card.id}
                       onPress={
                         placing
                           ? () => onAssignToDate(dateStr)
@@ -180,9 +201,24 @@ export function MonthCalendar({
                       <Text style={styles.placedTitle} numberOfLines={1}>
                         {card.title}
                       </Text>
+                      {group.length > 1 && (
+                        <Text style={styles.placedCrews} numberOfLines={1}>
+                          {group.map((a, i) => (
+                            <Text
+                              key={a.id}
+                              style={{ color: colorForCrew(a.crewId) }}
+                            >
+                              {i > 0 ? ' ' : ''}
+                              {crewNameFor(a.crewId)}
+                            </Text>
+                          ))}
+                        </Text>
+                      )}
                       {canUnassign && (
                         <Pressable
-                          onPress={() => onUnassign(a.id)}
+                          // Unassigning a shared card removes it from every
+                          // crew (the handler fans out from any assignment).
+                          onPress={() => onUnassign(group[0].id)}
                           hitSlop={6}
                           style={({ pressed }) => pressed && styles.pressed}
                         >
@@ -229,7 +265,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   viewing: {
-    color: colors.primary,
+    color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 12,
     marginTop: 2,
@@ -253,7 +289,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primaryDim,
+    // Neutral fallback — the inline style tints it with the active crew's
+    // color (grey when several crews are targeted).
+    backgroundColor: colors.surfaceLight,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
@@ -333,5 +371,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 10,
+  },
+  placedCrews: {
+    fontFamily: fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
 });

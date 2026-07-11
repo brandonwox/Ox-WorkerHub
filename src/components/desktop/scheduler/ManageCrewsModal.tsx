@@ -15,6 +15,8 @@ import { colors, fonts, radii, spacing } from '@/theme';
 import { Worker } from '@/types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Crew names are a single letter — they tag jobcards on the calendar. */
+const CREW_NAME_RE = /^[A-Za-z]$/;
 
 const toggle = (ids: string[], id: string): string[] =>
   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
@@ -47,19 +49,21 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const createCrew = () => {
-    if (!newCrewName.trim()) {
-      setError('Crew name is required.');
+    const name = newCrewName.trim().toUpperCase();
+    if (!CREW_NAME_RE.test(name)) {
+      setError('Crew names must be a single letter (e.g. "A").');
       return;
     }
-    addCrew({ name: newCrewName.trim(), installerIds: newCrewMembers });
+    addCrew({ name, installerIds: newCrewMembers });
     setNewCrewName('');
     setNewCrewMembers([]);
     setError(null);
   };
 
   const createDailyCrew = () => {
-    if (!newDailyName.trim()) {
-      setError('Daily crew name is required.');
+    const name = newDailyName.trim().toUpperCase();
+    if (!CREW_NAME_RE.test(name)) {
+      setError('Crew names must be a single letter (e.g. "A").');
       return;
     }
     if (!DATE_RE.test(newDailyDate.trim())) {
@@ -67,7 +71,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
       return;
     }
     addDailyCrew({
-      name: newDailyName.trim(),
+      name,
       date: newDailyDate.trim(),
       installerIds: newDailyMembers,
     });
@@ -122,11 +126,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
             <View style={styles.formBlock}>
               <FormInput
-                label="New crew name"
+                label="New crew name (single letter)"
                 value={newCrewName}
                 onChangeText={setNewCrewName}
-                placeholder="Crew Charlie"
-                autoCapitalize="words"
+                placeholder="C"
+                autoCapitalize="characters"
+                maxLength={1}
               />
               <Text style={styles.fieldLabel}>Members (installers only)</Text>
               <InstallerChips
@@ -180,11 +185,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
             <View style={styles.formBlock}>
               <FormInput
-                label="New daily crew name"
+                label="New daily crew name (single letter)"
                 value={newDailyName}
                 onChangeText={setNewDailyName}
-                placeholder="Punch List Crew"
-                autoCapitalize="words"
+                placeholder="P"
+                autoCapitalize="characters"
+                maxLength={1}
               />
               <FormInput
                 label="Date"

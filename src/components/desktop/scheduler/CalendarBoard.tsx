@@ -236,7 +236,9 @@ export function CalendarBoard({ canAssign }: Props) {
                   <Feather
                     name="layers"
                     size={14}
-                    color={multiAssign ? colors.primary : colors.textSecondary}
+                    color={
+                      multiAssign ? colors.textPrimary : colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
@@ -297,6 +299,10 @@ export function CalendarBoard({ canAssign }: Props) {
             onUnassign={handleUnassign}
             onOpenCard={setViewingId}
             canUnassign={canAssign}
+            canAssign={canAssign}
+            crewNameFor={(crewId) =>
+              allCrews.find((c) => c.id === crewId)?.name ?? '?'
+            }
           />
         </View>
         <View style={styles.backlogCol}>
@@ -477,8 +483,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   multiBtnActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryDim,
+    borderColor: colors.textSecondary,
+    backgroundColor: colors.surfaceLight,
   },
   multiText: {
     color: colors.textSecondary,
@@ -486,7 +492,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   multiTextActive: {
-    color: colors.primary,
+    color: colors.textPrimary,
   },
   manageBtn: {
     flexDirection: 'row',
