@@ -17,6 +17,7 @@ import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
+import { jobAllowsWindows } from '@/utils/jobScopes';
 
 /**
  * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap a
@@ -146,16 +147,21 @@ function JobRow({
             }}
             placeholder="Street, city"
           />
-          <FormInput
-            label="Flashing material"
-            value={flashing}
-            onChangeText={(text) => {
-              setFlashing(text);
-              setSaved(false);
-            }}
-            placeholder="e.g. Dark bronze aluminum"
-          />
-          <FlashingPhotoField job={job} editable />
+          {/* Hidden entirely for jobs whose scopes exclude window work. */}
+          {jobAllowsWindows(job) && (
+            <>
+              <FormInput
+                label="Flashing material"
+                value={flashing}
+                onChangeText={(text) => {
+                  setFlashing(text);
+                  setSaved(false);
+                }}
+                placeholder="e.g. Dark bronze aluminum"
+              />
+              <FlashingPhotoField job={job} editable />
+            </>
+          )}
           <Pressable
             style={({ pressed }) => [
               styles.saveButton,

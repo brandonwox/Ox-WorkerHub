@@ -21,6 +21,7 @@ import {
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Job } from '@/types';
+import { jobAllowsWindows } from '@/utils/jobScopes';
 
 /** Field Super → Jobs: a card per job; open one to edit its flashing material. */
 export default function FieldSuperJobsScreen() {
@@ -179,15 +180,22 @@ function JobRow({
           <Text style={styles.fieldLabel}>Jobsite address</Text>
           <AddressCell job={job} onCommit={onCommitLocation} />
 
-          <Text style={styles.fieldLabel}>Window Opening Flashing Material</Text>
-          <View style={styles.flashRow}>
-            <FlashingCell job={job} onCommit={onCommitFlashing} />
-            <FlashingPhotoField job={job} editable />
-          </View>
-          <Text style={styles.fieldHint}>
-            New jobcards with the Windows scope inherit this value (editable per
-            card). The photo shows on every jobcard of this job.
-          </Text>
+          {/* Hidden entirely for jobs whose scopes exclude window work. */}
+          {jobAllowsWindows(job) && (
+            <>
+              <Text style={styles.fieldLabel}>
+                Window Opening Flashing Material
+              </Text>
+              <View style={styles.flashRow}>
+                <FlashingCell job={job} onCommit={onCommitFlashing} />
+                <FlashingPhotoField job={job} editable />
+              </View>
+              <Text style={styles.fieldHint}>
+                New jobcards with the Windows scope inherit this value (editable
+                per card). The photo shows on every jobcard of this job.
+              </Text>
+            </>
+          )}
         </View>
       )}
     </View>

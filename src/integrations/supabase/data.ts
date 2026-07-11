@@ -40,6 +40,7 @@ interface JobRow {
   qbt_jobcode_id: string | null;
   flashing_material: string | null;
   flashing_photo_path: string | null;
+  scopes: string[] | null;
 }
 
 interface JobFieldSuperRow {
@@ -67,6 +68,8 @@ interface JobcardRow {
   notes: string | null;
   scope_of_work: string | null;
   field_notes: string | null;
+  pickup_required: boolean | null;
+  pickup_location: string | null;
   details: {
     generalContractor?: string;
     managerName?: string;
@@ -152,6 +155,7 @@ function rowToJob(r: JobRow): Job {
     flashingPhotoUrl: r.flashing_photo_path
       ? jobPhotoUrl(r.flashing_photo_path)
       : undefined,
+    scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
   };
 }
 
@@ -189,6 +193,8 @@ function rowToJobcard(r: JobcardRow): Jobcard {
     notes: r.notes ?? undefined,
     scopeOfWork: r.scope_of_work ?? undefined,
     fieldNotes: r.field_notes ?? undefined,
+    pickupRequired: r.pickup_required ?? undefined,
+    pickupLocation: r.pickup_location ?? undefined,
     details: {
       generalContractor: r.details?.generalContractor ?? '',
       managerName: r.details?.managerName ?? '',
@@ -390,6 +396,7 @@ function jobToRow(job: Job) {
     qbt_jobcode_id: job.qbtJobcodeId ?? null,
     flashing_material: job.flashingMaterial ?? null,
     flashing_photo_path: job.flashingPhotoPath ?? null,
+    scopes: job.scopes ?? null,
   };
 }
 
@@ -460,6 +467,8 @@ function jobcardToRow(card: Jobcard) {
     notes: card.notes ?? null,
     scope_of_work: card.scopeOfWork ?? null,
     field_notes: card.fieldNotes ?? null,
+    pickup_required: card.pickupRequired ?? null,
+    pickup_location: card.pickupLocation ?? null,
     details: card.details,
   };
 }

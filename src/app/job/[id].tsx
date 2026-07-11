@@ -27,6 +27,7 @@ import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { JOBCARD_STATUSES } from '@/types';
+import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
 
 export default function JobDetailsScreen() {
@@ -196,20 +197,30 @@ export default function JobDetailsScreen() {
           {timeWindow ? (
             <InfoRow icon="clock" label="Time Window" value={timeWindow} />
           ) : null}
+          {job.pickupRequired ? (
+            <InfoRow
+              icon="truck"
+              label="Pickup Required"
+              value={job.pickupLocation || 'Yes'}
+            />
+          ) : null}
         </View>
 
         <View style={styles.section}>
-          <View style={styles.flashingRow}>
-            <View style={styles.flashingInfo}>
-              <InfoRow
-                icon="layers"
-                label="Window Opening Flashing Material (site-wide)"
-                value={job.flashingMaterial ?? 'Not specified'}
-              />
+          {/* Hidden entirely for jobs whose scopes exclude window work. */}
+          {jobAllowsWindows(parentJob) && (
+            <View style={styles.flashingRow}>
+              <View style={styles.flashingInfo}>
+                <InfoRow
+                  icon="layers"
+                  label="Window Opening Flashing Material (site-wide)"
+                  value={job.flashingMaterial ?? 'Not specified'}
+                />
+              </View>
+              {/* The Field Super's reference photo of the material (tap to expand). */}
+              <FlashingPhotoField job={parentJob} />
             </View>
-            {/* The Field Super's reference photo of the material (tap to expand). */}
-            <FlashingPhotoField job={parentJob} />
-          </View>
+          )}
           {job.materials ? (
             <InfoRow icon="package" label="Materials Needed" value={job.materials} />
           ) : null}

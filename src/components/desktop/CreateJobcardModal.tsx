@@ -21,6 +21,7 @@ import {
   PRIORITY_PRESETS,
   READINESS_PRESETS,
 } from '@/types';
+import { jobAllowsWindows } from '@/utils/jobScopes';
 import { useTypewriter } from '@/utils/useTypewriter';
 
 /** Payload the Field Super screen hands to `addJobcard`. */
@@ -35,6 +36,9 @@ export interface NewJobcardInput {
   /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
   flashingMaterial?: string;
   notes?: string;
+  /** Required Yes/No answer; true also requires {@link pickupLocation}. */
+  pickupRequired: boolean;
+  pickupLocation?: string;
 }
 
 interface Props {
@@ -74,6 +78,9 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
   const [flashing, setFlashing] = useState('');
   const [flashingTouched, setFlashingTouched] = useState(false);
   const [materials, setMaterials] = useState('');
+  // "Pickup Required" is a mandatory Yes/No; null until the Field Super answers.
+  const [pickupRequired, setPickupRequired] = useState<boolean | null>(null);
+  const [pickupLocation, setPickupLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -84,10 +91,23 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
     [jobs]
   );
   const selectedJob = jobs.find((j) => j.id === jobId);
-  const includesWindows = scopes.includes('Windows');
+  // Jobs whose scopes exclude 'Windows' never deal in flashing material — the
+  // Windows scope isn't even offered for their jobcards.
+  const windowsAllowed = jobAllowsWindows(selectedJob);
+  const scopeOptions = windowsAllowed
+    ? SCOPE_OPTIONS
+    : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
+  const includesWindows = windowsAllowed && scopes.includes('Windows');
   const flashingValue = flashingTouched
     ? flashing
     : (selectedJob?.flashingMaterial ?? '');
+  // Jobcards can't be created until the Field Super has filled in the parent
+  // job's jobsite address — and its flashing material, when windows are in play.
+  const missingAddress = selectedJob != null && !selectedJob.location.trim();
+  const missingFlashing =
+    selectedJob != null &&
+    windowsAllowed &&
+    !selectedJob.flashingMaterial?.trim();
 
   const reset = () => {
     setJobId('');
@@ -101,8 +121,19 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
     setFlashing('');
     setFlashingTouched(false);
     setMaterials('');
+    setPickupRequired(null);
+    setPickupLocation('');
     setNotes('');
     setError(null);
+  };
+
+  // Switching to a job without the Windows scope drops a stale Windows pick.
+  const changeJob = (nextId: string) => {
+    setJobId(nextId);
+    const next = jobs.find((j) => j.id === nextId);
+    if (!jobAllowsWindows(next)) {
+      setScopes((prev) => prev.filter((s) => s !== 'Windows'));
+    }
   };
 
   const close = () => {
@@ -142,6 +173,18 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       setError('Pick a parent job for this jobcard.');
       return;
     }
+    if (missingAddress) {
+      setError(
+        'This job has no jobsite address yet — set it on the Jobs tab first.'
+      );
+      return;
+    }
+    if (missingFlashing) {
+      setError(
+        'This job has no Window Opening Flashing Material yet — set it on the Jobs tab first.'
+      );
+      return;
+    }
     if (!title.trim()) {
       setError('Title is required.');
       return;
@@ -171,6 +214,14 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       setError('Choose a priority.');
       return;
     }
+    if (pickupRequired == null) {
+      setError('Answer whether a pickup is required.');
+      return;
+    }
+    if (pickupRequired && !pickupLocation.trim()) {
+      setError('Specify where the pickup is.');
+      return;
+    }
 
     onSubmit({
       jobId: selectedJob.id,
@@ -183,6 +234,8 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       flashingMaterial: includesWindows
         ? flashingValue.trim() || undefined
         : undefined,
+      pickupRequired,
+      pickupLocation: pickupRequired ? pickupLocation.trim() : undefined,
       notes: notes.trim() || undefined,
     });
     close();
@@ -216,9 +269,23 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
                 <Combobox
                   value={jobId}
                   options={jobOptions}
-                  onChange={setJobId}
+                  onChange={changeJob}
                   placeholder="Search jobs…"
                 />
+              )}
+              {(missingAddress || missingFlashing) && (
+                <View style={styles.prereqWarning}>
+                  <Feather name="alert-triangle" size={14} color={colors.warning} />
+                  <Text style={styles.prereqText}>
+                    Jobcards can&apos;t be created for this job until{' '}
+                    {missingAddress && missingFlashing
+                      ? 'its jobsite address and Window Opening Flashing Material are'
+                      : missingAddress
+                        ? 'its jobsite address is'
+                        : 'its Window Opening Flashing Material is'}{' '}
+                    set — do that on the Jobs tab.
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -236,7 +303,7 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
               <Text style={styles.fieldLabel}>Scope (select one or more)</Text>
               <MultiCombobox
                 values={scopes}
-                options={SCOPE_OPTIONS}
+                options={scopeOptions}
                 onChange={(vals) => setScopes(vals as JobScope[])}
                 placeholder="Search scopes…"
               />
@@ -340,6 +407,53 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
                 </View>
                 <FlashingPhotoField job={selectedJob} editable />
               </View>
+            )}
+
+            {/* Pickup Required — mandatory Yes/No; Yes reveals the location. */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Pickup Required</Text>
+              <View style={styles.pickupRow}>
+                <Pressable
+                  style={[
+                    styles.pickupChoice,
+                    pickupRequired === true && styles.pickupChoiceOn,
+                  ]}
+                  onPress={() => setPickupRequired(true)}
+                >
+                  <Text
+                    style={[
+                      styles.pickupChoiceText,
+                      pickupRequired === true && styles.pickupChoiceTextOn,
+                    ]}
+                  >
+                    Yes
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.pickupChoice,
+                    pickupRequired === false && styles.pickupChoiceOn,
+                  ]}
+                  onPress={() => setPickupRequired(false)}
+                >
+                  <Text
+                    style={[
+                      styles.pickupChoiceText,
+                      pickupRequired === false && styles.pickupChoiceTextOn,
+                    ]}
+                  >
+                    No
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            {pickupRequired === true && (
+              <FormInput
+                label="Pickup location"
+                value={pickupLocation}
+                onChangeText={setPickupLocation}
+                placeholder="Where does the crew pick up? e.g. the shop, supplier…"
+              />
             )}
 
             {/* Materials needed (optional) */}
@@ -451,6 +565,50 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  prereqWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.warningDim,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginTop: spacing.xs,
+  },
+  prereqText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  pickupRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  pickupChoice: {
+    minWidth: 72,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  pickupChoiceOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  pickupChoiceText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  pickupChoiceTextOn: {
+    color: colors.primary,
   },
   taskRow: {
     flexDirection: 'row',

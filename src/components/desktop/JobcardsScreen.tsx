@@ -151,6 +151,8 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
       readiness: input.readiness,
       materials: input.materials,
       flashingMaterial: input.flashingMaterial,
+      pickupRequired: input.pickupRequired,
+      pickupLocation: input.pickupLocation,
       notes: input.notes,
       details: { generalContractor: '', managerName: '', managerPhone: '' },
     });

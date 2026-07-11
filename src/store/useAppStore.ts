@@ -606,7 +606,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setAuthResolved: (authResolved) => set({ authResolved }),
 
-  setPasswordRecovery: (passwordRecovery) => set({ passwordRecovery }),
+  setPasswordRecovery: (passwordRecovery) => {
+    // Mirror the flag in sessionStorage (web): the recovery hash that raised it
+    // is consumed on first load, so without this a reload mid-reset would drop
+    // the user into the app signed-in, with no password prompt. session.ts
+    // reads the mirror back on launch; cleared when the reset completes or the
+    // session ends.
+    if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+      try {
+        if (passwordRecovery) sessionStorage.setItem('wh-password-recovery', '1');
+        else sessionStorage.removeItem('wh-password-recovery');
+      } catch {
+        // Storage can be unavailable (private mode); the in-memory flag still works.
+      }
+    }
+    set({ passwordRecovery });
+  },
 
   enterDevMode: () => {
     const seed = loadDevSeed();

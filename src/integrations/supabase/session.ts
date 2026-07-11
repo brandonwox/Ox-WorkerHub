@@ -19,7 +19,10 @@ const launchedFromRecoveryLink =
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&
   (window.location.hash.includes('type=recovery') ||
-    window.location.search.includes('type=recovery'));
+    window.location.search.includes('type=recovery') ||
+    // A reload mid-reset loses the hash; the store mirrors the pending flag
+    // here (see setPasswordRecovery) so the reset screen survives it.
+    window.sessionStorage?.getItem('wh-password-recovery') === '1');
 
 /**
  * Syncs the Supabase auth session into the store. When signed in, the resolved

@@ -32,6 +32,7 @@ import {
   READINESS_PRESETS,
 } from '@/types';
 import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
+import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
 
 const MIN_TASK_LEN = 15;
@@ -49,6 +50,7 @@ type EditField =
   | 'priority'
   | 'flashing'
   | 'materials'
+  | 'pickup-location'
   | 'notes'
   | 'new-task'
   | `task-${number}`;
@@ -158,7 +160,13 @@ export function JobcardQuickView({
       photos: all,
       index: all.findIndex((p) => p.id === photo.id),
     });
-  const includesWindows = scopes.includes('Windows');
+  // Flashing only exists when the jobcard covers windows AND the parent job's
+  // scopes allow window work at all.
+  const windowsAllowed = jobAllowsWindows(parentJob);
+  const includesWindows = windowsAllowed && scopes.includes('Windows');
+  const scopeOptions = windowsAllowed
+    ? SCOPE_OPTIONS
+    : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
   // Crew assignment drives the title square: permanent crews first so colors
   // match the scheduler calendar (same ordering as CalendarBoard).
@@ -198,10 +206,20 @@ export function JobcardQuickView({
     setEditing(null);
     const next = jobs.find((j) => j.id === nextId);
     if (!next || next.id === jobcard.jobId) return;
+    // Moving to a job without the Windows scope drops the card's Windows scope
+    // (and its flashing material) — those never show for such jobs.
+    const dropWindows =
+      !jobAllowsWindows(next) && scopes.includes('Windows');
     // The address follows the parent job, exactly like the create flow.
     updateJobcard(jobcard.id, {
       jobId: next.id,
       address: next.location ?? jobcard.address,
+      ...(dropWindows
+        ? {
+            scopes: scopes.filter((s) => s !== 'Windows'),
+            flashingMaterial: undefined,
+          }
+        : {}),
     });
   };
 
@@ -292,6 +310,23 @@ export function JobcardQuickView({
     setEditing(null);
     const v = draft.trim() || undefined;
     if (v !== jobcard.materials) updateJobcard(jobcard.id, { materials: v });
+  };
+
+  const changePickupRequired = (required: boolean) => {
+    if (required === jobcard.pickupRequired) return;
+    updateJobcard(jobcard.id, {
+      pickupRequired: required,
+      // "No" clears any stale location so it can't silently reappear.
+      ...(required ? {} : { pickupLocation: undefined }),
+    });
+  };
+
+  const commitPickupLocation = () => {
+    setEditing(null);
+    const v = draft.trim() || undefined;
+    if (v !== jobcard.pickupLocation) {
+      updateJobcard(jobcard.id, { pickupLocation: v });
+    }
   };
 
   const commitNotes = () => {
@@ -599,7 +634,7 @@ export function JobcardQuickView({
                 <View style={styles.scopeEdit}>
                   <MultiCombobox
                     values={scopes}
-                    options={SCOPE_OPTIONS}
+                    options={scopeOptions}
                     onChange={changeScopes}
                     placeholder="Search scopes…"
                   />
@@ -843,6 +878,59 @@ export function JobcardQuickView({
                   </Text>
                 </Editable>
               )}
+            </Row>
+
+            {/* Pickup Required — Yes/No pills; Yes reveals the location. */}
+            <Row icon="truck" label="Pickup Required">
+              <View style={styles.pickupRow}>
+                {([true, false] as const).map((choice) => {
+                  const active = jobcard.pickupRequired === choice;
+                  return (
+                    <Pressable
+                      key={String(choice)}
+                      style={[styles.pickupChoice, active && styles.pickupChoiceOn]}
+                      onPress={() => changePickupRequired(choice)}
+                    >
+                      <Text
+                        style={[
+                          styles.pickupChoiceText,
+                          active && styles.pickupChoiceTextOn,
+                        ]}
+                      >
+                        {choice ? 'Yes' : 'No'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {jobcard.pickupRequired === true &&
+                (editing === 'pickup-location' ? (
+                  <TextInput
+                    style={styles.textEditor}
+                    value={draft}
+                    onChangeText={setDraft}
+                    onBlur={commitPickupLocation}
+                    placeholder="Where does the crew pick up?"
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                  />
+                ) : (
+                  <Editable
+                    onPress={() =>
+                      startEdit('pickup-location', jobcard.pickupLocation ?? '')
+                    }
+                  >
+                    <Text
+                      style={
+                        jobcard.pickupLocation
+                          ? styles.valueText
+                          : styles.placeholderText
+                      }
+                    >
+                      {jobcard.pickupLocation || 'Add the pickup location…'}
+                    </Text>
+                  </Editable>
+                ))}
             </Row>
 
             {/* Notes */}
@@ -1387,6 +1475,32 @@ const styles = StyleSheet.create({
   pairCol: {
     flex: 1,
     gap: spacing.xs,
+  },
+  pickupRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  pickupChoice: {
+    minWidth: 56,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+  },
+  pickupChoiceOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  pickupChoiceText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  pickupChoiceTextOn: {
+    color: colors.primary,
   },
   flashingRow: {
     flexDirection: 'row',

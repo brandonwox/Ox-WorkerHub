@@ -11,35 +11,21 @@ create finance manager role.
 4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job. and those numbers should show up for the finance manager.
 5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
 
-operator: deleting a job should require the operator to type the name of the job and click a confirmation button. there should also be a warning that tells the operator that the job can be restored if they proceed.
-
 calendar (scheduler): make the days in the month calendar a little larger. and when 
 
 add a "False Start" button the installer can click at the bottom of a jobcard to mark it as a false start. This will ping the field super in charge of the jobcard to let them know the jobcard was marked as a false start.
 
 Priority of jobcards should be a range. It should have a start date and a finish date. In the Work Requests view, the displayed priority should still be the start date, but when hovering over it, it should display the start date and the finish date.
 
-jobcard creation: field super is required to click either "Yes" or "No" for an option called "Pickup Required". if they select "Yes", then the field super must type into a new text field to specify where the pickup location is.
-
-field super cannot create a jobcard if they have not specified a "Window Opening Flashing Material" and a "Jobsite address" for the parent job.
-
 ask the office some important questions that will determine the flow of Ox WorkerHub:
 - How does job assignment work? (How do they decide the Field Super for a new job)
 - 
-
-in supabase -> authentication -> users -> send password reset email -> when the user clicks the link in the email, they should be prompted to enter a new password, but instead they are immediately logged in without any option to reset their password.
 
 Field Super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
 
 installers can set the completion status of a jobcard to "Issues", "In-Progress", or "Complete". If the installer sets the status to "Issues", the jobcard will be highlighted in red and the Field Super will be notified. If the installer sets the status to "Issues", the installer must write at least 1 issue in the issue field.
 
 add profit sharing tab for installers, so installers can see their profit sharing checks (past and upcoming). installers should also be able to see the profit sharing remaining on any job.
-
-operator role -> people tab: 
-- fix ui ux (attached screenshot)
-- allow removal of workers
-- allow editing of worker name and email.
-- remove the status (e.g. "active", "Invited"), if they are active, it doesn't need to show anything. if they are not active, it should show the status (e.g. "Invited"). I dont want there to be an entire column displaying for each worker for their status, that's a waste of space since most workers will always be active. so the invited tag should not add any extra space to the ui.
 
 create sms provider account (twilio is the standard). This would allow us to send text messages to schedulers when a Field Super creates a jobcard with a priority of "Now".
 
@@ -48,6 +34,22 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+jobs now have scopes: the operator picks them at job creation (editable later from Edit job). If Windows is not a scope of the job, the Window Opening Flashing Material never shows for the job or its jobcards. (requires applying the new Supabase migration)
+
+jobcard creation: field super is required to click either "Yes" or "No" for "Pickup Required". selecting "Yes" requires typing the pickup location. Installers see the pickup on the jobcard; field supers can edit it in the jobcard details.
+
+field super cannot create a jobcard if the parent job has no "Jobsite address" — or no "Window Opening Flashing Material" when the job covers windows. (the DB guard now also allows field supers to edit the jobsite address, which it previously blocked)
+
+operator: deleting a job requires typing the name of the job and clicking a confirmation button, with a warning that the job and its jobcards cannot be restored.
+
+password reset: the reset flow already routes recovery links to the set-password screen (fix shipped 2026-07-02); hardened so a reload mid-reset no longer drops the user into the app without the prompt. NEEDS: redeploy the website, then retest from a fresh reset email.
+
+operator role -> people tab: 
+- fix ui ux (attached screenshot)
+- allow removal of workers
+- allow editing of worker name and email.
+- remove the status column; active workers show nothing, non-active ones get a small inline "Invited" tag that takes no extra space.
 
 installers on mobile (and elsewhere) -> jobcards -> if a dropdown is open and the user clicks elsewhere the dropdown should go away.
 

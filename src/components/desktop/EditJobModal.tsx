@@ -3,17 +3,21 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import { MultiCombobox } from '@/components/desktop/Combobox';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
-import { Job, JobStatus, Worker } from '@/types';
+import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
 
 export interface JobChanges {
   name: string;
   qbtJobcodeId?: string;
   status: JobStatus;
   fieldSuperIds: string[];
+  scopes?: JobScope[];
 }
+
+const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 
 interface Props {
   /** The job being edited, or null when the modal is closed. */
@@ -40,9 +44,13 @@ export function EditJobModal({
   const [name, setName] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
   const [status, setStatus] = useState<JobStatus>('Active');
+  const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Deleting is a two-step confirm: arming reveals a type-the-job-name field,
+  // and the final button stays disabled until the typed name matches.
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteName, setDeleteName] = useState('');
 
   // Re-seed the form whenever a different job is opened.
   useEffect(() => {
@@ -50,9 +58,11 @@ export function EditJobModal({
     setName(job.name);
     setQbtJobcodeId(job.qbtJobcodeId ?? '');
     setStatus(job.status);
+    setScopes(job.scopes ?? []);
     setFieldSuperIds(job.fieldSuperIds ?? []);
     setError(null);
     setConfirmDelete(false);
+    setDeleteName('');
   }, [job]);
 
   const save = () => {
@@ -66,10 +76,15 @@ export function EditJobModal({
       name: name.trim(),
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
       status,
+      scopes: scopes.length > 0 ? scopes : undefined,
       fieldSuperIds,
     });
     onClose();
   };
+
+  const deleteNameMatches =
+    job != null &&
+    deleteName.trim().toLowerCase() === job.name.trim().toLowerCase();
 
   const remove = () => {
     if (!job) return;
@@ -77,6 +92,7 @@ export function EditJobModal({
       setConfirmDelete(true);
       return;
     }
+    if (!deleteNameMatches) return;
     onDelete(job.id);
     onClose();
   };
@@ -127,6 +143,20 @@ export function EditJobModal({
           </View>
 
           <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Scopes</Text>
+            <MultiCombobox
+              values={scopes}
+              options={SCOPE_OPTIONS}
+              onChange={(vals) => setScopes(vals as JobScope[])}
+              placeholder="Windows, Mirrors, Storefront…"
+            />
+            <Text style={styles.fieldHint}>
+              The trades this job covers. Without the Windows scope, the
+              flashing material never shows for this job or its jobcards.
+            </Text>
+          </View>
+
+          <View style={styles.field}>
             <Text style={styles.fieldLabel}>Field supers</Text>
             <FieldSuperPicker
               fieldSupers={fieldSupers}
@@ -145,30 +175,58 @@ export function EditJobModal({
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.deleteButton,
-              confirmDelete && styles.deleteButtonConfirm,
-              pressed && styles.pressed,
-            ]}
-            onPress={remove}
-          >
-            <Feather
-              name="trash-2"
-              size={15}
-              color={confirmDelete ? colors.textPrimary : colors.danger}
-            />
-            <Text
-              style={[
-                styles.deleteText,
-                confirmDelete && styles.deleteTextConfirm,
-              ]}
+          {!confirmDelete ? (
+            <Pressable
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
+              onPress={remove}
             >
-              {confirmDelete
-                ? 'Tap again to delete this job and its jobcards'
-                : 'Delete job'}
-            </Text>
-          </Pressable>
+              <Feather name="trash-2" size={15} color={colors.danger} />
+              <Text style={styles.deleteText}>Delete job</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.deleteConfirmBox}>
+              <Text style={styles.deleteWarning}>
+                This permanently deletes &ldquo;{job?.name}&rdquo; and every one
+                of its jobcards. A deleted job cannot be restored.
+              </Text>
+              <FormInput
+                label="Type the job name to confirm"
+                value={deleteName}
+                onChangeText={setDeleteName}
+                placeholder={job?.name ?? ''}
+                autoCapitalize="none"
+              />
+              <View style={styles.deleteConfirmActions}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteCancel,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    setConfirmDelete(false);
+                    setDeleteName('');
+                  }}
+                >
+                  <Text style={styles.deleteCancelText}>Keep job</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteButton,
+                    styles.deleteConfirmButton,
+                    !deleteNameMatches && styles.deleteDisabled,
+                    pressed && deleteNameMatches && styles.pressed,
+                  ]}
+                  disabled={!deleteNameMatches}
+                  onPress={remove}
+                >
+                  <Feather name="trash-2" size={15} color={colors.textPrimary} />
+                  <Text style={[styles.deleteText, styles.deleteTextConfirm]}>
+                    Permanently delete job
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           <View style={styles.actions}>
             <Pressable style={styles.cancelButton} onPress={onClose}>
@@ -258,9 +316,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.danger,
   },
-  deleteButtonConfirm: {
-    backgroundColor: colors.danger,
-  },
   deleteText: {
     color: colors.danger,
     fontFamily: fonts.semiBold,
@@ -268,6 +323,46 @@ const styles = StyleSheet.create({
   },
   deleteTextConfirm: {
     color: colors.textPrimary,
+  },
+  deleteConfirmBox: {
+    gap: spacing.md,
+    backgroundColor: colors.dangerDim,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radii.md,
+    padding: spacing.lg,
+  },
+  deleteWarning: {
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  deleteCancel: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  deleteCancelText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    backgroundColor: colors.danger,
+    borderColor: colors.danger,
+  },
+  deleteDisabled: {
+    opacity: 0.45,
   },
   pressed: {
     opacity: 0.85,

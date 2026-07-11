@@ -3,16 +3,21 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import { MultiCombobox } from '@/components/desktop/Combobox';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
-import { Worker } from '@/types';
+import { JOB_SCOPES, JobScope, Worker } from '@/types';
 
 export interface NewJobInput {
   name: string;
   location: string;
   qbtJobcodeId?: string;
   fieldSuperIds: string[];
+  /** Trade scopes the job covers; can also be added later from Edit job. */
+  scopes?: JobScope[];
 }
+
+const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 
 interface Props {
   visible: boolean;
@@ -30,12 +35,14 @@ export function CreateJobModal({
 }: Props) {
   const [name, setName] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
+  const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setName('');
     setQbtJobcodeId('');
+    setScopes([]);
     setFieldSuperIds([]);
     setError(null);
   };
@@ -56,6 +63,7 @@ export function CreateJobModal({
       location: '',
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
       fieldSuperIds,
+      scopes: scopes.length > 0 ? scopes : undefined,
     });
     close();
   };
@@ -86,6 +94,21 @@ export function CreateJobModal({
             placeholder="e.g. 90112 — maps hours to QBT"
             autoCapitalize="none"
           />
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Scopes</Text>
+            <MultiCombobox
+              values={scopes}
+              options={SCOPE_OPTIONS}
+              onChange={(vals) => setScopes(vals as JobScope[])}
+              placeholder="Windows, Mirrors, Storefront…"
+            />
+            <Text style={styles.fieldHint}>
+              The trades this job covers — more can be added later from Edit
+              job. Without the Windows scope, the flashing material never shows
+              for this job or its jobcards.
+            </Text>
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Field supers</Text>

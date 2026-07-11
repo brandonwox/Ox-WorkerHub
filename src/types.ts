@@ -96,6 +96,13 @@ export interface Job {
    * see it).
    */
   fieldSuperIds?: string[];
+  /**
+   * Trade scopes this job covers (Windows, Mirrors, …). Picked by the Operator
+   * at creation and editable later. When the set excludes 'Windows', the Window
+   * Opening Flashing Material is hidden everywhere for this job and its
+   * jobcards. Unset (legacy jobs) means "not narrowed" — every scope allowed.
+   */
+  scopes?: JobScope[];
 }
 
 /**
@@ -222,6 +229,13 @@ export interface Jobcard {
   flashingMaterial?: string;
   /** Task-specific / additional materials needed (free text, optional). Field-Super-authored. */
   materials?: string;
+  /**
+   * Whether the crew must pick something up on the way. Answered Yes/No at
+   * creation (required); Yes also requires {@link pickupLocation}.
+   */
+  pickupRequired?: boolean;
+  /** Where the pickup is. Set (and required) only when {@link pickupRequired}. */
+  pickupLocation?: string;
   /** Free-form Field Super notes captured at the bottom of the creation form. */
   notes?: string;
   /** @deprecated Superseded by {@link scopes} + {@link tasks}. Kept for legacy data. */
