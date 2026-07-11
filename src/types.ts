@@ -140,6 +140,20 @@ export const PRIORITY_PRESETS = [
   'Low Priority',
 ] as const;
 
+/**
+ * The choices in the range-based priority selector. Each resolves to a
+ * start→end date window ({@link Jobcard.priorityStartDate} /
+ * {@link Jobcard.priorityEndDate}); "Set dates" means the Field Super picks
+ * both dates manually.
+ */
+export const PRIORITY_CHOICES = [
+  'Now',
+  'This week',
+  'Next week',
+  'Set dates',
+] as const;
+export type PriorityChoice = (typeof PRIORITY_CHOICES)[number];
+
 /** Trade scope a Jobcard covers. At least one is chosen at creation time. */
 export type JobScope =
   | 'Windows'
@@ -168,7 +182,7 @@ export const READINESS_PRESETS = ['Now', 'Soon', 'Over 2 Weeks'] as const;
  */
 export interface JobcardTask {
   id: string;
-  /** What must be done (≥15 chars, Field-Super-authored). */
+  /** What must be done (Field-Super-authored). */
   text: string;
   /** Checked off by an installer. */
   done: boolean;
@@ -205,14 +219,25 @@ export interface Jobcard {
   /** Field-Super-assigned priority. A {@link PRIORITY_PRESETS} value or a custom string. */
   priority: JobcardPriority;
   /**
+   * Priority window start (yyyy-MM-dd). Set by the range-based priority
+   * selector; absent on legacy cards created when priority was label-only.
+   */
+  priorityStartDate?: string;
+  /**
+   * Priority window end (yyyy-MM-dd). When this day arrives and the card
+   * isn't finished, the card escalates to "Now" — visually right away, and
+   * persisted (+ scheduler ping) by the store's escalation sweep.
+   */
+  priorityEndDate?: string;
+  /**
    * Trades this card covers (Windows, Mirrors, …). At least one is chosen at
    * creation; only when 'Windows' is included is {@link flashingMaterial} shown.
    */
   scopes?: JobScope[];
   /**
    * Discrete tasks the installers must complete (and check off from their
-   * phone). Each text must be ≥15 chars; a card cannot be created without at
-   * least one. Field-Super-authored; installers only toggle `done`.
+   * phone). A card cannot be created without at least one.
+   * Field-Super-authored; installers only toggle `done`.
    */
   tasks?: JobcardTask[];
   /**

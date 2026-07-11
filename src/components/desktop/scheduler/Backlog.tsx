@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
-import { priorityColor, priorityRank } from '@/utils/priority';
+import { comparePriority, effectivePriority } from '@/utils/priorityRange';
 
 /**
  * Whether a request is ready for installers — only these show in the main Work
@@ -57,14 +57,15 @@ export function Backlog({
   // Requests that aren't ready for installers sit in a collapsed section at the
   // bottom instead of the main list, so they don't silently vanish.
   const [notReadyOpen, setNotReadyOpen] = useState(false);
-  // Highest priority first; within a priority, the card that has been waiting
-  // longest first (oldest createdAt). Legacy cards without a created-at fall
-  // back to the target `date` as the wait-time proxy.
+  // Most urgent first (earliest effective priority date — escalated cards
+  // count as today); within a tie, the card that has been waiting longest
+  // first (oldest createdAt). Legacy cards without a created-at fall back to
+  // the target `date` as the wait-time proxy.
   const sorted = useMemo(
     () =>
       [...cards].sort((a, b) => {
-        const rank = priorityRank(a.priority) - priorityRank(b.priority);
-        if (rank !== 0) return rank;
+        const byPriority = comparePriority(a, b);
+        if (byPriority !== 0) return byPriority;
         return (a.createdAt ?? a.date).localeCompare(b.createdAt ?? b.date);
       }),
     [cards]
@@ -74,7 +75,6 @@ export function Backlog({
 
   const renderCard = (card: Jobcard, showReadiness = false) => {
     const selected = placingCardId === card.id;
-    const accent = priorityColor(card.priority);
     return (
       <View
         key={card.id}
@@ -91,12 +91,7 @@ export function Backlog({
           <Text style={styles.cardTitle} numberOfLines={1}>
             {card.title}
           </Text>
-          <View style={[styles.priorityBadge, { borderColor: accent }]}>
-            <View style={[styles.priorityDot, { backgroundColor: accent }]} />
-            <Text style={[styles.priorityText, { color: accent }]}>
-              {card.priority}
-            </Text>
-          </View>
+          <PriorityBadge card={card} />
         </View>
         <Text style={styles.cardJob} numberOfLines={1}>
           {jobNameFor(card.jobId)}
@@ -232,6 +227,27 @@ export function Backlog({
         )}
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * The priority badge on a request card: "Now" or the window's start date,
+ * colored by urgency. Hovering a dated card reveals the full start–end range.
+ */
+function PriorityBadge({ card }: { card: Jobcard }) {
+  const [hovered, setHovered] = useState(false);
+  const ep = effectivePriority(card);
+  return (
+    <Pressable
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      style={[styles.priorityBadge, { borderColor: ep.color }]}
+    >
+      <View style={[styles.priorityDot, { backgroundColor: ep.color }]} />
+      <Text style={[styles.priorityText, { color: ep.color }]}>
+        {hovered && ep.range ? ep.range : ep.short}
+      </Text>
+    </Pressable>
   );
 }
 

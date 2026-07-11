@@ -20,7 +20,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Crew, DailyCrew, Jobcard } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
-import { priorityRank } from '@/utils/priority';
+import { comparePriority } from '@/utils/priorityRange';
 
 interface Props {
   /** Scheduler gets assign/unassign controls; the Field Super views read-only. */
@@ -73,7 +73,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
     () =>
       jobcards
         .filter((c) => assignments.every((a) => a.jobcardId !== c.id))
-        .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority)),
+        .sort(comparePriority),
     [jobcards, assignments]
   );
 

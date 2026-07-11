@@ -34,9 +34,12 @@ interface Props {
   minWidth?: number;
   /** Vertical gap between the trigger and the menu. Default 4. */
   offset?: number;
+  /** Which side of the trigger the menu opens on. Default `below`. */
+  placement?: 'below' | 'above';
 }
 
 interface Rect {
+  top: number;
   bottom: number;
   left: number;
   right: number;
@@ -60,10 +63,11 @@ export function DropdownPortal({
   align = 'stretch',
   minWidth,
   offset = 4,
+  placement = 'below',
 }: Props) {
   const menuRef = useRef<View>(null);
   const [rect, setRect] = useState<Rect | null>(null);
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Native anchor position, measured in window coordinates each time the menu
   // opens (the native fallback renders inside a Modal, which spans the window).
   const [nativeRect, setNativeRect] = useState<{
@@ -89,7 +93,13 @@ export function DropdownPortal({
 
     const measure = () => {
       const r = anchor.getBoundingClientRect();
-      setRect({ bottom: r.bottom, left: r.left, right: r.right, width: r.width });
+      setRect({
+        top: r.top,
+        bottom: r.bottom,
+        left: r.left,
+        right: r.right,
+        width: r.width,
+      });
     };
     measure();
 
@@ -100,6 +110,15 @@ export function DropdownPortal({
       window.removeEventListener('resize', measure);
     };
   }, [open, anchorRef]);
+
+  // Tag the portaled menu so outside-click logic elsewhere (useOutsideClick)
+  // can recognize clicks inside it — the portal lives under document.body, so
+  // a plain `ref.contains(target)` check on the trigger's subtree misses it.
+  useEffect(() => {
+    if (!open || !createPortal) return;
+    const node = menuRef.current as unknown as HTMLElement | null;
+    node?.setAttribute?.('data-dropdown-portal', 'true');
+  }, [open, rect]);
 
   // Close on a press that lands outside both the trigger and the menu. Using
   // `mousedown` (before the menu item's click) is why the menu node must be
@@ -127,7 +146,9 @@ export function DropdownPortal({
     if (!nativeRect) return null;
     const menuStyle: ViewStyle = {
       position: 'absolute',
-      top: nativeRect.y + nativeRect.height + offset,
+      ...(placement === 'above'
+        ? { bottom: windowHeight - nativeRect.y + offset }
+        : { top: nativeRect.y + nativeRect.height + offset }),
       minWidth: minWidth ?? nativeRect.width,
       ...(align === 'stretch'
         ? { left: nativeRect.x, width: nativeRect.width }
@@ -151,7 +172,9 @@ export function DropdownPortal({
   // from the RN `ViewStyle` type, so the object is cast through `unknown`.
   const style = {
     position: 'fixed',
-    top: rect.bottom + offset,
+    ...(placement === 'above'
+      ? { bottom: window.innerHeight - rect.top + offset }
+      : { top: rect.bottom + offset }),
     minWidth: minWidth ?? rect.width,
     // Above react-native-web's <Modal> layer (fixed at 9999), so dropdowns
     // inside modals (Add worker, Edit job, …) open on top instead of behind.

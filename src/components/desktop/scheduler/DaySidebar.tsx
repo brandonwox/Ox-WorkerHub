@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard, ScheduleAssignment } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
-import { priorityColor } from '@/utils/priority';
+import { effectivePriority } from '@/utils/priorityRange';
 
 interface Props {
   /** The day being viewed (yyyy-MM-dd). */
@@ -91,7 +91,7 @@ export function DaySidebar({
                 <View
                   style={[
                     styles.priorityDot,
-                    { backgroundColor: priorityColor(card.priority) },
+                    { backgroundColor: effectivePriority(card).color },
                   ]}
                 />
                 <View style={styles.rowText}>

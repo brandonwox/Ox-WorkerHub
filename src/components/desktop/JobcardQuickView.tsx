@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -14,6 +14,12 @@ import {
 } from 'react-native';
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
+import { DropdownPortal } from '@/components/desktop/DropdownPortal';
+import {
+  PrioritySelect,
+  PriorityValue,
+  priorityValueComplete,
+} from '@/components/desktop/PrioritySelect';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
@@ -28,18 +34,16 @@ import {
   JOBCARD_STATUSES,
   JobcardStatus,
   JobScope,
-  PRIORITY_PRESETS,
   READINESS_PRESETS,
 } from '@/types';
 import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
-
-const MIN_TASK_LEN = 15;
+import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
 
 const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
-const PRIORITY_OPTIONS = PRIORITY_PRESETS.map((p) => ({ value: p, label: p }));
 
 /** Which field is being edited inline. Only one edits at a time. */
 type EditField =
@@ -63,8 +67,6 @@ interface Props {
   jobcardId: string | null;
   /** Jobs in the viewer's scope — parent-job options and lookups. */
   jobs: Job[];
-  /** Whether the Scheduler has placed this card on the calendar. */
-  scheduled: boolean;
   onClose: () => void;
   onDelete: (id: string) => void;
 }
@@ -79,7 +81,6 @@ interface Props {
 export function JobcardQuickView({
   jobcardId,
   jobs,
-  scheduled,
   onClose,
   onDelete,
 }: Props) {
@@ -98,12 +99,46 @@ export function JobcardQuickView({
   const [editing, setEditing] = useState<EditField | null>(null);
   /** Text draft for whichever text field is being edited; committed on blur. */
   const [draft, setDraft] = useState('');
+  /** In-progress priority edit (null = seed from the card when editing opens). */
+  const [priorityDraft, setPriorityDraft] = useState<PriorityValue | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<JobcardStatus | null>(null);
   const [pendingReadinessNow, setPendingReadinessNow] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
   const [crewSquareHovered, setCrewSquareHovered] = useState(false);
+
+  // Close the inline menus when a click lands anywhere outside them.
+  const statusWrapRef = useRef<View>(null);
+  const crewWrapRef = useRef<View>(null);
+  useDismissOnOutsideClick(statusMenuOpen, [statusWrapRef], () =>
+    setStatusMenuOpen(false)
+  );
+  useDismissOnOutsideClick(crewMenuOpen, [crewWrapRef], () =>
+    setCrewMenuOpen(false)
+  );
+  // The priority editor closes the same way — every complete change already
+  // autosaved, so clicking elsewhere just puts the field back in read mode.
+  // (Its dropdown + date pickers render in portals, which the hook treats as
+  // "inside".)
+  const priorityWrapRef = useRef<View>(null);
+  useDismissOnOutsideClick(editing === 'priority', [priorityWrapRef], () => {
+    setEditing(null);
+    setPriorityDraft(null);
+  });
+
+  // The calendar day this card is scheduled for: its next upcoming assignment
+  // date, or the most recent one when they're all in the past (mirrors the
+  // jobcard list's status pill). Null when the Scheduler hasn't placed it.
+  const scheduledDate = useMemo(() => {
+    const dates = assignments
+      .filter((a) => a.jobcardId === jobcardId)
+      .map((a) => a.date)
+      .sort();
+    if (dates.length === 0) return null;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    return dates.find((d) => d >= today) ?? dates[dates.length - 1];
+  }, [assignments, jobcardId]);
 
   const photos = useJobcardPhotos(jobcard?.id);
   const [viewer, setViewer] = useState<{
@@ -115,6 +150,7 @@ export function JobcardQuickView({
   useEffect(() => {
     setEditing(null);
     setDraft('');
+    setPriorityDraft(null);
     setStatusMenuOpen(false);
     setPendingStatus(null);
     setPendingReadinessNow(false);
@@ -247,13 +283,6 @@ export function JobcardQuickView({
       updateJobcard(jobcard.id, { tasks: tasks.filter((_, i) => i !== index) });
       return;
     }
-    if (t.length < MIN_TASK_LEN) {
-      flash(
-        `Each task must be at least ${MIN_TASK_LEN} characters — change discarded.`,
-        'warning'
-      );
-      return;
-    }
     if (t !== tasks[index].text) {
       // Text edits keep the task's id (and check-off state) intact so
       // installer check-offs and per-task issues stay linked.
@@ -267,13 +296,6 @@ export function JobcardQuickView({
     const t = draft.trim();
     setEditing(null);
     if (!t) return;
-    if (t.length < MIN_TASK_LEN) {
-      flash(
-        `Each task must be at least ${MIN_TASK_LEN} characters — task discarded.`,
-        'warning'
-      );
-      return;
-    }
     updateJobcard(jobcard.id, {
       tasks: [...tasks, { id: uuid(), text: t, done: false }],
     });
@@ -291,12 +313,35 @@ export function JobcardQuickView({
     updateJobcard(jobcard.id, { readiness: v });
   };
 
-  const changePriority = (value: string) => {
-    setEditing(null);
-    const v = value.trim();
-    if (!v || v === jobcard.priority) return;
-    updateJobcard(jobcard.id, { priority: v });
+  // Every complete change autosaves (quick-view style); the editor stays open
+  // so both dates can be adjusted, and closes via its Done button.
+  const changePriority = (value: PriorityValue) => {
+    setPriorityDraft(value);
+    if (!priorityValueComplete(value)) return;
+    if (
+      value.priority === jobcard.priority &&
+      value.startDate === (jobcard.priorityStartDate ?? '') &&
+      value.endDate === (jobcard.priorityEndDate ?? '')
+    ) {
+      return;
+    }
+    updateJobcard(jobcard.id, {
+      priority: value.priority,
+      priorityStartDate: value.startDate,
+      priorityEndDate: value.endDate,
+    });
   };
+
+  // How the priority reads when not editing: "Now · Jul 11",
+  // "This week · Jul 11 – Jul 18", or just the range for "Set dates".
+  const cardPriority = effectivePriority(jobcard);
+  const priorityDisplay = !jobcard.priority
+    ? 'Set priority…'
+    : cardPriority.range
+      ? cardPriority.raw === 'Set dates' && !cardPriority.escalated
+        ? cardPriority.range
+        : `${cardPriority.label} · ${cardPriority.range}`
+      : jobcard.priority;
 
   const commitFlashing = () => {
     setEditing(null);
@@ -437,7 +482,7 @@ export function JobcardQuickView({
                 by the assigned crew, gray + slash when unassigned. Hover shows
                 the crew name(s); click swaps the assigned crew. */}
             <View style={styles.titleRow}>
-              <View style={styles.crewSquareWrap}>
+              <View ref={crewWrapRef} style={styles.crewSquareWrap}>
                 <Pressable
                   onPress={toggleCrewMenu}
                   onHoverIn={() => setCrewSquareHovered(true)}
@@ -451,11 +496,20 @@ export function JobcardQuickView({
                 >
                   {!crewSquareColor && <View style={styles.titleDotSlash} />}
                 </Pressable>
-                {crewSquareHovered && !crewMenuOpen && (
+                {/* Hover pill ABOVE the square (the click menu still opens
+                    below). Portaled so the modal's ScrollView can't clip it. */}
+                <DropdownPortal
+                  anchorRef={crewWrapRef}
+                  open={crewSquareHovered && !crewMenuOpen}
+                  onClose={() => setCrewSquareHovered(false)}
+                  align="left"
+                  placement="above"
+                  minWidth={160}
+                >
                   <View style={styles.crewTooltip}>
                     <Text style={styles.crewTooltipText}>{crewTooltip}</Text>
                   </View>
-                )}
+                </DropdownPortal>
                 {crewMenuOpen && (
                   <View style={styles.crewMenu}>
                     {allCrews.map((crew) => {
@@ -528,6 +582,8 @@ export function JobcardQuickView({
                     options={jobOptions}
                     onChange={changeJob}
                     placeholder="Search jobs…"
+                    autoFocus
+                    onDismiss={() => setEditing(null)}
                   />
                 ) : (
                   <Text style={styles.mutedText}>No active jobs available.</Text>
@@ -549,12 +605,12 @@ export function JobcardQuickView({
             </Row>
             <Row icon="calendar">
               <Text style={styles.mutedText}>
-                {scheduled
+                {scheduledDate
                   ? format(
-                      parse(jobcard.date, 'yyyy-MM-dd', new Date()),
+                      parse(scheduledDate, 'yyyy-MM-dd', new Date()),
                       'EEEE, MMMM d'
                     )
-                  : 'Not on calendar'}
+                  : 'Not Scheduled'}
               </Text>
             </Row>
             {timeWindow ? (
@@ -565,59 +621,61 @@ export function JobcardQuickView({
 
             {/* Status — changeable, but always behind an inline confirm. */}
             <Row icon="activity" label="Status">
-              <Editable
-                onPress={() => {
-                  setStatusMenuOpen((open) => !open);
-                  setPendingStatus(null);
-                }}
-                style={styles.statusEditable}
-              >
-                <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
-                  <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                    {jobcard.status}
-                  </Text>
-                  <Feather
-                    name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
-                    size={13}
-                    color={palette.fg}
-                  />
-                </View>
-              </Editable>
-              {statusMenuOpen && (
-                <View style={styles.menu}>
-                  {JOBCARD_STATUSES.map((status) => {
-                    const active = jobcard.status === status;
-                    return (
-                      <Pressable
-                        key={status}
-                        style={({ pressed, hovered }: PressState) => [
-                          styles.menuItem,
-                          (hovered || pressed) && styles.menuItemHover,
-                        ]}
-                        onPress={() => pickStatus(status)}
-                      >
-                        <View
-                          style={[
-                            styles.menuDot,
-                            { backgroundColor: jobcardStatusColors[status].fg },
+              <View ref={statusWrapRef}>
+                <Editable
+                  onPress={() => {
+                    setStatusMenuOpen((open) => !open);
+                    setPendingStatus(null);
+                  }}
+                  style={styles.statusEditable}
+                >
+                  <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
+                    <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                      {jobcard.status}
+                    </Text>
+                    <Feather
+                      name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
+                      size={13}
+                      color={palette.fg}
+                    />
+                  </View>
+                </Editable>
+                {statusMenuOpen && (
+                  <View style={styles.menu}>
+                    {JOBCARD_STATUSES.map((status) => {
+                      const active = jobcard.status === status;
+                      return (
+                        <Pressable
+                          key={status}
+                          style={({ pressed, hovered }: PressState) => [
+                            styles.menuItem,
+                            (hovered || pressed) && styles.menuItemHover,
                           ]}
-                        />
-                        <Text
-                          style={[
-                            styles.menuText,
-                            active && styles.menuTextActive,
-                          ]}
+                          onPress={() => pickStatus(status)}
                         >
-                          {status}
-                        </Text>
-                        {active && (
-                          <Feather name="check" size={14} color={colors.primary} />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
+                          <View
+                            style={[
+                              styles.menuDot,
+                              { backgroundColor: jobcardStatusColors[status].fg },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.menuText,
+                              active && styles.menuTextActive,
+                            ]}
+                          >
+                            {status}
+                          </Text>
+                          {active && (
+                            <Feather name="check" size={14} color={colors.primary} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
               {pendingStatus && (
                 <ConfirmBar
                   message={`Change status to “${pendingStatus}”?`}
@@ -757,6 +815,8 @@ export function JobcardQuickView({
                       onChange={changeReadiness}
                       placeholder="Now, Soon… or type + Enter"
                       allowCustom
+                      autoFocus
+                      onDismiss={() => setEditing(null)}
                     />
                   ) : (
                     <Editable onPress={() => setEditing('readiness')}>
@@ -772,27 +832,35 @@ export function JobcardQuickView({
                     </Editable>
                   )}
                 </View>
-                <View style={styles.pairCol}>
+                <View ref={priorityWrapRef} style={styles.pairCol}>
                   <Text style={styles.rowLabel}>Priority</Text>
                   {editing === 'priority' ? (
-                    <Combobox
-                      value={jobcard.priority ?? ''}
-                      options={PRIORITY_OPTIONS}
+                    <PrioritySelect
+                      value={
+                        priorityDraft ?? {
+                          priority: jobcard.priority ?? '',
+                          startDate: jobcard.priorityStartDate ?? '',
+                          endDate: jobcard.priorityEndDate ?? '',
+                        }
+                      }
                       onChange={changePriority}
-                      placeholder="Now, This Week… or type + Enter"
-                      allowCustom
                     />
                   ) : (
-                    <Editable onPress={() => setEditing('priority')}>
+                    <Editable
+                      onPress={() => {
+                        setPriorityDraft(null);
+                        setEditing('priority');
+                      }}
+                    >
                       <Text
                         style={[
                           jobcard.priority
                             ? styles.valueText
                             : styles.placeholderText,
-                          jobcard.priority === 'Now' && styles.priorityNow,
+                          cardPriority.label === 'Now' && styles.priorityNow,
                         ]}
                       >
-                        {jobcard.priority || 'Set priority…'}
+                        {priorityDisplay}
                       </Text>
                     </Editable>
                   )}
@@ -1046,7 +1114,7 @@ function Row({
   return (
     <View style={styles.row}>
       <View style={styles.rowIcon}>
-        <Feather name={icon} size={15} color={colors.textSecondary} />
+        <Feather name={icon} size={17} color={colors.textSecondary} />
       </View>
       <View style={styles.rowBody}>
         {label ? <Text style={styles.rowLabel}>{label}</Text> : null}
@@ -1148,7 +1216,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   body: {
-    gap: spacing.md,
+    gap: spacing.lg,
     paddingBottom: spacing.sm,
   },
   titleRow: {
@@ -1182,9 +1250,6 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-45deg' }],
   },
   crewTooltip: {
-    position: 'absolute',
-    top: 20,
-    left: -4,
     width: 160,
     backgroundColor: colors.background,
     borderWidth: 1,
@@ -1232,12 +1297,12 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   rowIcon: {
-    width: 24,
+    width: 26,
     alignItems: 'center',
-    paddingTop: 5,
+    paddingTop: 4,
   },
   rowBody: {
     flex: 1,

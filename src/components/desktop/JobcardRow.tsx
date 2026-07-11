@@ -1,24 +1,52 @@
 import { Feather } from '@expo/vector-icons';
+import { format, isToday, isTomorrow, parseISO } from 'date-fns';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
+import { effectivePriority } from '@/utils/priorityRange';
 
 /** One jobcard as a list row. Shared by the Jobcards view and the job popup. */
 export function JobcardRow({
   jobcard,
   jobName,
   scheduled,
+  scheduledDate,
+  onViewCalendar,
   onPress,
 }: {
   jobcard: Jobcard;
   jobName: string;
   scheduled: boolean;
+  /**
+   * The day the card is scheduled for (yyyy-MM-dd; next upcoming assignment) —
+   * drives the "Today" / "Tomorrow" / date label instead of "On calendar".
+   */
+  scheduledDate?: string;
+  /**
+   * Jump to the calendar with this card's day highlighted. When set, hovering
+   * the scheduled pill turns it into a "View on calendar" link.
+   */
+  onViewCalendar?: () => void;
   /** When provided, the row becomes pressable (e.g. the Field Super tapping to edit). */
   onPress?: () => void;
 }) {
-  const meta = priorityMeta(jobcard.priority);
+  const priority = effectivePriority(jobcard);
+  const meta = priorityMeta(priority.label);
+  const [statusHovered, setStatusHovered] = useState(false);
+
+  const dateLabel = !scheduled
+    ? 'Not on calendar'
+    : scheduledDate
+      ? isToday(parseISO(scheduledDate))
+        ? 'Today'
+        : isTomorrow(parseISO(scheduledDate))
+          ? 'Tomorrow'
+          : format(parseISO(scheduledDate), 'MMM d')
+      : 'On calendar';
+  const linkable = scheduled && onViewCalendar != null;
 
   const content = (
     <>
@@ -34,13 +62,19 @@ export function JobcardRow({
         </Text>
       </View>
 
+      {/* Flag + "Now" or the full start–end window (label when undated). */}
       <View style={[styles.priorityPill, { backgroundColor: meta.bg }]}>
+        <Feather name="flag" size={12} color={meta.fg} />
         <Text style={[styles.priorityText, { color: meta.fg }]}>
-          {jobcard.priority}
+          {priority.label === 'Now' ? 'Now' : (priority.range ?? priority.short)}
         </Text>
       </View>
 
-      <View
+      <Pressable
+        disabled={!linkable}
+        onPress={onViewCalendar}
+        onHoverIn={() => setStatusHovered(true)}
+        onHoverOut={() => setStatusHovered(false)}
         style={[
           styles.statusPill,
           scheduled ? styles.statusPillOn : styles.statusPillOff,
@@ -55,11 +89,12 @@ export function JobcardRow({
           style={[
             styles.statusText,
             { color: scheduled ? colors.success : colors.warning },
+            linkable && statusHovered && styles.statusLink,
           ]}
         >
-          {scheduled ? 'On calendar' : 'Not on calendar'}
+          {linkable && statusHovered ? 'View on calendar' : dateLabel}
         </Text>
-      </View>
+      </Pressable>
     </>
   );
 
@@ -106,9 +141,12 @@ const styles = StyleSheet.create({
   },
   priorityPill: {
     minWidth: 84,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.sm + 2,
     paddingVertical: 4,
   },
   priorityText: {
@@ -133,5 +171,8 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: fonts.semiBold,
     fontSize: 12,
+  },
+  statusLink: {
+    textDecorationLine: 'underline',
   },
 });

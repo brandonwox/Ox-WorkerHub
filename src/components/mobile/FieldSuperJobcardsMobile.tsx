@@ -8,7 +8,7 @@ import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
-import { priorityRank } from '@/utils/priority';
+import { comparePriority } from '@/utils/priorityRange';
 
 const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
 type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number];
@@ -56,7 +56,7 @@ export function FieldSuperJobcardsMobile() {
           jobName.toLowerCase().includes(query)
         );
       })
-      .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
+      .sort(comparePriority);
   }, [allJobcards, jobNameById, schedule, scheduledIds, search]);
 
   return (

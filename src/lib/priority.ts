@@ -21,6 +21,10 @@ const META: Record<string, PriorityMeta> = {
   Tomorrow: SOON,
   'This Week': NORMAL,
   'Low Priority': NEUTRAL,
+  // Range-based selector labels (see PRIORITY_CHOICES / priorityRange.ts).
+  'This week': SOON,
+  'Next week': NORMAL,
+  'Set dates': NEUTRAL,
   // Legacy values from before priority became free text.
   High: URGENT,
   Medium: NORMAL,

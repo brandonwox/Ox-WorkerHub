@@ -68,6 +68,15 @@ export async function insertNotification(n: AppNotification): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Delete a single notification (the recipient dismissing it from the panel). */
+export async function deleteNotification(id: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('notifications')
+    .delete()
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await getSupabase()
     .from('notifications')

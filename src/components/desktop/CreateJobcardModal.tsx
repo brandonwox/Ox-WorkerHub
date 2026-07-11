@@ -12,15 +12,15 @@ import {
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
+import {
+  EMPTY_PRIORITY,
+  PrioritySelect,
+  PriorityValue,
+  priorityValueComplete,
+} from '@/components/desktop/PrioritySelect';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
-import {
-  Job,
-  JobScope,
-  JOB_SCOPES,
-  PRIORITY_PRESETS,
-  READINESS_PRESETS,
-} from '@/types';
+import { Job, JobScope, JOB_SCOPES, READINESS_PRESETS } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { useTypewriter } from '@/utils/useTypewriter';
 
@@ -32,6 +32,9 @@ export interface NewJobcardInput {
   tasks: string[];
   readiness: string;
   priority: string;
+  /** Priority window (yyyy-MM-dd), from the range-based selector. */
+  priorityStartDate: string;
+  priorityEndDate: string;
   materials?: string;
   /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
   flashingMaterial?: string;
@@ -57,11 +60,8 @@ const TITLE_PHRASES = [
   'Set mirrors on floor 3',
 ];
 
-const MIN_TASK_LEN = 15;
-
 const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
-const PRIORITY_OPTIONS = PRIORITY_PRESETS.map((p) => ({ value: p, label: p }));
 
 export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) {
   const [jobId, setJobId] = useState('');
@@ -73,7 +73,7 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
   const [taskLinked, setTaskLinked] = useState(true);
   const [readiness, setReadiness] = useState('');
   const [readyConfirmed, setReadyConfirmed] = useState(false);
-  const [priority, setPriority] = useState('');
+  const [priority, setPriority] = useState<PriorityValue>(EMPTY_PRIORITY);
   // Window Opening Flashing Material: tracks the parent Job until the Field Super edits it.
   const [flashing, setFlashing] = useState('');
   const [flashingTouched, setFlashingTouched] = useState(false);
@@ -117,7 +117,7 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
     setTaskLinked(true);
     setReadiness('');
     setReadyConfirmed(false);
-    setPriority('');
+    setPriority(EMPTY_PRIORITY);
     setFlashing('');
     setFlashingTouched(false);
     setMaterials('');
@@ -198,10 +198,6 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       setError('Add at least one task.');
       return;
     }
-    if (cleanTasks.some((t) => t.length < MIN_TASK_LEN)) {
-      setError(`Each task must be at least ${MIN_TASK_LEN} characters.`);
-      return;
-    }
     if (!readiness.trim()) {
       setError('Choose when this jobcard is ready for installers.');
       return;
@@ -210,8 +206,12 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       setError('Confirm the job and tasks are ready before marking it "Now".');
       return;
     }
-    if (!priority.trim()) {
+    if (!priority.priority) {
       setError('Choose a priority.');
+      return;
+    }
+    if (!priorityValueComplete(priority)) {
+      setError('Set the priority start and end dates.');
       return;
     }
     if (pickupRequired == null) {
@@ -229,7 +229,9 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
       scopes,
       tasks: cleanTasks,
       readiness: readiness.trim(),
-      priority: priority.trim(),
+      priority: priority.priority,
+      priorityStartDate: priority.startDate,
+      priorityEndDate: priority.endDate,
       materials: materials.trim() || undefined,
       flashingMaterial: includesWindows
         ? flashingValue.trim() || undefined
@@ -309,11 +311,9 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
               />
             </View>
 
-            {/* Tasks (at least one ≥ 15 chars) */}
+            {/* Tasks (at least one) */}
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                Tasks (each at least {MIN_TASK_LEN} characters)
-              </Text>
+              <Text style={styles.fieldLabel}>Tasks</Text>
               {tasks.map((task, index) => (
                 <View key={index} style={styles.taskRow}>
                   <TextInput
@@ -355,16 +355,11 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
                 />
               </View>
 
-              {/* Priority — searchable, custom allowed via Enter */}
+              {/* Priority — a choice that resolves to a start→end date window
+                  ("Set dates" opens manual pickers). */}
               <View style={[styles.field, styles.col]}>
                 <Text style={styles.fieldLabel}>Priority</Text>
-                <Combobox
-                  value={priority}
-                  options={PRIORITY_OPTIONS}
-                  onChange={setPriority}
-                  placeholder="Now, Tomorrow, This Week… or type your own + Enter"
-                  allowCustom
-                />
+                <PrioritySelect value={priority} onChange={setPriority} />
               </View>
             </View>
 

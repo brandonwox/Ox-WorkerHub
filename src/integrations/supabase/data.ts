@@ -59,6 +59,8 @@ interface JobcardRow {
   status: string;
   priority: string;
   priority_order: number;
+  priority_start_date: string | null;
+  priority_end_date: string | null;
   scopes: string[] | null;
   /** jsonb array of JobcardTask objects (plain strings only pre-migration). */
   tasks: (JobcardTask | string)[] | null;
@@ -185,6 +187,8 @@ function rowToJobcard(r: JobcardRow): Jobcard {
     status: r.status as JobcardStatus,
     priority: r.priority as JobcardPriority,
     priorityOrder: r.priority_order,
+    priorityStartDate: r.priority_start_date ?? undefined,
+    priorityEndDate: r.priority_end_date ?? undefined,
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
     tasks: normalizeTasks(r.tasks),
     readiness: r.readiness ?? undefined,
@@ -458,6 +462,8 @@ function jobcardToRow(card: Jobcard) {
     status: card.status,
     priority: card.priority,
     priority_order: card.priorityOrder,
+    priority_start_date: card.priorityStartDate ?? null,
+    priority_end_date: card.priorityEndDate ?? null,
     scopes: card.scopes ?? null,
     // Column is NOT NULL — an absent task list writes as the empty jsonb array.
     tasks: card.tasks ?? [],

@@ -4,11 +4,22 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+add settings option so users can choose either dark or light theme.
+
+scheduler-jobcards and field-super-jobcards -> jobcard list -> priority dates: show the start and end dates range, no need to only show one until hover. add the priority flag icon to the start.
+
+added more space between rows in jobcards. (e.g. between each icon and its section.)
+
+jobcards requiring a task to be 15 characters min is annoying, remove the requirement.
+
+notifications on web:
+- make the notifications popup container bigger.
+- allow dismissing of notifications. hovering over a notification should show a dismiss button.
+- clicking on a "New Priority Jobcard" notification should take the scheduler to the calendar and open the jobcard page from that notification.
+
 The clock in for installers:
 1. when selecting or adjusting time, you should not type the time, it should pull up the standard iPhone time selector, and on android it should also pull up the standard android time picker.
 2. theres also a ui ux issue where the start time doesnt fit in the pill its in.
-
-jobcard task checkbox button glitches when clicked. Maybe we need to make the checkbox button for tasks not push to the database until it has been unchanged for 5 seconds.
 
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
@@ -18,16 +29,6 @@ create finance manager role.
 5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
-
-at the top of the field super jobcard page there should be a counter that displays the number of false starts so far per week. (shows the number of jobcards that installers have set the status to "False Start".)
-
-jobcard web view: clicking on the priority status should open up the dropdown menu immediately without having to click again.
-
-Priority of jobcards should be a range. It should have a start date and a finish date. In the Work Requests view, the displayed priority should still be the start date, but when hovering over it, it should display the start date and the finish date. (start date can still be set to "Now" and the now priority should retain all of its current functionality.)
-
-if a dropdown, editable input, or similar is open/active and the user clicks outside/elsewhere the active element should close. (This should be the case for most things, use discretion when unsure.) (just one example case: jobcard priority dropdown)
-
-field super jobcards calendar status shouldn't say "On calendar", it should say "Today", "Tomorrow", or if it's scheduled for a future date, it should display the date it's scheduled for. When hovering over the displayed date, it should turn the text into "View on calendar", which takes them to their field-super-calendar view, and makes sure the day the jobcard is scheduled for is highlighted for a few seconds.
 
 add "profit sharing" tab for installers: (DO NOT IMPLEMENT UNTIL I DETAIL THIS PLAN MORE (e.g. HOW WILL PROFIT SHARING BE TRACKED))
 1. installers should be able to see their profit sharing in a list of all most recent to oldest. They should also be able to sort through jobs and see profit sharing progress for each job (each profit sharing check they've received so far).
@@ -39,6 +40,18 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+jobcard priority is now a date range (start + end). The selector offers "Now" (both dates today), "This week" (Monday → Friday of the current week; from a weekend it rolls to the upcoming week), "Next week" (Monday → Friday of the following week), or "Set dates" (manual date pickers, required before create/save). The two dates cross-clamp so the end can never precede the start. Displays show "Now" or the start date and reveal the full range on hover; when a card's end date arrives and it isn't finished, it escalates to "Now" everywhere (visually at once; persisted + scheduler-pinged by an hourly sweep in non-installer sessions). Legacy label-only cards keep their old behavior. (requires applying the new priority-range Supabase migration)
+
+jobcard task checkboxes no longer glitch: check-offs apply locally instantly but only push to the database after the card's checkboxes sit unchanged for 5 seconds, and live refreshes can't clobber pending toggles. (closing the app within those 5 seconds loses the un-pushed toggles)
+
+jobcard web view: clicking on the priority (or readiness / parent job) opens the dropdown menu immediately without having to click again.
+
+if a dropdown, editable input, or similar is open/active and the user clicks outside/elsewhere the active element closes: jobcard quick-view priority/readiness/job editors, the status menu, and the crew menu; text editors already committed and closed on blur. (mobile dropdowns were fixed earlier via DropdownPortal)
+
+at the top of the field super jobcard page there is a counter displaying the number of false starts this week (jobcards installers set to "False Start" whose scheduled day falls in the current Mon–Sun week — there's no marked-at timestamp, so the scheduled day is the proxy).
+
+field super jobcards calendar status says "Today", "Tomorrow", or the scheduled date instead of "On calendar". Hovering turns it into "View on calendar", which opens the field-super-calendar with that day highlighted for a few seconds.
 
 calendar view on web: the days in the month calendar are a little larger.
 

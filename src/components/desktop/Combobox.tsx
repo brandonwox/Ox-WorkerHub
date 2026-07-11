@@ -20,6 +20,13 @@ interface ComboboxProps {
   placeholder?: string;
   /** Allow committing a free-text value (Enter / "Use …") that matches no option. */
   allowCustom?: boolean;
+  /** Focus the input (and open the menu) on mount — for click-to-edit fields. */
+  autoFocus?: boolean;
+  /**
+   * Fires when the input loses focus (after the menu's press-delay), i.e. the
+   * user clicked elsewhere. Click-to-edit callers use it to leave edit mode.
+   */
+  onDismiss?: () => void;
 }
 
 /**
@@ -33,8 +40,10 @@ export function Combobox({
   options,
   placeholder,
   allowCustom,
+  autoFocus,
+  onDismiss,
 }: ComboboxProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!autoFocus);
   const [query, setQuery] = useState('');
 
   const selected = options.find((o) => o.value === value);
@@ -82,10 +91,16 @@ export function Combobox({
             setOpen(true);
           }}
           // Delay so a press on an option lands before the menu unmounts.
-          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onBlur={() =>
+            setTimeout(() => {
+              setOpen(false);
+              onDismiss?.();
+            }, 120)
+          }
           onSubmitEditing={commitCustom}
           placeholder={placeholder}
           placeholderTextColor={colors.textTertiary}
+          autoFocus={autoFocus}
         />
         <Feather
           name={open ? 'chevron-up' : 'chevron-down'}

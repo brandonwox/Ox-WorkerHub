@@ -412,6 +412,14 @@ interface AppState {
   setJobcardStatus: (jobcardId: string, status: JobcardStatus) => void;
   /** Installer-facing: check a jobcard task off (or un-check it). */
   setJobcardTaskDone: (jobcardId: string, taskId: string, done: boolean) => void;
+  /**
+   * Escalate every card whose priority window has ended (and that isn't
+   * finished) to "Now" — persisted via updateJobcard, whose transition
+   * notification pings the schedulers. Installer sessions skip the write (no
+   * priority write access); they still SEE the escalated look immediately via
+   * the effective-priority helpers.
+   */
+  escalateDuePriorities: () => void;
 
   // --- Crews & scheduling (Scheduler) ---
   /** Create a permanent crew. Non-installer ids are dropped. Returns the record. */
@@ -525,6 +533,8 @@ interface AppState {
   markNotificationRead: (id: string) => void;
   /** Mark every unread notification for the current worker as read. */
   markAllNotificationsRead: () => void;
+  /** Remove a single notification entirely (the recipient dismissed it). */
+  dismissNotification: (id: string) => void;
 
   // --- QuickBooks Time ---
   setQbtConfig: (changes: Partial<QbtConfig>) => void;
@@ -552,6 +562,18 @@ let nextNotificationId = 100;
 // Coalesces the burst of realtime row events one logical change can emit into a
 // single collection refetch. Module-level so it survives across store calls.
 let dataRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Hourly check for priority windows that have ended (see escalateDuePriorities).
+let escalationTimer: ReturnType<typeof setInterval> | null = null;
+
+// Task check-offs debounce their backend write: rapid toggles otherwise race
+// the realtime echo (each write triggers a refetch that briefly reverts the
+// box). A card pushes once its checkboxes sit unchanged for this long.
+const TASK_PUSH_DELAY_MS = 5000;
+const taskPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Cards whose latest check-offs haven't landed on the backend yet — refetches
+// must keep the LOCAL tasks for these so pending toggles never get clobbered.
+const pendingTaskCardIds = new Set<string>();
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Start empty: real data arrives on Supabase sign-in, mock data only via
@@ -714,21 +736,40 @@ export const useAppStore = create<AppState>((set, get) => ({
           .catch((e) => console.warn('Realtime data refresh failed.', e));
       }, 300);
     });
+    // Sweep for due priority windows now and hourly, so a card whose end date
+    // arrives while a session sits open still escalates (and pings) that day.
+    get().escalateDuePriorities();
+    if (escalationTimer) clearInterval(escalationTimer);
+    escalationTimer = setInterval(
+      () => get().escalateDuePriorities(),
+      60 * 60 * 1000
+    );
   },
 
   refreshBackendData: async () => {
     const data = await backend.fetchAllData();
-    set({
+    set((state) => ({
       workers: data.workers,
       jobs: data.jobs,
-      jobcards: data.jobcards,
+      // Cards with task check-offs still waiting on their (debounced) write
+      // keep the LOCAL task list — the fetched rows predate those toggles.
+      jobcards: data.jobcards.map((card) =>
+        pendingTaskCardIds.has(card.id)
+          ? {
+              ...card,
+              tasks:
+                state.jobcards.find((c) => c.id === card.id)?.tasks ??
+                card.tasks,
+            }
+          : card
+      ),
       crews: data.crews,
       dailyCrews: data.dailyCrews,
       assignments: data.assignments,
       logs: data.logs,
       jobPhotos: data.jobPhotos,
       jobIssues: data.jobIssues,
-    });
+    }));
   },
 
   clearData: () => {
@@ -737,6 +778,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (dataRefreshTimer) {
       clearTimeout(dataRefreshTimer);
       dataRefreshTimer = null;
+    }
+    for (const timer of taskPushTimers.values()) clearTimeout(timer);
+    taskPushTimers.clear();
+    pendingTaskCardIds.clear();
+    if (escalationTimer) {
+      clearInterval(escalationTimer);
+      escalationTimer = null;
     }
     if (photoRetryTimer) {
       clearTimeout(photoRetryTimer);
@@ -1040,7 +1088,46 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+    if (backendActive(get()) && updated) {
+      pendingTaskCardIds.add(jobcardId);
+      const existing = taskPushTimers.get(jobcardId);
+      if (existing) clearTimeout(existing);
+      taskPushTimers.set(
+        jobcardId,
+        setTimeout(() => {
+          taskPushTimers.delete(jobcardId);
+          const card = get().jobcards.find((c) => c.id === jobcardId);
+          if (!card) {
+            pendingTaskCardIds.delete(jobcardId);
+            return;
+          }
+          write(
+            backend
+              .updateJobcard(card)
+              .finally(() => pendingTaskCardIds.delete(jobcardId))
+          );
+        }, TASK_PUSH_DELAY_MS)
+      );
+    }
+  },
+
+  escalateDuePriorities: () => {
+    const state = get();
+    // Installers can't write jobcard priority; a privileged session (scheduler
+    // / field super / operator) — or local dev mode — persists the escalation.
+    const me = currentWorkerOf(state);
+    if (backendActive(state) && me?.role === 'installer') return;
+    const today = todayStr();
+    const due = state.jobcards.filter(
+      (card) =>
+        card.priority !== 'Now' &&
+        card.priorityEndDate != null &&
+        card.priorityEndDate <= today &&
+        card.status !== 'Finished'
+    );
+    // updateJobcard handles the backend write AND the scheduler ping (it fires
+    // on every transition into "Now").
+    due.forEach((card) => get().updateJobcard(card.id, { priority: 'Now' }));
   },
 
   addCrew: (crew) => {
@@ -1582,6 +1669,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get())) {
       write(notificationsBackend.markAllNotificationsRead(me.id));
     }
+  },
+
+  dismissNotification: (id) => {
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+    }));
+    if (backendActive(get())) write(notificationsBackend.deleteNotification(id));
   },
 
   setQbtConfig: (changes) =>

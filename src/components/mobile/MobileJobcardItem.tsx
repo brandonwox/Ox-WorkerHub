@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
+import { effectivePriority } from '@/utils/priorityRange';
 
 interface Props {
   jobcard: Jobcard;
@@ -19,7 +20,9 @@ interface Props {
  * desktop JobcardRow, which lays the same info out in fixed-width columns.
  */
 export function MobileJobcardItem({ jobcard, jobName, scheduled, onPress }: Props) {
-  const meta = priorityMeta(jobcard.priority);
+  // "Now" (incl. escalated windows) or the priority window's start date.
+  const priority = effectivePriority(jobcard);
+  const meta = priorityMeta(priority.label);
 
   const content = (
     <>
@@ -29,7 +32,7 @@ export function MobileJobcardItem({ jobcard, jobName, scheduled, onPress }: Prop
         </Text>
         <View style={[styles.priorityPill, { backgroundColor: meta.bg }]}>
           <Text style={[styles.priorityText, { color: meta.fg }]}>
-            {jobcard.priority}
+            {priority.short}
           </Text>
         </View>
       </View>

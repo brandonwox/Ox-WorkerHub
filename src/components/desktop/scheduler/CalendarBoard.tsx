@@ -21,13 +21,33 @@ interface Props {
    * jobcards), so the Schedule / unassign / Manage crews controls are hidden.
    */
   canAssign: boolean;
+  /**
+   * Jump the calendar to this day's month and flash the day for a few seconds
+   * (the jobcards page's "View on calendar" link). yyyy-MM-dd.
+   */
+  highlightDate?: string;
+  /** Changes on every jump so repeating the same date re-fires the flash. */
+  highlightNonce?: string;
+  /**
+   * Open this jobcard's quick view on arrival (a "New Priority Jobcard"
+   * notification click). Ignored when the id no longer matches a card.
+   */
+  openCardId?: string;
+  /** Changes on every jump so re-clicking the same notification re-opens it. */
+  openCardNonce?: string;
 }
 
 /**
  * The month calendar + Work Requests board. Shared by the Scheduler
  * (`canAssign`) and the Field Super (read-only for crew assignment).
  */
-export function CalendarBoard({ canAssign }: Props) {
+export function CalendarBoard({
+  canAssign,
+  highlightDate,
+  highlightNonce,
+  openCardId,
+  openCardNonce,
+}: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
@@ -56,6 +76,27 @@ export function CalendarBoard({ canAssign }: Props) {
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
+  // The day currently flashing from a "View on calendar" jump (clears itself).
+  const [flashDate, setFlashDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!highlightDate) return;
+    void highlightNonce; // dep only — a repeat jump to the same date re-fires
+    setMonth(parseISO(highlightDate));
+    setFlashDate(highlightDate);
+    const timer = setTimeout(() => setFlashDate(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlightDate, highlightNonce]);
+
+  // A notification click lands here with the jobcard to open (skips ids that
+  // no longer resolve — e.g. the card was deleted since the ping).
+  useEffect(() => {
+    if (!openCardId) return;
+    void openCardNonce; // dep only — re-clicking the same notification re-opens
+    if (useAppStore.getState().jobcards.some((c) => c.id === openCardId)) {
+      setViewingId(openCardId);
+    }
+  }, [openCardId, openCardNonce]);
 
   // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
   // Work Requests container visibly grows leftward across the board.
@@ -348,6 +389,7 @@ export function CalendarBoard({ canAssign }: Props) {
             onAssignToDate={assignToDate}
             onUnassign={handleUnassign}
             onOpenDay={openDay}
+            highlightDate={flashDate}
             onOpenCard={(id) => {
               // Opening a card from the main calendar also closes the day
               // sidebar.
@@ -419,9 +461,6 @@ export function CalendarBoard({ canAssign }: Props) {
       <JobcardQuickView
         jobcardId={viewingId}
         jobs={jobs}
-        scheduled={
-          viewingId != null && assignments.some((a) => a.jobcardId === viewingId)
-        }
         onClose={() => setViewingId(null)}
         onDelete={handleDelete}
       />

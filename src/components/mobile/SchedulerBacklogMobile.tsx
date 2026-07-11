@@ -8,7 +8,7 @@ import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing } from '@/theme';
 import { Jobcard } from '@/types';
-import { priorityRank } from '@/utils/priority';
+import { comparePriority } from '@/utils/priorityRange';
 
 /**
  * The Scheduler's backlog on the phone: every jobcard not yet on the calendar,
@@ -26,7 +26,7 @@ export function SchedulerBacklogMobile() {
     () =>
       jobcards
         .filter((c) => assignments.every((a) => a.jobcardId !== c.id))
-        .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority)),
+        .sort(comparePriority),
     [jobcards, assignments]
   );
 

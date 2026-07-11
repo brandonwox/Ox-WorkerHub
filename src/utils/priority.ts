@@ -30,6 +30,10 @@ const PRIORITY_COLOR: Record<string, string> = {
   Tomorrow: colors.warning,
   'This Week': colors.primary,
   'Low Priority': colors.textTertiary,
+  // Range-based selector labels (see PRIORITY_CHOICES / priorityRange.ts).
+  'This week': colors.warning,
+  'Next week': colors.primary,
+  'Set dates': colors.textSecondary,
   // Legacy values map onto the same accent scale.
   High: colors.danger,
   Medium: colors.warning,

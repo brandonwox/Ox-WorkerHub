@@ -12,7 +12,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Crew, Jobcard, ScheduleAssignment } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
-import { priorityColor } from '@/utils/priority';
+import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -33,6 +33,8 @@ interface Props {
   onUnassign: (assignmentId: string) => void;
   /** Open a day's schedule (the sidebar). Fires only when not placing. */
   onOpenDay?: (date: string) => void;
+  /** Day to flash (yyyy-MM-dd) after a "View on calendar" jump, or null. */
+  highlightDate?: string | null;
   /** Open a placed jobcard (same quick view the Jobcards pages use). */
   onOpenCard: (jobcardId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
@@ -59,6 +61,7 @@ export function MonthCalendar({
   onAssignToDate,
   onUnassign,
   onOpenDay,
+  highlightDate,
   onOpenCard,
   canUnassign = true,
   canAssign = true,
@@ -164,7 +167,7 @@ export function MonthCalendar({
           return (
             <Pressable
               key={dateStr}
-              style={styles.cell}
+              style={[styles.cell, dateStr === highlightDate && styles.cellHighlight]}
               onPress={
                 placing
                   ? () => onAssignToDate(dateStr)
@@ -204,7 +207,7 @@ export function MonthCalendar({
                       <View
                         style={[
                           styles.placedDot,
-                          { backgroundColor: priorityColor(card.priority) },
+                          { backgroundColor: effectivePriority(card).color },
                         ]}
                       />
                       <Text style={styles.placedTitle} numberOfLines={1}>
@@ -340,6 +343,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
+  },
+  cellHighlight: {
+    borderColor: colors.primary,
+    backgroundColor: withAlpha(colors.primary, 0.12),
   },
   cellHead: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { formatDistanceToNow } from 'date-fns';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Modal,
@@ -12,6 +13,7 @@ import {
 
 import {
   useAppStore,
+  useCurrentRole,
   useMyNotifications,
   useUnreadNotificationCount,
 } from '@/store/useAppStore';
@@ -41,7 +43,28 @@ export function NotificationBell() {
   const unread = useUnreadNotificationCount();
   const markRead = useAppStore((s) => s.markNotificationRead);
   const markAllRead = useAppStore((s) => s.markAllNotificationsRead);
+  const dismiss = useAppStore((s) => s.dismissNotification);
+  const role = useCurrentRole();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  // A "New Priority Jobcard" ping is actionable for the Scheduler: clicking it
+  // jumps to the calendar with that jobcard's quick view open (`oc` is a nonce
+  // so re-clicking a notification for the same card re-opens it).
+  const openNotification = (n: AppNotification) => {
+    markRead(n.id);
+    const jobcardId =
+      n.type === 'jobcard_now' && typeof n.data?.jobcardId === 'string'
+        ? n.data.jobcardId
+        : null;
+    if (jobcardId && role === 'scheduler') {
+      setOpen(false);
+      router.push({
+        pathname: '/scheduler-calendar',
+        params: { openCard: jobcardId, oc: Date.now().toString() },
+      });
+    }
+  };
 
   return (
     <>
@@ -91,7 +114,8 @@ export function NotificationBell() {
                   <NotificationItem
                     key={n.id}
                     notification={n}
-                    onPress={() => markRead(n.id)}
+                    onPress={() => openNotification(n)}
+                    onDismiss={() => dismiss(n.id)}
                   />
                 ))}
               </ScrollView>
@@ -106,11 +130,14 @@ export function NotificationBell() {
 function NotificationItem({
   notification,
   onPress,
+  onDismiss,
 }: {
   notification: AppNotification;
   onPress: () => void;
+  onDismiss: () => void;
 }) {
   const icon = TYPE_ICON[notification.type] ?? 'bell';
+  const [hovered, setHovered] = useState(false);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -119,6 +146,8 @@ function NotificationItem({
         pressed && styles.itemPressed,
       ]}
       onPress={onPress}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
     >
       <View style={styles.itemIcon}>
         <Feather name={icon} size={16} color={colors.primary} />
@@ -128,7 +157,23 @@ function NotificationItem({
         <Text style={styles.itemText}>{notification.body}</Text>
         <Text style={styles.itemTime}>{timeAgo(notification.createdAt)}</Text>
       </View>
-      {!notification.read && <View style={styles.unreadDot} />}
+      {/* Hover swaps the unread dot for a dismiss button (deletes the row). */}
+      {hovered ? (
+        <Pressable
+          style={({ pressed, hovered: h }: {
+            pressed: boolean;
+            hovered?: boolean;
+          }) => [styles.dismiss, (h || pressed) && styles.dismissHover]}
+          onPress={onDismiss}
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss notification"
+        >
+          <Feather name="x" size={14} color={colors.textSecondary} />
+        </Pressable>
+      ) : (
+        !notification.read && <View style={styles.unreadDot} />
+      )}
     </Pressable>
   );
 }
@@ -178,8 +223,8 @@ const styles = StyleSheet.create({
     right: spacing.xl,
   },
   panelCard: {
-    width: 360,
-    maxHeight: 460,
+    width: 460,
+    maxHeight: 600,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -268,5 +313,15 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.primary,
     marginTop: 6,
+  },
+  dismiss: {
+    width: 24,
+    height: 24,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dismissHover: {
+    backgroundColor: colors.surfaceLight,
   },
 });

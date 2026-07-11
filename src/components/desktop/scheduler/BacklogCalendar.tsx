@@ -16,7 +16,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { Jobcard } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
-import { priorityColor } from '@/utils/priority';
+import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -145,7 +145,7 @@ export function BacklogCalendar({
               </Text>
               <View style={styles.cellCards}>
                 {dayCards.map((card) => {
-                  const accent = priorityColor(card.priority);
+                  const accent = effectivePriority(card).color;
                   return (
                     <Pressable
                       key={card.id}

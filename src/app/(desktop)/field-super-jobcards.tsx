@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
@@ -14,6 +15,7 @@ export default function FieldSuperJobcardsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const allJobs = useAppStore((s) => s.jobs);
+  const router = useRouter();
 
   // A Field Super works only within their own jobs — and, transitively, only
   // the jobcards that hang off those jobs. Scoping here means the shared
@@ -25,5 +27,17 @@ export default function FieldSuperJobcardsScreen() {
 
   if (role !== 'field_super') return <AccessDenied />;
 
-  return <JobcardsScreen jobs={jobs} />;
+  return (
+    <JobcardsScreen
+      jobs={jobs}
+      showFalseStarts
+      onViewCalendar={(date) =>
+        // `hl` is a nonce so re-clicking the same date re-fires the highlight.
+        router.push({
+          pathname: '/field-super-calendar',
+          params: { highlight: date, hl: Date.now().toString() },
+        })
+      }
+    />
+  );
 }

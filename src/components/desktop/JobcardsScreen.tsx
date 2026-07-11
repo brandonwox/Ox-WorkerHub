@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { endOfWeek, format, startOfWeek } from 'date-fns';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -27,10 +27,21 @@ interface JobcardsScreenProps {
    * the screen shows just the jobcards hanging off them.
    */
   jobs: Job[];
+  /** Show the false-starts-this-week counter (the Field Super's page). */
+  showFalseStarts?: boolean;
+  /**
+   * Jump to the viewer's calendar with `date` highlighted. When set, hovering
+   * a scheduled row's date turns it into a "View on calendar" link.
+   */
+  onViewCalendar?: (date: string) => void;
 }
 
 /** Desktop jobcards workspace: every jobcard in scope, its calendar status, and creation. */
-export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
+export function JobcardsScreen({
+  jobs,
+  showFalseStarts = false,
+  onViewCalendar,
+}: JobcardsScreenProps) {
   const allJobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
   const addJobcard = useAppStore((s) => s.addJobcard);
@@ -67,6 +78,42 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
     () => jobcards.filter((c) => !scheduledIds.has(c.id)).length,
     [jobcards, scheduledIds]
   );
+
+  // The day each scheduled card shows in its status pill: its next upcoming
+  // assignment date, or the most recent one when they're all in the past.
+  const scheduledDateById = useMemo(() => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const map = new Map<string, string>();
+    const byCard = new Map<string, string[]>();
+    for (const a of assignments) {
+      const dates = byCard.get(a.jobcardId) ?? [];
+      dates.push(a.date);
+      byCard.set(a.jobcardId, dates);
+    }
+    for (const [cardId, dates] of byCard) {
+      dates.sort();
+      map.set(cardId, dates.find((d) => d >= today) ?? dates[dates.length - 1]);
+    }
+    return map;
+  }, [assignments]);
+
+  // False starts this week: cards installers set to 'False Start' whose
+  // scheduled day (assignment date, else target date) falls in the current
+  // Mon–Sun week — the closest read without a marked-at timestamp.
+  const falseStartsThisWeek = useMemo(() => {
+    if (!showFalseStarts) return 0;
+    const now = new Date();
+    const weekStart = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    const inWeek = (d: string) => d >= weekStart && d <= weekEnd;
+    return jobcards.filter((card) => {
+      if (card.status !== 'False Start') return false;
+      const dates = assignments
+        .filter((a) => a.jobcardId === card.id)
+        .map((a) => a.date);
+      return dates.length > 0 ? dates.some(inWeek) : inWeek(card.date);
+    }).length;
+  }, [showFalseStarts, jobcards, assignments]);
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -144,6 +191,8 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
       // No calendar date at creation — the Scheduler places it later.
       date: format(new Date(), 'yyyy-MM-dd'),
       priority: input.priority,
+      priorityStartDate: input.priorityStartDate || undefined,
+      priorityEndDate: input.priorityEndDate || undefined,
       scopes: input.scopes,
       // The modal authors task text; each becomes a check-off item with a
       // stable id (installers tick them off from their phones).
@@ -168,10 +217,37 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.subtitle}>
-          {jobcards.length} {jobcards.length === 1 ? 'jobcard' : 'jobcards'} ·{' '}
-          {unscheduledCount} not on calendar
-        </Text>
+        <View style={styles.subtitleRow}>
+          <Text style={styles.subtitle}>
+            {jobcards.length} {jobcards.length === 1 ? 'jobcard' : 'jobcards'} ·{' '}
+            {unscheduledCount} not on calendar
+          </Text>
+          {showFalseStarts && (
+            <View
+              style={[
+                styles.falseStartPill,
+                falseStartsThisWeek > 0 && styles.falseStartPillHot,
+              ]}
+            >
+              <Feather
+                name="alert-octagon"
+                size={13}
+                color={
+                  falseStartsThisWeek > 0 ? colors.danger : colors.textTertiary
+                }
+              />
+              <Text
+                style={[
+                  styles.falseStartText,
+                  falseStartsThisWeek > 0 && styles.falseStartTextHot,
+                ]}
+              >
+                {falseStartsThisWeek} false start
+                {falseStartsThisWeek === 1 ? '' : 's'} this week
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Single-row toolbar: filters (when there are cards) + Create button. */}
         <View style={styles.toolbar}>
@@ -236,15 +312,24 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
                   )}
                 </View>
                 <View style={styles.cardStack}>
-                  {group.cards.map((card) => (
-                    <JobcardRow
-                      key={card.id}
-                      jobcard={card}
-                      jobName={group.name}
-                      scheduled={scheduledIds.has(card.id)}
-                      onPress={() => setViewingId(card.id)}
-                    />
-                  ))}
+                  {group.cards.map((card) => {
+                    const date = scheduledDateById.get(card.id);
+                    return (
+                      <JobcardRow
+                        key={card.id}
+                        jobcard={card}
+                        jobName={group.name}
+                        scheduled={scheduledIds.has(card.id)}
+                        scheduledDate={date}
+                        onViewCalendar={
+                          onViewCalendar && date
+                            ? () => onViewCalendar(date)
+                            : undefined
+                        }
+                        onPress={() => setViewingId(card.id)}
+                      />
+                    );
+                  })}
                 </View>
               </View>
               );
@@ -252,15 +337,24 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
           </View>
         ) : (
           <View style={styles.cardStack}>
-            {filtered.map((card) => (
-              <JobcardRow
-                key={card.id}
-                jobcard={card}
-                jobName={jobNameFor(card.jobId)}
-                scheduled={scheduledIds.has(card.id)}
-                onPress={() => setViewingId(card.id)}
-              />
-            ))}
+            {filtered.map((card) => {
+              const date = scheduledDateById.get(card.id);
+              return (
+                <JobcardRow
+                  key={card.id}
+                  jobcard={card}
+                  jobName={jobNameFor(card.jobId)}
+                  scheduled={scheduledIds.has(card.id)}
+                  scheduledDate={date}
+                  onViewCalendar={
+                    onViewCalendar && date
+                      ? () => onViewCalendar(date)
+                      : undefined
+                  }
+                  onPress={() => setViewingId(card.id)}
+                />
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -275,7 +369,6 @@ export function JobcardsScreen({ jobs }: JobcardsScreenProps) {
       <JobcardQuickView
         jobcardId={viewingId}
         jobs={jobs}
-        scheduled={viewingId != null && scheduledIds.has(viewingId)}
         onClose={() => setViewingId(null)}
         onDelete={handleDelete}
       />
@@ -310,6 +403,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 14,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  falseStartPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 3,
+  },
+  falseStartPillHot: {
+    backgroundColor: colors.dangerDim,
+    borderColor: colors.danger,
+  },
+  falseStartText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  falseStartTextHot: {
+    color: colors.danger,
   },
   addButton: {
     flexDirection: 'row',
