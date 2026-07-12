@@ -7,7 +7,7 @@ import { JobPicsList } from '@/components/photos/JobPicsList';
 import { useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, spacing } from '@/theme';
 
-/** Pics tab — the installer's gateway to jobsite photos. */
+/** Jobs tab (formerly Pics) — the installer's job dashboard and photo gateway. */
 export default function PicsTab() {
   const role = useCurrentRole();
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function PicsTab() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Text style={styles.heading}>Pics</Text>
+      <Text style={styles.heading}>Jobs</Text>
       <Text style={styles.hint}>
         Open a job to see its photos or take new ones.
       </Text>

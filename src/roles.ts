@@ -49,7 +49,7 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/installer-schedule', label: 'Schedule', icon: 'calendar' },
     { href: '/installer-timesheets', label: 'Timesheets', icon: 'file-text' },
     // No live camera on web — the page offers file upload instead.
-    { href: '/installer-pics', label: 'Pics', icon: 'camera' },
+    { href: '/installer-pics', label: 'Jobs', icon: 'briefcase' },
   ],
   operator: [
     { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
@@ -112,7 +112,9 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
   installer: [
     { name: 'timesheets', label: 'Timesheets', icon: 'file-text' },
     { name: 'index', label: 'Calendar', icon: 'calendar' },
-    { name: 'pics', label: 'Pics', icon: 'camera' },
+    // The former "Pics" tab — now the installer's job dashboard (route file
+    // stays pics.tsx; the field_super already owns the 'jobs' tab name).
+    { name: 'pics', label: 'Jobs', icon: 'briefcase' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [

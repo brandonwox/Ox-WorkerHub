@@ -4,6 +4,16 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
+
+mobile installer:
+- clicking the "issue" button on a jobcard to add an issue can be glitchy (similar to how clicking a checkbox used to be glitchy. I think we fixed it by not pushing changes to the database until the change has been untouched for a few seconds or just waiting a few seconds to send changes to the database.) (should we change the way changes are save to the supabase for every change? (What is the best way to save changes to the supabase for every change? can you look into this?))
+- viewing a job photos section: each issue should have a link to it's jobcard, and the text for the link should be the name of the jobcard.
+- notes for pictures are not being saved. (scenario: when i open a job from the pics tab and then click take photos, ill add a note to the pictures i took, but the notes do not save. however, if i take notes on a photo i took on a jobcard, the notes do save to the photo when i view them on the job.)
+- pics tab should be renamed to jobs.
+- now that installers have a job tab it should be a dashboard that shows each job by recency, and lets the user search (which is the current functionality). 
+- clicking on a photo from the job tab (previously known as "pics" tab) currently opens the photo so you can see its details. But i noticed the details don't include the jobcard that the photo was taken in. make sure the name of the jobcard is displayed in the photo details and is clickable to move to the jobcard.
+
 field-super-jobs:
 - add a search bar
 - clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -213,7 +213,11 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   );
 }
 
-/** The photographer's editable caption; commits on blur/submit. */
+/**
+ * The photographer's editable caption; commits on blur/submit — and on unmount
+ * (closing the viewer or swiping to the next photo re-keys this input before
+ * onBlur can fire, which used to silently drop the draft).
+ */
 function NoteInput({
   note,
   onCommit,
@@ -222,6 +226,15 @@ function NoteInput({
   onCommit: (text: string) => void;
 }) {
   const [text, setText] = useState(note ?? '');
+  const latest = useRef({ text, note, onCommit });
+  latest.current = { text, note, onCommit };
+  useEffect(
+    () => () => {
+      const { text: draft, note: saved, onCommit: commit } = latest.current;
+      if (draft !== (saved ?? '')) commit(draft);
+    },
+    []
+  );
   return (
     <TextInput
       style={styles.noteInput}

@@ -512,8 +512,11 @@ export interface QbtConfig {
  *  - `jobcard_now`: a Field Super marks a jobcard "Now" → ping schedulers.
  *  - `schedule_change`: an installer's schedule for TODAY changed (a card added,
  *    removed, re-prioritized, or edited) → ping that installer.
+ *  - `save_failed`: one of this worker's queued changes was rejected by the
+ *    server and dropped. Device-local only (never written to the DB — it's
+ *    about THIS device's sync queue).
  */
-export type NotificationType = 'jobcard_now' | 'schedule_change';
+export type NotificationType = 'jobcard_now' | 'schedule_change' | 'save_failed';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it

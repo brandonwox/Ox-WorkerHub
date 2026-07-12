@@ -1,10 +1,12 @@
+import NetInfo from '@react-native-community/netinfo';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+import { loadCachedAuthWorker, persistAuthWorker } from '@/store/offlineCache';
 import { useAppStore } from '@/store/useAppStore';
 import { Worker } from '@/types';
 
-import { fetchCurrentWorker, onAuthChange } from './auth';
+import { fetchCurrentWorker, getSession, onAuthChange } from './auth';
 import { isSupabaseConfigured } from './config';
 
 /**
@@ -57,6 +59,8 @@ export function useSupabaseSession(): void {
       if (!active) return;
       setAuthWorker(worker);
       if (worker) {
+        // Remember the identity so a cold OFFLINE launch can still resolve it.
+        persistAuthWorker(worker);
         try {
           await loadBackendData();
         } catch (e) {
@@ -71,8 +75,17 @@ export function useSupabaseSession(): void {
       setAuthResolved(true);
     };
 
-    // Resolve any persisted session on launch.
-    fetchCurrentWorker().then((worker) => apply(worker));
+    // Resolve any persisted session on launch. Offline, the workers-row fetch
+    // fails — fall back to the cached identity for the stored session's user
+    // so the app opens with cached data instead of bouncing to sign-in.
+    const resolveLaunchWorker = async (): Promise<Worker | null> => {
+      const worker = await fetchCurrentWorker();
+      if (worker) return worker;
+      const session = await getSession(); // local read, works offline
+      if (!session?.user?.id) return null;
+      return loadCachedAuthWorker(session.user.id);
+    };
+    resolveLaunchWorker().then((worker) => apply(worker));
 
     // React only to actual sign-in / sign-out / password-recovery. We
     // deliberately ignore USER_UPDATED and TOKEN_REFRESHED: re-fetching the
@@ -113,4 +126,15 @@ export function useSupabaseSession(): void {
       unsubscribe();
     };
   }, [setAuthWorker, setAuthResolved, setPasswordRecovery, loadBackendData, clearData]);
+
+  // Feed live connectivity into the store: offline UI (sync chip, photo-area
+  // messages) reads it, and coming back online pushes queued work immediately.
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      // `isConnected: null` (unknown) counts as online so the UI never claims
+      // "offline" without evidence.
+      useAppStore.getState().setOnline(state.isConnected !== false);
+    });
+    return unsubscribe;
+  }, []);
 }

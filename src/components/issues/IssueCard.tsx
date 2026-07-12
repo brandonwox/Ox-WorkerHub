@@ -49,6 +49,7 @@ export function IssueCard({
   const router = useRouter();
   const me = useCurrentWorker();
   const role = useCurrentRole();
+  const isOnline = useAppStore((s) => s.isOnline);
   const raisedBy = useAppStore(
     (s) => s.workers.find((w) => w.id === issue.workerId)?.name
   );
@@ -119,6 +120,20 @@ export function IssueCard({
         onPress={() => setExpanded(true)}
       >
         <Feather name="chevron-right" size={16} color={colors.textSecondary} />
+        {/* On the parent job page the collapsed row leads with the source
+            jobcard's name — tapping the name jumps to that jobcard. */}
+        {showJobcardLink && jobcard && (
+          <Pressable
+            hitSlop={6}
+            onPress={() =>
+              router.push({ pathname: '/job/[id]', params: { id: jobcard.id } })
+            }
+          >
+            <Text style={styles.collapsedJobcardLink} numberOfLines={1}>
+              {jobcard.title}
+            </Text>
+          </Pressable>
+        )}
         <Text
           style={[
             styles.collapsedText,
@@ -270,7 +285,13 @@ export function IssueCard({
         </View>
       )}
 
-      {photos.length > 0 && (
+      {/* Photos aren't kept on the device — the gallery is one message offline. */}
+      {photos.length > 0 && !isOnline && (
+        <Text style={styles.offlinePhotosText}>
+          Connect to the internet to view photos.
+        </Text>
+      )}
+      {photos.length > 0 && isOnline && (
         <View style={styles.grid}>
           {photos.map((photo) => (
             <Pressable
@@ -328,6 +349,12 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  collapsedJobcardLink: {
+    maxWidth: 150,
+    color: colors.primary,
+    fontFamily: fonts.medium,
     fontSize: 13,
   },
   headerRow: {
@@ -437,6 +464,11 @@ const styles = StyleSheet.create({
   photoButtonText: {
     color: colors.primary,
     fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  offlinePhotosText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
     fontSize: 12,
   },
   grid: {

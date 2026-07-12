@@ -98,11 +98,13 @@ export default function JobCameraScreen() {
     if (capturing || !cameraRef.current || !jobId) return;
     setCapturing(true);
     try {
+      // Commit the running note to the PREVIOUS shot now — waiting for the
+      // input's blur loses the note when the shutter is tapped with the
+      // keyboard still up (blur never fires before the note is cleared).
+      commitNote();
       const shot = await cameraRef.current.takePictureAsync();
       if (!shot?.uri) return;
       const compressed = await compressJobPhoto(shot.uri, shot.width);
-      // Committing the running note to the PREVIOUS shot happens on blur/typing
-      // end; a new capture starts a fresh note for the new latest photo.
       const [photoId] = await addJobPhotos({
         jobId,
         jobcardId: jobcardId || undefined,
@@ -129,6 +131,13 @@ export default function JobCameraScreen() {
 
   const commitNote = () => {
     if (lastShot) setJobPhotoNote(lastShot.id, note);
+  };
+
+  // Leaving the camera (X / Done) unmounts the note input before its onBlur
+  // can fire — commit whatever was typed so the note isn't silently dropped.
+  const leave = () => {
+    commitNote();
+    router.back();
   };
 
   const closePreview = () => {
@@ -187,11 +196,7 @@ export default function JobCameraScreen() {
       >
         {/* Top bar: close, job name, flip. */}
         <View style={styles.topBar}>
-          <Pressable
-            style={styles.roundButton}
-            onPress={() => router.back()}
-            hitSlop={8}
-          >
+          <Pressable style={styles.roundButton} onPress={leave} hitSlop={8}>
             <Feather name="x" size={22} color={colors.textPrimary} />
           </Pressable>
           <Text style={styles.jobName} numberOfLines={1}>
@@ -261,7 +266,7 @@ export default function JobCameraScreen() {
                   styles.doneButton,
                   pressed && styles.donePressed,
                 ]}
-                onPress={() => router.back()}
+                onPress={leave}
               >
                 <Feather name="check" size={16} color={colors.textPrimary} />
                 <Text style={styles.doneText}>Done</Text>

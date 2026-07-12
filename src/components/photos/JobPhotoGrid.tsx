@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DisplayPhoto } from '@/components/photos/useJobPhotos';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 
 /** Thumbnails per row. */
@@ -20,6 +21,7 @@ interface Props {
 
 /** Day-grouped, 5-across thumbnail grid of a job's photos. */
 export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
+  const isOnline = useAppStore((s) => s.isOnline);
   // Group by calendar day, newest day (and newest photo within a day) first.
   const { days, sorted } = useMemo(() => {
     const ordered = [...photos].sort((a, b) =>
@@ -34,6 +36,27 @@ export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
     }
     return { days: [...byDay.entries()], sorted: ordered };
   }, [photos]);
+
+  // Photos aren't kept on the device — offline, the whole area is one message
+  // (photos taken offline are safe in the upload queue; noted so nobody
+  // panics that their shots vanished).
+  if (!isOnline) {
+    const waiting = photos.filter((p) => p.pending).length;
+    return (
+      <View style={styles.empty}>
+        <Feather name="cloud-off" size={30} color={colors.textTertiary} />
+        <Text style={styles.emptyText}>
+          Connect to the internet to view photos.
+        </Text>
+        {waiting > 0 && (
+          <Text style={styles.emptySubText}>
+            {waiting} photo{waiting === 1 ? '' : 's'} taken on this device will
+            upload when you&apos;re back online.
+          </Text>
+        )}
+      </View>
+    );
+  }
 
   if (photos.length === 0) {
     return (
@@ -153,5 +176,12 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     fontFamily: fonts.regular,
     fontSize: 13,
+  },
+  emptySubText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    textAlign: 'center',
+    maxWidth: 280,
   },
 });

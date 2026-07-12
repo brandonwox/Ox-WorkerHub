@@ -23,9 +23,11 @@ interface Props {
 }
 
 /**
- * The Pics tab's job list: with no search, the last 10 distinct jobs the worker
- * clocked into (most recent first); typing searches EVERY job by name —
- * archived included — so old work can still be photographed and browsed.
+ * The Jobs tab's dashboard: with no search, EVERY job ordered by recency —
+ * jobs the worker clocked into first (most recent first, the running shift
+ * counting as most recent of all), then the rest by their latest photo, then
+ * alphabetical. Typing searches every job by name — archived included — so old
+ * work can still be photographed and browsed.
  */
 export function JobPicsList({ onSelectJob }: Props) {
   const me = useCurrentWorker();
@@ -39,20 +41,39 @@ export function JobPicsList({ onSelectJob }: Props) {
   const [search, setSearch] = useState('');
   const query = search.trim().toLowerCase();
 
-  const recent = useMemo(
-    () =>
-      me
-        ? recentClockedJobs({ logs, jobcards, jobs, activeShift }, me.id)
-        : [],
-    [me, logs, jobcards, jobs, activeShift]
-  );
+  const byRecency = useMemo(() => {
+    const clocked = me
+      ? recentClockedJobs(
+          { logs, jobcards, jobs, activeShift },
+          me.id,
+          Number.MAX_SAFE_INTEGER
+        )
+      : [];
+    const clockedIds = new Set(clocked.map((job) => job.id));
+    // Jobs never clocked into rank by their newest photo, then by name.
+    const latestPhotoAt = new Map<string, string>();
+    for (const p of [...jobPhotos, ...pendingPhotos]) {
+      const current = latestPhotoAt.get(p.jobId);
+      if (!current || p.takenAt > current) latestPhotoAt.set(p.jobId, p.takenAt);
+    }
+    const rest = jobs
+      .filter((job) => !clockedIds.has(job.id))
+      .sort((a, b) => {
+        const pa = latestPhotoAt.get(a.id);
+        const pb = latestPhotoAt.get(b.id);
+        if (pa && pb) return pb.localeCompare(pa);
+        if (pa || pb) return pa ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    return [...clocked, ...rest];
+  }, [me, logs, jobcards, jobs, activeShift, jobPhotos, pendingPhotos]);
 
   const results = useMemo(() => {
-    if (!query) return recent;
+    if (!query) return byRecency;
     return jobs
       .filter((job) => job.name.toLowerCase().includes(query))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [query, recent, jobs]);
+  }, [query, byRecency, jobs]);
 
   const photoCountFor = (jobId: string) =>
     jobPhotos.filter((p) => p.jobId === jobId).length +
@@ -79,20 +100,20 @@ export function JobPicsList({ onSelectJob }: Props) {
       </View>
 
       <Text style={styles.sectionLabel}>
-        {query ? 'Search results' : 'Recent jobs'}
+        {query ? 'Search results' : 'All jobs · recent first'}
       </Text>
 
       <ScrollView contentContainerStyle={styles.listContent}>
         {results.length === 0 ? (
           <View style={styles.empty}>
-            <Feather name="camera" size={30} color={colors.textTertiary} />
+            <Feather name="briefcase" size={30} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>
-              {query ? 'No jobs match' : 'No recent jobs'}
+              {query ? 'No jobs match' : 'No jobs yet'}
             </Text>
             <Text style={styles.emptySubtitle}>
               {query
                 ? 'Try a different job name.'
-                : 'Jobs you clock into show up here — or search for any job above.'}
+                : 'Jobs show up here as the office creates them.'}
             </Text>
           </View>
         ) : (

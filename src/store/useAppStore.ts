@@ -14,6 +14,11 @@ import * as backend from '@/integrations/supabase/data';
 import * as notificationsBackend from '@/integrations/supabase/notifications';
 import { discardPhotoFile, stashPhotoFile } from '@/lib/photoFiles';
 import {
+  loadDataCache,
+  persistDataCache,
+  prefetchFlashingPhotos,
+} from '@/store/offlineCache';
+import {
   ActiveShift,
   AppNotification,
   AppRole,
@@ -177,21 +182,331 @@ const INSTALLER_VISIBLE_FIELDS: (keyof Jobcard)[] = [
   'notes',
 ];
 
+// ---------------------------------------------------------------------------
+// Durable write outbox — every change is device-first.
+//
+// A mutation updates local state instantly, is appended to a persistent queue
+// (AsyncStorage), and a single background flusher replays the queue to Supabase
+// in order. No signal on site just parks the queue — a timer retries every 30s
+// and the queue survives app restarts — so a field change is never lost to a
+// dead spot or a force-quit. (Photos have their own parallel queue because they
+// carry image files; see the photo upload queue further down.)
+// ---------------------------------------------------------------------------
+
+// Writes the flusher is actively pushing right now. While any are in flight a
+// realtime refetch is deferred (refreshDeferred re-arms it when they settle) —
+// the refetch would return a snapshot predating them and briefly revert the
+// optimistic local change.
+let writesInFlight = 0;
+let refreshDeferred = false;
+
+// Per-row queued-write guards (id → refcount): refetch merges keep the LOCAL
+// version of these rows so a stale snapshot can't revert them while their
+// writes are still queued or traveling.
+const pendingIssueUpserts = new Map<string, number>();
+const pendingIssueDeletes = new Map<string, number>();
+const pendingPhotoNotes = new Map<string, number>();
+const pendingJobcardTaskWrites = new Map<string, number>();
+
+const GUARD_MAPS = {
+  issueUpsert: pendingIssueUpserts,
+  issueDelete: pendingIssueDeletes,
+  photoNote: pendingPhotoNotes,
+  jobcardTasks: pendingJobcardTaskWrites,
+} as const;
+
+/** Which guard map a queued op holds a row in (serialized with the op). */
+interface OutboxGuard {
+  map: keyof typeof GUARD_MAPS;
+  id: string;
+}
+
+/** One queued mutation — pure JSON so it survives an app restart. */
+interface OutboxOp {
+  id: string;
+  kind: OutboxKind;
+  payload: unknown;
+  /** The author. Ops replay only while they are the signed-in worker (RLS). */
+  workerId: string;
+  guard?: OutboxGuard;
+  queuedAt: string;
+}
+
+let outboxOps: OutboxOp[] = [];
+/** Live guard releases keyed by op id (rebuilt from op.guard on restore). */
+const outboxGuardReleases = new Map<string, () => void>();
+let outboxFlushing = false;
+let outboxRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const OUTBOX_KEY_PREFIX = 'oxwh.writeOutbox.';
+const OUTBOX_RETRY_MS = 30_000;
+
 /**
- * Fire-and-forget a Supabase write; surface failures without breaking the UI.
- * Logged as an error (not a warning) so a rejected write — e.g. an RLS policy
- * denying the row — is obvious in the console rather than silently dropped. The
- * thrown message carries the Postgres error, which names the offending table.
- *
- * On success it bumps the store's `savedTick` so the desktop sidebar can pop a
- * "Changes Saved" pill — this fires only for real backend writes (backendActive
- * gates every caller), so the Developer and local dev mode never trigger it.
+ * Replay table for queued ops. Adding a new kind of backend write = add its
+ * executor here and call write('<kind>', payload) from the store action.
  */
-function write(p: Promise<unknown>): void {
-  p.then(
-    () => useAppStore.getState().signalSaved(),
-    (e) => console.error('Supabase write failed (change not saved):', e)
+const OUTBOX_EXECUTORS = {
+  updateWorker: (p: Worker) => backend.updateWorker(p),
+  deleteWorker: (p: string) => backend.deleteWorker(p),
+  updateWorkerRole: (p: { id: string; role: AppRole }) =>
+    backend.updateWorkerRole(p.id, p.role),
+  updateWorkerRate: (p: { id: string; hourlyRate: number }) =>
+    backend.updateWorkerRate(p.id, p.hourlyRate),
+  insertJob: (p: Job) => backend.insertJob(p),
+  updateJob: (p: Job) => backend.updateJob(p),
+  deleteJob: (p: string) => backend.deleteJob(p),
+  setJobFieldSupers: (p: { jobId: string; fieldSuperIds: string[] }) =>
+    backend.setJobFieldSupers(p.jobId, p.fieldSuperIds),
+  insertJobcard: (p: Jobcard) => backend.insertJobcard(p),
+  updateJobcard: (p: Jobcard) => backend.updateJobcard(p),
+  deleteJobcard: (p: string) => backend.deleteJobcard(p),
+  insertCrew: (p: Crew) => backend.insertCrew(p),
+  updateCrew: (p: Crew) => backend.updateCrew(p),
+  deleteCrew: (p: string) => backend.deleteCrew(p),
+  insertDailyCrew: (p: DailyCrew) => backend.insertDailyCrew(p),
+  updateDailyCrew: (p: DailyCrew) => backend.updateDailyCrew(p),
+  deleteDailyCrew: (p: string) => backend.deleteDailyCrew(p),
+  insertAssignment: (p: ScheduleAssignment) => backend.insertAssignment(p),
+  deleteAssignment: (p: string) => backend.deleteAssignment(p),
+  insertTimesheet: (p: TimesheetLog) => backend.insertTimesheet(p),
+  updateTimesheet: (p: TimesheetLog) => backend.updateTimesheet(p),
+  deleteTimesheet: (p: string) => backend.deleteTimesheet(p),
+  markTimesheetsSentRemote: (_p: null) => backend.markTimesheetsSentRemote(),
+  updateJobPhotoNote: (p: { id: string; note?: string }) =>
+    backend.updateJobPhotoNote(p.id, p.note),
+  deleteJobPhoto: (p: { id: string; storagePath: string }) =>
+    backend.deleteJobPhoto(p.id, p.storagePath),
+  insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
+  updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
+  deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
+  insertNotification: (p: AppNotification) =>
+    notificationsBackend.insertNotification(p),
+  markNotificationRead: (p: string) =>
+    notificationsBackend.markNotificationRead(p),
+  markAllNotificationsRead: (p: string) =>
+    notificationsBackend.markAllNotificationsRead(p),
+  deleteNotification: (p: string) =>
+    notificationsBackend.deleteNotification(p),
+} as const;
+
+type OutboxKind = keyof typeof OUTBOX_EXECUTORS;
+type OutboxPayload<K extends OutboxKind> = Parameters<
+  (typeof OUTBOX_EXECUTORS)[K]
+>[0];
+
+/** Mirror the outbox depth into store state so the sync chip can render it. */
+function syncPendingWriteCount(): void {
+  const count = outboxOps.length;
+  if (useAppStore.getState().pendingWriteCount !== count) {
+    useAppStore.setState({ pendingWriteCount: count });
+  }
+}
+
+/** "insertJobIssue" → "insert job issue" for the failure notification body. */
+function humanizeKind(kind: string): string {
+  return kind
+    .replace(/([A-Z])/g, ' $1')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Device-local "couldn't save" notification — never written to the DB (it
+ * describes THIS device's sync queue). Pops the toaster and lands on the bell
+ * so a rejected change is impossible to miss.
+ */
+function notifySaveFailed(workerId: string, what: string): void {
+  useAppStore.getState().receiveNotification({
+    id: uuid(),
+    recipientId: workerId,
+    type: 'save_failed',
+    title: "A change couldn't be saved",
+    body: `Your ${what} was rejected by the server and has been discarded — please redo it or contact the office.`,
+    read: false,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Queue a Supabase mutation, device-first. The op lands in the persistent
+ * outbox and the flusher pushes it (and everything queued before it) in order.
+ * On success the store's `savedTick` bumps so the desktop sidebar can pop a
+ * "Changes Saved" pill — backendActive gates every caller, so local dev mode
+ * and the Developer never queue anything.
+ *
+ * `guard` registers the touched row in its guard map until the op settles, so
+ * refetch merges keep the local version meanwhile.
+ */
+function write<K extends OutboxKind>(
+  kind: K,
+  payload: OutboxPayload<K>,
+  guard?: OutboxGuard
+): void {
+  const me = useAppStore.getState().authWorker;
+  const op: OutboxOp = {
+    id: uuid(),
+    kind,
+    payload,
+    workerId: me?.id ?? '',
+    guard,
+    queuedAt: new Date().toISOString(),
+  };
+  outboxOps.push(op);
+  if (guard) {
+    outboxGuardReleases.set(
+      op.id,
+      trackPending(GUARD_MAPS[guard.map], guard.id)
+    );
+  }
+  persistOutbox();
+  syncPendingWriteCount();
+  void flushOutbox();
+}
+
+/**
+ * Bump a per-row refcount and return the matching release. Rows in one of the
+ * guard maps keep their LOCAL version during a refetch merge, so a stale
+ * snapshot can't revert them while their write is still queued.
+ */
+function trackPending(map: Map<string, number>, id: string): () => void {
+  map.set(id, (map.get(id) ?? 0) + 1);
+  return () => {
+    const left = (map.get(id) ?? 1) - 1;
+    if (left <= 0) map.delete(id);
+    else map.set(id, left);
+  };
+}
+
+/** Mirror the outbox to AsyncStorage under the signed-in worker's key. */
+function persistOutbox(): void {
+  const me = useAppStore.getState().authWorker;
+  if (!me) return;
+  AsyncStorage.setItem(
+    OUTBOX_KEY_PREFIX + me.id,
+    JSON.stringify(outboxOps)
+  ).catch(() => {});
+}
+
+/**
+ * Load `workerId`'s persisted outbox (queued when the app last closed) in
+ * front of anything queued this session, and re-arm each op's row guard.
+ * Idempotent: ops already in memory aren't duplicated.
+ */
+async function restoreOutbox(workerId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(OUTBOX_KEY_PREFIX + workerId);
+    if (!raw) return;
+    const stored = (JSON.parse(raw) as OutboxOp[]).filter(
+      (op) =>
+        op.workerId === workerId && !outboxOps.some((q) => q.id === op.id)
+    );
+    if (stored.length === 0) return;
+    outboxOps = [...stored, ...outboxOps];
+    for (const op of stored) {
+      if (op.guard) {
+        outboxGuardReleases.set(
+          op.id,
+          trackPending(GUARD_MAPS[op.guard.map], op.guard.id)
+        );
+      }
+    }
+    syncPendingWriteCount();
+  } catch {
+    // Unreadable queue — nothing recoverable.
+  }
+}
+
+/** Heuristic: transport failures retry; anything else is a database rejection. */
+function looksLikeNetworkError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /network|fetch|timeout|timed out|socket|connection|offline/i.test(
+    message
   );
+}
+
+function scheduleOutboxRetry(): void {
+  if (outboxRetryTimer) return;
+  outboxRetryTimer = setTimeout(() => {
+    outboxRetryTimer = null;
+    void flushOutbox();
+  }, OUTBOX_RETRY_MS);
+}
+
+/** Drop a settled op (delivered or permanently rejected) and free its guard. */
+function settleOutboxOp(op: OutboxOp): void {
+  // Filter (not shift) so a sign-out reassigning `outboxOps` mid-flush can't
+  // make this remove the wrong entry.
+  outboxOps = outboxOps.filter((q) => q.id !== op.id);
+  outboxGuardReleases.get(op.id)?.();
+  outboxGuardReleases.delete(op.id);
+  persistOutbox();
+  syncPendingWriteCount();
+}
+
+/**
+ * Push queued ops oldest-first until the queue is empty or unreachable. A
+ * network failure parks the whole queue (order is preserved) and retries every
+ * 30s; a database rejection (RLS, constraint) drops that op — everything
+ * behind it would jam forever otherwise — with a loud console error.
+ */
+async function flushOutbox(): Promise<void> {
+  if (outboxFlushing) return;
+  outboxFlushing = true;
+  writesInFlight++;
+  try {
+    for (;;) {
+      const state = useAppStore.getState();
+      const op = outboxOps[0];
+      if (!op) return;
+      // Ops replay as their author — parked (on disk) while anyone else, or
+      // nobody, is signed in.
+      if (!backendActive(state) || op.workerId !== state.authWorker?.id) {
+        return;
+      }
+      try {
+        await OUTBOX_EXECUTORS[op.kind](op.payload as never);
+        useAppStore.getState().signalSaved();
+      } catch (e) {
+        if (looksLikeNetworkError(e)) {
+          scheduleOutboxRetry();
+          return;
+        }
+        console.error(
+          `Supabase write failed permanently (${op.kind}) — change not saved:`,
+          e
+        );
+        notifySaveFailed(op.workerId, `“${humanizeKind(op.kind)}” change`);
+      }
+      settleOutboxOp(op);
+    }
+  } finally {
+    outboxFlushing = false;
+    writesInFlight--;
+    if (writesInFlight === 0 && refreshDeferred) {
+      refreshDeferred = false;
+      scheduleBackendRefresh();
+    }
+  }
+}
+
+/**
+ * Debounced full refetch off the realtime channel. Deferred while the flusher
+ * is actively writing — the refetch would race it — and re-armed when it
+ * settles (whose own realtime echo also lands here).
+ */
+function scheduleBackendRefresh(): void {
+  if (dataRefreshTimer) clearTimeout(dataRefreshTimer);
+  dataRefreshTimer = setTimeout(() => {
+    dataRefreshTimer = null;
+    if (writesInFlight > 0) {
+      refreshDeferred = true;
+      return;
+    }
+    useAppStore
+      .getState()
+      .refreshBackendData()
+      .catch((e) => console.warn('Realtime data refresh failed.', e));
+  }, 300);
 }
 
 /**
@@ -279,6 +594,13 @@ interface AppState {
    */
   authResolved: boolean;
   /**
+   * Live connectivity (fed by NetInfo at the app root). Drives the offline UI
+   * (sync chip, photo-area messages) and the flush-on-reconnect pushes.
+   */
+  isOnline: boolean;
+  /** Outbox depth — queued writes not yet delivered (mirrored for the UI). */
+  pendingWriteCount: number;
+  /**
    * True while the session came from a password-recovery link (the Supabase
    * `PASSWORD_RECOVERY` event). The layouts route to /set-password so the user
    * can choose a new password instead of landing on their home page. Cleared
@@ -349,6 +671,8 @@ interface AppState {
   setAuthWorker: (worker: Worker | null) => void;
   /** Mark the initial Supabase session lookup as complete. */
   setAuthResolved: (resolved: boolean) => void;
+  /** Reflect connectivity; coming back online pushes queued work immediately. */
+  setOnline: (online: boolean) => void;
   /** Flag/clear the password-recovery session (drives the reset redirect). */
   setPasswordRecovery: (recovery: boolean) => void;
   /** Edit the current (effective) worker's own profile. */
@@ -599,6 +923,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   flashTick: 0,
   devMode: false,
   authResolved: false,
+  isOnline: true,
+  pendingWriteCount: 0,
   passwordRecovery: false,
   activeShift: null,
   qbt: {
@@ -627,6 +953,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAuthWorker: (worker) => set({ authWorker: worker }),
 
   setAuthResolved: (authResolved) => set({ authResolved }),
+
+  setOnline: (online) => {
+    if (get().isOnline === online) return;
+    set({ isOnline: online });
+    // Back online: push queued work right away (instead of waiting out the 30s
+    // retry timers) and pull whatever changed while we were dark.
+    if (online && backendActive(get())) {
+      void flushOutbox();
+      get().retryPhotoUploads();
+      scheduleBackendRefresh();
+    }
+  },
 
   setPasswordRecovery: (passwordRecovery) => {
     // Mirror the flag in sessionStorage (web): the recovery hash that raised it
@@ -674,28 +1012,62 @@ export const useAppStore = create<AppState>((set, get) => ({
     // NOT push the JWT to Realtime, so without this every RLS-protected
     // subscription below would silently receive nothing. Tolerant of failure so a
     // hiccup here never blocks hydration.
+    const me0 = get().authWorker;
+    // Offline-first reads: fill the screen from the on-device cache right away
+    // (photos stay out of it — offline photo areas show a connect message);
+    // the live fetch below replaces everything when there's a connection.
+    if (me0) {
+      const cached = await loadDataCache(me0.id);
+      if (cached) {
+        set({
+          workers: cached.workers,
+          jobs: cached.jobs,
+          jobcards: cached.jobcards,
+          crews: cached.crews,
+          dailyCrews: cached.dailyCrews,
+          assignments: cached.assignments,
+          logs: cached.logs,
+          jobIssues: cached.jobIssues,
+        });
+      }
+    }
     try {
       await syncRealtimeAuth();
     } catch (e) {
       console.warn('Realtime auth sync failed; live updates may not work.', e);
     }
-    const data = await backend.fetchAllData();
-    set({
-      workers: data.workers,
-      jobs: data.jobs,
-      jobcards: data.jobcards,
-      crews: data.crews,
-      dailyCrews: data.dailyCrews,
-      assignments: data.assignments,
-      logs: data.logs,
-      jobPhotos: data.jobPhotos,
-      jobIssues: data.jobIssues,
-    });
+    try {
+      const data = await backend.fetchAllData();
+      set({
+        workers: data.workers,
+        jobs: data.jobs,
+        jobcards: data.jobcards,
+        crews: data.crews,
+        dailyCrews: data.dailyCrews,
+        assignments: data.assignments,
+        logs: data.logs,
+        jobPhotos: data.jobPhotos,
+        jobIssues: data.jobIssues,
+      });
+      if (me0) {
+        persistDataCache(me0.id, data);
+        // Flashing-material photos must render on site — pull them into the
+        // image disk cache while there's signal.
+        prefetchFlashingPhotos(data.jobs);
+      }
+    } catch (e) {
+      // No signal (or backend down): the cache above keeps the app usable, the
+      // realtime channel below reconnects on its own, and setOnline pulls
+      // fresh data the moment connectivity returns.
+      console.warn('Live data fetch failed; showing cached data.', e);
+    }
     // Resume photo uploads that were still queued when the app last closed
     // (their files were stashed in app storage). Restored entries are this
     // worker's own — another account's queue stays parked until they sign in.
-    const me0 = get().authWorker;
     if (me0) {
+      // Replay writes queued before the app last closed (offline edits).
+      await restoreOutbox(me0.id);
+      void flushOutbox();
       const restored = await restorePendingPhotos(me0.id);
       if (restored.length) {
         set((state) => ({
@@ -727,15 +1099,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // in so this session's lists (e.g. the scheduler's backlog) update without a
     // manual refresh. Debounced because one logical change can emit several row
     // events (e.g. a job plus its job_field_supers rows).
-    backend.subscribeAllData(() => {
-      if (dataRefreshTimer) clearTimeout(dataRefreshTimer);
-      dataRefreshTimer = setTimeout(() => {
-        dataRefreshTimer = null;
-        get()
-          .refreshBackendData()
-          .catch((e) => console.warn('Realtime data refresh failed.', e));
-      }, 300);
-    });
+    backend.subscribeAllData(() => scheduleBackendRefresh());
     // Sweep for due priority windows now and hourly, so a card whose end date
     // arrives while a session sits open still escalates (and pings) that day.
     get().escalateDuePriorities();
@@ -751,10 +1115,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       workers: data.workers,
       jobs: data.jobs,
-      // Cards with task check-offs still waiting on their (debounced) write
-      // keep the LOCAL task list — the fetched rows predate those toggles.
+      // Cards with task check-offs still in their debounce window OR with a
+      // queued write keep the LOCAL task list — fetched rows predate those.
       jobcards: data.jobcards.map((card) =>
-        pendingTaskCardIds.has(card.id)
+        pendingTaskCardIds.has(card.id) || pendingJobcardTaskWrites.has(card.id)
           ? {
               ...card,
               tasks:
@@ -767,9 +1131,38 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: data.dailyCrews,
       assignments: data.assignments,
       logs: data.logs,
-      jobPhotos: data.jobPhotos,
-      jobIssues: data.jobIssues,
+      // Photos with a queued note write keep the LOCAL note. (No local row —
+      // e.g. right after a fresh launch restored the queue — keeps fetched.)
+      jobPhotos: data.jobPhotos.map((photo) => {
+        if (!pendingPhotoNotes.has(photo.id)) return photo;
+        const local = state.jobPhotos.find((p) => p.id === photo.id);
+        return local ? { ...photo, note: local.note } : photo;
+      }),
+      // Issues with unsettled writes keep their local shape: pending deletes
+      // stay gone, pending inserts/updates keep the local row (including ones
+      // the fetched snapshot predates entirely).
+      jobIssues: [
+        ...state.jobIssues.filter(
+          (issue) =>
+            pendingIssueUpserts.has(issue.id) &&
+            !data.jobIssues.some((f) => f.id === issue.id)
+        ),
+        ...data.jobIssues
+          .filter((issue) => !pendingIssueDeletes.has(issue.id))
+          .map((issue) =>
+            pendingIssueUpserts.has(issue.id)
+              ? (state.jobIssues.find((i) => i.id === issue.id) ?? issue)
+              : issue
+          ),
+      ],
     }));
+    // Keep the offline cache tracking the server (raw fetched state — queued
+    // local edits are re-applied by the outbox replay, not the cache).
+    const me = get().authWorker;
+    if (me) {
+      persistDataCache(me.id, data);
+      prefetchFlashingPhotos(data.jobs);
+    }
   },
 
   clearData: () => {
@@ -782,6 +1175,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     for (const timer of taskPushTimers.values()) clearTimeout(timer);
     taskPushTimers.clear();
     pendingTaskCardIds.clear();
+    refreshDeferred = false;
+    pendingIssueUpserts.clear();
+    pendingIssueDeletes.clear();
+    pendingPhotoNotes.clear();
+    pendingJobcardTaskWrites.clear();
+    // Park (don't drop) queued writes: the in-memory queue clears but the
+    // persisted copy stays under the owner's key for their next sign-in.
+    if (outboxRetryTimer) {
+      clearTimeout(outboxRetryTimer);
+      outboxRetryTimer = null;
+    }
+    outboxOps = [];
+    outboxGuardReleases.clear();
+    set({ pendingWriteCount: 0 });
     if (escalationTimer) {
       clearInterval(escalationTimer);
       escalationTimer = null;
@@ -830,7 +1237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }),
       };
     });
-    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+    if (backendActive(get()) && updated) write('updateWorker', updated);
   },
 
   addWorker: (worker) => {
@@ -856,12 +1263,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...state.authWorker, ...changes }
           : state.authWorker,
     }));
-    if (backendActive(get()) && updated) write(backend.updateWorker(updated));
+    if (backendActive(get()) && updated) write('updateWorker', updated);
   },
 
   removeWorker: (id) => {
     set((state) => ({ workers: state.workers.filter((w) => w.id !== id) }));
-    if (backendActive(get())) write(backend.deleteWorker(id));
+    if (backendActive(get())) write('deleteWorker', id);
   },
 
   setWorkerRole: (id, role) => {
@@ -877,7 +1284,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...state.authWorker, role }
           : state.authWorker,
     }));
-    if (backendActive(get()) && updated) write(backend.updateWorkerRole(id, role));
+    if (backendActive(get()) && updated) write('updateWorkerRole', { id, role });
   },
 
   setWorkerRate: (id, hourlyRate) => {
@@ -893,7 +1300,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? { ...state.authWorker, hourlyRate }
           : state.authWorker,
     }));
-    if (backendActive(get()) && updated) write(backend.updateWorkerRate(id, hourlyRate));
+    if (backendActive(get()) && updated) write('updateWorkerRate', { id, hourlyRate });
   },
 
   addJob: (job) => {
@@ -906,7 +1313,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ jobs: [created, ...state.jobs] }));
     // insertJob writes both the job row and its Field Super assignments
     // (job_field_supers).
-    if (isBackend) write(backend.insertJob(created));
+    if (isBackend) write('insertJob', created);
     return created;
   },
 
@@ -925,9 +1332,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       // fieldSuperIds is actually part of this edit — a Field Super saving
       // flashing material must not hit job_field_supers (they have no write
       // grant there).
-      write(backend.updateJob(updated));
+      write('updateJob', updated);
       if ('fieldSuperIds' in changes) {
-        write(backend.setJobFieldSupers(id, updated.fieldSuperIds ?? []));
+        write('setJobFieldSupers', {
+          jobId: id,
+          fieldSuperIds: updated.fieldSuperIds ?? [],
+        });
       }
     }
   },
@@ -949,7 +1359,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     // The DB cascade handles jobcards/assignments server-side; we only fire the
     // job delete.
-    if (backendActive(get())) write(backend.deleteJob(id));
+    if (backendActive(get())) write('deleteJob', id);
   },
 
   addJobcard: (card) => {
@@ -980,7 +1390,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: card.createdAt ?? new Date().toISOString(),
     };
     set({ jobcards: [created, ...state.jobcards] });
-    if (isBackend) write(backend.insertJobcard(created));
+    if (isBackend) write('insertJobcard', created);
     // A brand-new "Now" card pings the schedulers right away.
     if (created.priority === 'Now') notifyNowJobcard(get, created);
     return created;
@@ -998,7 +1408,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+    if (backendActive(get()) && updated) write('updateJobcard', updated);
     // Ping only on the transition INTO "Now" — re-saving an already-"Now" card
     // (or any other edit) must not re-notify.
     if (updated && updated.priority === 'Now' && !wasNow) {
@@ -1039,7 +1449,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       assignments: state.assignments.filter((a) => a.jobcardId !== id),
     }));
     // The DB cascades assignments server-side; we only fire the card delete.
-    if (backendActive(get())) write(backend.deleteJobcard(id));
+    if (backendActive(get())) write('deleteJobcard', id);
   },
 
   updateJobcardNotes: (id, fieldNotes) => {
@@ -1051,7 +1461,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+    if (backendActive(get()) && updated) write('updateJobcard', updated);
   },
 
   setJobcardStatus: (jobcardId, status) => {
@@ -1063,7 +1473,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobcard(updated));
+    if (backendActive(get()) && updated) write('updateJobcard', updated);
   },
 
   setJobcardTaskDone: (jobcardId, taskId, done) => {
@@ -1101,11 +1511,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             pendingTaskCardIds.delete(jobcardId);
             return;
           }
-          write(
-            backend
-              .updateJobcard(card)
-              .finally(() => pendingTaskCardIds.delete(jobcardId))
-          );
+          // The queued-op guard takes over from the debounce-window Set.
+          pendingTaskCardIds.delete(jobcardId);
+          write('updateJobcard', card, {
+            map: 'jobcardTasks',
+            id: jobcardId,
+          });
         }, TASK_PUSH_DELAY_MS)
       );
     }
@@ -1139,7 +1550,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       installerIds: onlyInstallerIds(state.workers, crew.installerIds),
     };
     set({ crews: [...state.crews, created] });
-    if (isBackend) write(backend.insertCrew(created));
+    if (isBackend) write('insertCrew', created);
     return created;
   },
 
@@ -1158,12 +1569,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateCrew(updated));
+    if (backendActive(get()) && updated) write('updateCrew', updated);
   },
 
   removeCrew: (id) => {
     set((state) => ({ crews: state.crews.filter((crew) => crew.id !== id) }));
-    if (backendActive(get())) write(backend.deleteCrew(id));
+    if (backendActive(get())) write('deleteCrew', id);
   },
 
   addDailyCrew: (crew) => {
@@ -1175,7 +1586,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       installerIds: onlyInstallerIds(state.workers, crew.installerIds),
     };
     set({ dailyCrews: [...state.dailyCrews, created] });
-    if (isBackend) write(backend.insertDailyCrew(created));
+    if (isBackend) write('insertDailyCrew', created);
     return created;
   },
 
@@ -1194,14 +1605,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateDailyCrew(updated));
+    if (backendActive(get()) && updated) write('updateDailyCrew', updated);
   },
 
   removeDailyCrew: (id) => {
     set((state) => ({
       dailyCrews: state.dailyCrews.filter((crew) => crew.id !== id),
     }));
-    if (backendActive(get())) write(backend.deleteDailyCrew(id));
+    if (backendActive(get())) write('deleteDailyCrew', id);
   },
 
   assignJobcard: (jobcardId, crewId, date) => {
@@ -1220,7 +1631,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       date,
     };
     set({ assignments: [...state.assignments, created] });
-    if (isBackend) write(backend.insertAssignment(created));
+    if (isBackend) write('insertAssignment', created);
     // A card joining TODAY's board pings that crew's installers. A future-dated
     // assignment is silent (only same-day changes notify).
     if (date === todayStr()) {
@@ -1243,7 +1654,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       assignments: state.assignments.filter((a) => a.id !== assignmentId),
     });
-    if (backendActive(state)) write(backend.deleteAssignment(assignmentId));
+    if (backendActive(state)) write('deleteAssignment', assignmentId);
     // Removing a card from TODAY's board pings the affected installers. Resolve
     // the audience against pre-removal state (the assignment still exists there).
     if (removed && removed.date === todayStr()) {
@@ -1288,7 +1699,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sendStatus: 'unsent',
     };
     set({ activeShift: null, logs: [log, ...state.logs] });
-    if (isBackend) write(backend.insertTimesheet(log));
+    if (isBackend) write('insertTimesheet', log);
     return log;
   },
 
@@ -1349,7 +1760,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }),
       };
     });
-    if (backendActive(get()) && updatedLog) write(backend.updateTimesheet(updatedLog));
+    if (backendActive(get()) && updatedLog) write('updateTimesheet', updatedLog);
   },
 
   deleteLog: (logId) => {
@@ -1361,7 +1772,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         qbt: { ...state.qbt, sync },
       };
     });
-    if (backendActive(get())) write(backend.deleteTimesheet(logId));
+    if (backendActive(get())) write('deleteTimesheet', logId);
   },
 
   addLog: (entry) => {
@@ -1383,7 +1794,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sendStatus: 'unsent',
     };
     set({ logs: [log, ...state.logs] });
-    if (isBackend) write(backend.insertTimesheet(log));
+    if (isBackend) write('insertTimesheet', log);
     return log;
   },
 
@@ -1458,7 +1869,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && found) {
-      write(backend.updateJobPhotoNote(id, value));
+      write('updateJobPhotoNote', { id, note: value }, { map: 'photoNote', id });
     }
   },
 
@@ -1479,7 +1890,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!photo) return;
     set((s) => ({ jobPhotos: s.jobPhotos.filter((p) => p.id !== id) }));
     if (backendActive(state) && photo.storagePath) {
-      write(backend.deleteJobPhoto(id, photo.storagePath));
+      write('deleteJobPhoto', { id, storagePath: photo.storagePath });
     }
   },
 
@@ -1536,7 +1947,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
     set({ jobIssues: [created, ...state.jobIssues] });
-    if (isBackend) write(backend.insertJobIssue(created));
+    if (isBackend) {
+      write('insertJobIssue', created, { map: 'issueUpsert', id: created.id });
+    }
     return created;
   },
 
@@ -1549,7 +1962,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobIssue(updated));
+    if (backendActive(get()) && updated) {
+      write('updateJobIssue', updated, { map: 'issueUpsert', id });
+    }
   },
 
   setJobIssueResolved: (id, resolved) => {
@@ -1574,7 +1989,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write(backend.updateJobIssue(updated));
+    if (backendActive(get()) && updated) {
+      write('updateJobIssue', updated, { map: 'issueUpsert', id });
+    }
   },
 
   deleteJobIssue: (id) => {
@@ -1592,7 +2009,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Keep the persisted queue in step so a restarted upload can't reference
     // the deleted issue.
     persistPendingPhotos(get().pendingPhotos);
-    if (backendActive(get())) write(backend.deleteJobIssue(id));
+    if (backendActive(get())) {
+      write('deleteJobIssue', id, { map: 'issueDelete', id });
+    }
   },
 
   markTimesheetsSent: () => {
@@ -1603,7 +2022,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         log.sendStatus === 'sent' ? log : { ...log, sendStatus: 'sent' }
       ),
     }));
-    if (backendActive(get())) write(backend.markTimesheetsSentRemote());
+    if (backendActive(get())) write('markTimesheetsSentRemote', null);
   },
 
   pushNotification: (input) => {
@@ -1612,18 +2031,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(state)) {
       // One row per recipient; realtime fans each out to its owner's session.
       for (const recipientId of input.recipientIds) {
-        write(
-          notificationsBackend.insertNotification({
-            id: uuid(),
-            recipientId,
-            type: input.type,
-            title: input.title,
-            body: input.body,
-            data: input.data,
-            read: false,
-            createdAt,
-          })
-        );
+        write('insertNotification', {
+          id: uuid(),
+          recipientId,
+          type: input.type,
+          title: input.title,
+          body: input.body,
+          data: input.data,
+          read: false,
+          createdAt,
+        });
       }
       return;
     }
@@ -1655,7 +2072,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         n.id === id ? { ...n, read: true } : n
       ),
     }));
-    if (backendActive(get())) write(notificationsBackend.markNotificationRead(id));
+    if (backendActive(get())) write('markNotificationRead', id);
   },
 
   markAllNotificationsRead: () => {
@@ -1667,7 +2084,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     if (backendActive(get())) {
-      write(notificationsBackend.markAllNotificationsRead(me.id));
+      write('markAllNotificationsRead', me.id);
     }
   },
 
@@ -1675,7 +2092,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     }));
-    if (backendActive(get())) write(notificationsBackend.deleteNotification(id));
+    if (backendActive(get())) write('deleteNotification', id);
   },
 
   setQbtConfig: (changes) =>
@@ -1808,6 +2225,19 @@ async function processPhotoQueue(): Promise<void> {
         useAppStore.getState().signalSaved();
         void discardPhotoFile(current.localUri);
       } catch (e) {
+        if (!looksLikeNetworkError(e)) {
+          // The server REJECTED this photo (policy / bad row) — a retry can
+          // never succeed and would jam everything behind it. Drop it and
+          // tell the photographer.
+          console.error('Job photo rejected by the server; dropped:', e);
+          notifySaveFailed(next.workerId, 'photo');
+          useAppStore.setState((s) => ({
+            pendingPhotos: s.pendingPhotos.filter((p) => p.id !== next.id),
+          }));
+          persistPendingPhotos(useAppStore.getState().pendingPhotos);
+          void discardPhotoFile(next.localUri);
+          continue;
+        }
         console.error('Job photo upload failed; retrying shortly:', e);
         useAppStore.setState((s) => ({
           pendingPhotos: s.pendingPhotos.map((p) =>

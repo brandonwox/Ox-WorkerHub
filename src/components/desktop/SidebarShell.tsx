@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AuthControl } from '@/components/AuthControl';
 import { NotificationBell } from '@/components/desktop/NotificationBell';
+import { SyncStatusChip } from '@/components/SyncStatusChip';
 import { SystemFlash } from '@/components/desktop/SystemFlash';
 import { SystemMessages } from '@/components/desktop/SystemMessages';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
@@ -65,9 +66,10 @@ export function SidebarShell({ navItems, children }: Props) {
           </View>
         </View>
 
-        {/* System area pinned to the bottom: persistent messages sit right above
-            the transient flash pill. */}
+        {/* System area pinned to the bottom: sync status, then persistent
+            messages, then the transient flash pill. */}
         <View style={styles.systemArea}>
+          <SyncStatusChip variant="sidebar" />
           <SystemMessages />
           <SystemFlash />
         </View>

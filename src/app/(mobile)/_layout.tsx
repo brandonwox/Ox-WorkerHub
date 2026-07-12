@@ -3,6 +3,7 @@ import { Redirect, Tabs, usePathname } from 'expo-router';
 import { Platform, View } from 'react-native';
 
 import { NotificationToaster } from '@/components/NotificationToaster';
+import { SyncStatusChip } from '@/components/SyncStatusChip';
 import {
   desktopHomeHref,
   MOBILE_NAV,
@@ -88,6 +89,7 @@ export default function MobileTabsLayout() {
         ))}
       </Tabs>
       <NotificationToaster />
+      <SyncStatusChip variant="floating" />
     </View>
   );
 }
