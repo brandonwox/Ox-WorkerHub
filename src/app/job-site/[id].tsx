@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -9,7 +10,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
+import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
@@ -19,13 +25,14 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
- * A parent Job's page: jobsite info and its photo wall. Installers open it from
- * the Pics tab; the camera button captures new photos straight onto the job.
- * On web (no live camera) the capture button is replaced by file upload only.
+ * A parent Job's page: a cover photo, jobsite info, issues, and the photo
+ * wall. Installers open it from the Jobs tab. Capture/upload live as icon
+ * buttons floating at the bottom (no live camera on web — upload only there).
  */
 export default function JobSiteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const job = useAppStore((s) => s.jobs.find((j) => j.id === id));
   const workers = useAppStore((s) => s.workers);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
@@ -60,6 +67,14 @@ export default function JobSiteScreen() {
     [job, workers]
   );
 
+  // Newest photo doubles as the page's cover image.
+  const coverPhoto = photos[0];
+
+  const close = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace(Platform.OS === 'web' ? '/installer-pics' : '/pics');
+  };
+
   if (!job) {
     return (
       <View style={[styles.screen, styles.center]}>
@@ -80,7 +95,7 @@ export default function JobSiteScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
           of the page and it can't be scrolled fully into view. */}
       <ScrollView
@@ -88,6 +103,41 @@ export default function JobSiteScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.topRow}>
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            hitSlop={12}
+            onPress={close}
+          >
+            <Feather name="x" size={26} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+
+        {/* Cover: the job's newest photo (tap to view); a quiet placeholder
+            until the job has photos. */}
+        {coverPhoto ? (
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            onPress={() =>
+              setViewer({
+                photos,
+                index: 0,
+              })
+            }
+          >
+            <Image
+              source={{ uri: coverPhoto.url }}
+              style={styles.cover}
+              contentFit="cover"
+              transition={120}
+            />
+          </Pressable>
+        ) : (
+          <View style={[styles.cover, styles.coverEmpty]}>
+            <Feather name="image" size={28} color={colors.textTertiary} />
+          </View>
+        )}
+
         <View style={styles.header}>
           <Text style={styles.title}>{job.name}</Text>
           {job.status === 'Finished' && (
@@ -97,7 +147,7 @@ export default function JobSiteScreen() {
           )}
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.infoBlock}>
           <View style={styles.infoRow}>
             <Feather name="map-pin" size={15} color={colors.textSecondary} />
             <Text style={styles.infoValue}>
@@ -108,63 +158,34 @@ export default function JobSiteScreen() {
             <Feather name="user" size={15} color={colors.textSecondary} />
             <Text style={styles.infoValue}>
               {fieldSupers.length
-                ? `Field Super: ${fieldSupers.join(', ')}`
+                ? fieldSupers.join(', ')
                 : 'No Field Super assigned'}
             </Text>
           </View>
         </View>
 
-        <View style={styles.actionsRow}>
-          {Platform.OS !== 'web' && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.cameraButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={() =>
-                router.push({
-                  pathname: '/camera/[jobId]',
-                  params: { jobId: job.id },
-                })
-              }
-            >
-              <Feather name="camera" size={18} color={colors.textOnAccent} />
-              <Text style={styles.cameraButtonText}>Take Photos</Text>
-            </Pressable>
-          )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.uploadButton,
-              pressed && styles.pressed,
-            ]}
-            onPress={uploadFromLibrary}
-            disabled={picking}
-          >
-            <Feather name="upload" size={17} color={colors.primary} />
-            <Text style={styles.uploadButtonText}>
-              {picking ? 'Opening…' : 'Upload'}
-            </Text>
-          </Pressable>
-        </View>
-
         {/* Field issues raised on this job's cards, with a link back to each
-            card. Field Supers resolve them from here. */}
+            card. Field Supers resolve them from here. Long lists collapse
+            behind a "View all" toggle. */}
         {issues.length > 0 && (
           <View style={styles.issuesSection}>
             <Text style={styles.issuesHeader}>Issues</Text>
-            {issues.map((issue) => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                showJobcardLink
-                onPhotoPress={(photo, all) =>
-                  setViewer({
-                    photos: all,
-                    index: all.findIndex((p) => p.id === photo.id),
-                  })
-                }
-              />
-            ))}
+            <CollapsibleIssueList
+              issues={issues}
+              renderIssue={(issue) => (
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  showJobcardLink
+                  onPhotoPress={(photo, all) =>
+                    setViewer({
+                      photos: all,
+                      index: all.findIndex((p) => p.id === photo.id),
+                    })
+                  }
+                />
+              )}
+            />
           </View>
         )}
 
@@ -179,12 +200,47 @@ export default function JobSiteScreen() {
         />
       </ScrollView>
 
+      {/* Floating capture bar: icon-only camera (native) + upload, centered. */}
+      <View
+        style={[styles.actionBar, { bottom: insets.bottom + spacing.lg }]}
+        pointerEvents="box-none"
+      >
+        {Platform.OS !== 'web' && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.cameraFab,
+              pressed && styles.pressed,
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: '/camera/[jobId]',
+                params: { jobId: job.id },
+              })
+            }
+            accessibilityLabel="Take photos"
+          >
+            <Feather name="camera" size={24} color={colors.textOnAccent} />
+          </Pressable>
+        )}
+        <Pressable
+          style={({ pressed }) => [
+            styles.uploadFab,
+            (pressed || picking) && styles.pressed,
+          ]}
+          onPress={uploadFromLibrary}
+          disabled={picking}
+          accessibilityLabel="Upload photos"
+        >
+          <Feather name="upload" size={20} color={colors.primary} />
+        </Pressable>
+      </View>
+
       <PhotoViewerModal
         photos={viewer?.photos ?? []}
         initialIndex={viewer?.index ?? null}
         onClose={() => setViewer(null)}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -205,7 +261,22 @@ const styles = themed(() => StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: spacing.xxl,
+    // Clears the floating capture bar so the last grid rows stay reachable.
+    paddingBottom: spacing.xxl * 3,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cover: {
+    width: '100%',
+    height: 190,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceLight,
+  },
+  coverEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -231,10 +302,7 @@ const styles = themed(() => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
+  infoBlock: {
     gap: spacing.md,
   },
   infoRow: {
@@ -248,10 +316,6 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 14,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
   issuesSection: {
     gap: spacing.md,
   },
@@ -262,36 +326,34 @@ const styles = themed(() => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  cameraButton: {
-    flex: 1,
+  actionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: spacing.lg,
+  },
+  cameraFab: {
+    width: 60,
+    height: 60,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.primary,
+    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.25)',
+  },
+  uploadFab: {
+    width: 48,
+    height: 48,
     borderRadius: radii.pill,
-    paddingVertical: spacing.md + 2,
-  },
-  cameraButtonText: {
-    color: colors.textOnAccent,
-    fontFamily: fonts.bold,
-    fontSize: 15,
-  },
-  uploadButton: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.primary,
-    paddingVertical: spacing.md + 2,
-  },
-  uploadButtonText: {
-    color: colors.primary,
-    fontFamily: fonts.bold,
-    fontSize: 15,
+    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.18)',
   },
   pressed: {
     opacity: 0.85,

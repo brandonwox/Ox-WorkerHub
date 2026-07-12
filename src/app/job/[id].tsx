@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
+import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
@@ -426,19 +427,22 @@ export default function JobDetailsScreen() {
                 <Text style={styles.infoLabel}>Issues</Text>
               </View>
             </View>
-            {orphanIssues.map((issue) => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                editable
-                onPhotoPress={(photo, all) =>
-                  setViewer({
-                    photos: all,
-                    index: all.findIndex((p) => p.id === photo.id),
-                  })
-                }
-              />
-            ))}
+            <CollapsibleIssueList
+              issues={orphanIssues}
+              renderIssue={(issue) => (
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  editable
+                  onPhotoPress={(photo, all) =>
+                    setViewer({
+                      photos: all,
+                      index: all.findIndex((p) => p.id === photo.id),
+                    })
+                  }
+                />
+              )}
+            />
           </View>
         )}
       </ScrollView>

@@ -4,21 +4,15 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+installer viewing their schedule: 
+- jobcards do not need to show priority. jobcard priority is not for the installers, they dont need to worry about it.
+- the jobcard should show the parent job on the jobcard (when viewing their daily schedule.)
+
+mobile: the bottom bar icons sit a little high, can we lower them slightly.
+
 in the settings theres a new password option: they should have to click a button that says "Change Password" that opens a popup for them to change their password.
 
 web needs a way to access settings: Let's change the log out button at the top of the screen. add a profile image to the left of their name. and instead of signing them out, it opens a large settings page, the sign out button at the bottom of the settings page.
-
-installer -> jobs tab -> job details (viewing a specific job):
-look at the attached image to see how I want to redesign the job details page.
-specifics:
-1. get rid of the "Job Photos" label entirely.
-2. the back button should just be an x instead of saying "< (mobile)".
-3. add a photo above the job name
-4. remove the background color behind the job location and field super name (and when displaying the field supers name just display their name, you don't need to display "Field Super:) (i like the icons on the left of these details, keep that)
-5. it's not in the attached image that we're getting inspiration from, but we need to keep the "Issues" section.
-6. move the "Take Photos" button to the bottom of the page, center it, and swap the typography for an icon instead. move the "upload" button to the same location and replace it with an icon.
-
-if there are a lot of issues on a job, rather than displaying each issue it should display a few, then have a display all issues button that opens a dropdown of every issue where the user can scroll through all the issues. (this should be for both jobcards and jobs).
 
 in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
 
@@ -47,6 +41,10 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+installer job details page redesign: no more "Job Photos" nav header — the page has a plain X close button top-left instead of the "< (mobile)" back button. The job's newest photo shows as a cover image above the job name (tap it to open the viewer; quiet placeholder until the job has photos). Location and Field Super rows lost their card background (icons kept, and it now shows just the supers' names without the "Field Super:" prefix). The Issues section stays. Take Photos and Upload became icon-only round buttons floating centered at the bottom of the page (camera is native-only as before; web shows upload alone).
+
+issues collapse: when a job or jobcard has more than 3 issues, only the first 3 show, followed by a "View all n issues" button that expands the full scrollable list in place (and a "Show fewer issues" to re-collapse). Applied to the job details page, the installer jobcard page, and the desktop jobcard quick view via one shared component.
 
 dark/light theme: every worker can pick Dark or Light under Settings → Appearance; the choice applies instantly (the app re-renders in place and returns to the same page) and is remembered per device. Every role now has a Settings surface on both form factors: the mobile Settings tab already existed for all roles; the web console gained a Settings sidebar entry for every role (route /console-settings — profile + appearance; sign-out and the dev role switcher stay in the top bar). The camera, full-screen photo viewers, and photo-thumbnail badges intentionally stay dark-styled in light mode (their chrome sits on viewfinder/photo content). Buttons with solid blue/red fills keep white labels in both themes.
 

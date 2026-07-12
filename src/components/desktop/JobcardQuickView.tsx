@@ -20,6 +20,7 @@ import {
   PriorityValue,
   priorityValueComplete,
 } from '@/components/desktop/PrioritySelect';
+import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
@@ -792,13 +793,16 @@ export function JobcardQuickView({
             {orphanIssues.length > 0 && (
               <Row icon="alert-triangle" label="Issues">
                 <View style={styles.issueStack}>
-                  {orphanIssues.map((issue) => (
-                    <IssueCard
-                      key={issue.id}
-                      issue={issue}
-                      onPhotoPress={openPhoto}
-                    />
-                  ))}
+                  <CollapsibleIssueList
+                    issues={orphanIssues}
+                    renderIssue={(issue) => (
+                      <IssueCard
+                        key={issue.id}
+                        issue={issue}
+                        onPhotoPress={openPhoto}
+                      />
+                    )}
+                  />
                 </View>
               </Row>
             )}

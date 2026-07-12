@@ -19,7 +19,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useSupabaseSession } from '@/integrations/supabase/session';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts } from '@/theme';
+import { colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -116,21 +116,10 @@ export default function RootLayout() {
             name="job/[id]"
             options={{ presentation: 'modal', headerShown: false }}
           />
-          {/* A parent Job's page (jobsite info + photo wall), opened from the
-              installer Pics tab. */}
-          <Stack.Screen
-            name="job-site/[id]"
-            options={{
-              headerShown: true,
-              headerTitle: 'Job Photos',
-              headerTitleStyle: {
-                fontFamily: fonts.bold,
-                color: colors.textPrimary,
-              },
-              headerStyle: { backgroundColor: colors.surface },
-              headerTintColor: colors.primary,
-            }}
-          />
+          {/* A parent Job's page (cover photo + jobsite info + photo wall),
+              opened from the installer Jobs tab. Renders its own X close
+              button — no nav header. */}
+          <Stack.Screen name="job-site/[id]" />
           {/* Full-screen in-app camera (native only). */}
           <Stack.Screen
             name="camera/[jobId]"
