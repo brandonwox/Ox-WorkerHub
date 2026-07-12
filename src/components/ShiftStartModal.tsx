@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { FormInput } from '@/components/FormInput';
+import { TimeField } from '@/components/TimeField';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { formatTime, parseTimeInput } from '@/utils/time';
@@ -68,13 +68,11 @@ export function ShiftStartModal({ visible, onClose }: Props) {
             When did this clock-in actually begin?
           </Text>
 
-          <FormInput
+          <TimeField
             label="Start time"
             value={text}
             onChangeText={setText}
             placeholder="7:00 AM"
-            autoCapitalize="characters"
-            autoFocus
           />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}

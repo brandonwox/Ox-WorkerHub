@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import { TimeField } from '@/components/TimeField';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { TimesheetLog } from '@/types';
@@ -199,12 +200,11 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
                 />
               </View>
               <View style={styles.timeField}>
-                <FormInput
+                <TimeField
                   label="Start time"
                   value={startTime}
                   onChangeText={setStartTime}
                   placeholder="7:00 AM"
-                  autoCapitalize="characters"
                 />
               </View>
             </View>
@@ -220,12 +220,11 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
                 />
               </View>
               <View style={styles.timeField}>
-                <FormInput
+                <TimeField
                   label="End time"
                   value={endTime}
                   onChangeText={setEndTime}
                   placeholder="3:30 PM"
-                  autoCapitalize="characters"
                 />
               </View>
             </View>

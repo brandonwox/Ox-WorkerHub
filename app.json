@@ -47,7 +47,8 @@
         {
           "photosPermission": "Ox WorkerHub accesses your photos so you can add existing pictures to a job."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

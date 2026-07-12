@@ -4,6 +4,12 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+field-super-jobs:
+- add a search bar
+- clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)
+- the job sidebar should show the jobsite address, window flashing material, a jobcards section, an issues section, and a pictures section.
+- basically the job sidebar needs to show a full dashboard for the job.
+
 add settings option so users can choose either dark or light theme.
 
 scheduler-jobcards and field-super-jobcards -> jobcard list -> priority dates: show the start and end dates range, no need to only show one until hover. add the priority flag icon to the start.

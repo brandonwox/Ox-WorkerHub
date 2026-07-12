@@ -84,7 +84,7 @@ export function ClockControls({
               onPress={() => setEditStartOpen(true)}
             >
               <Clock size={14} color={colors.textSecondary} />
-              <Text style={styles.editStartText} numberOfLines={1}>
+              <Text style={styles.editStartText}>
                 {formatTime(activeShift.startTime)}
               </Text>
             </Pressable>
@@ -248,6 +248,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.sm,
+    // Narrow phones: the edit-shift row (time pill + Search + Custom + X)
+    // wraps instead of squeezing the time out of its pill.
+    flexWrap: 'wrap',
   },
   fab: {
     flexDirection: 'row',
@@ -364,7 +367,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   editStartPill: {
-    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 2,

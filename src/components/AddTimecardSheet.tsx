@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import { TimeField } from '@/components/TimeField';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing } from '@/theme';
 import { formatLogDate, parseTimeInput } from '@/utils/time';
@@ -175,21 +176,19 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
 
             <View style={styles.timeRow}>
               <View style={styles.timeField}>
-                <FormInput
+                <TimeField
                   label="Start time"
                   value={startText}
                   onChangeText={setStartText}
                   placeholder="7:00 AM"
-                  autoCapitalize="characters"
                 />
               </View>
               <View style={styles.timeField}>
-                <FormInput
+                <TimeField
                   label="End time"
                   value={endText}
                   onChangeText={setEndText}
                   placeholder="3:30 PM"
-                  autoCapitalize="characters"
                 />
               </View>
             </View>
