@@ -14,7 +14,7 @@ import {
 import { FormInput } from '@/components/FormInput';
 import { signIn, signInWithGoogle } from '@/integrations/supabase';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -165,7 +165,7 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 16,
   },
@@ -282,4 +282,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 13,
   },
-});
+}));

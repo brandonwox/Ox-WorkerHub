@@ -7,7 +7,7 @@ import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { EditLogModal } from '@/components/EditLogModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { TimesheetLog, TimesheetSendStatus } from '@/types';
 import { formatHours, formatMoney, formatTime } from '@/utils/time';
 
@@ -230,7 +230,7 @@ function ReviewRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -390,4 +390,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

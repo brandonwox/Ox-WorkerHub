@@ -19,7 +19,7 @@ import {
   priorityValueComplete,
 } from '@/components/desktop/PrioritySelect';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JobScope, JOB_SCOPES, READINESS_PRESETS } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { useTypewriter } from '@/utils/useTypewriter';
@@ -488,7 +488,7 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   // Flashing text input + the parent job's reference photo side by side.
   flashingRow: {
     flexDirection: 'row',
@@ -698,8 +698,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

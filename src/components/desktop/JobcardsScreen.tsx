@@ -15,7 +15,7 @@ import {
 import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { useAppStore, uuid } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
@@ -275,7 +275,7 @@ export function JobcardsScreen({
             onPress={() => setCreateOpen(true)}
             disabled={activeJobs.length === 0}
           >
-            <Feather name="plus" size={16} color={colors.textPrimary} />
+            <Feather name="plus" size={16} color={colors.textOnAccent} />
             <Text style={styles.addButtonText}>Create jobcard</Text>
           </Pressable>
         </View>
@@ -378,7 +378,7 @@ export function JobcardsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   addButtonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },
@@ -497,4 +497,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
   },
-});
+}));

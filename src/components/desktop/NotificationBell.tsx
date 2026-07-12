@@ -17,7 +17,7 @@ import {
   useMyNotifications,
   useUnreadNotificationCount,
 } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppNotification, NotificationType } from '@/types';
 
 /** Feather glyph per notification type. */
@@ -179,7 +179,7 @@ function NotificationItem({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   bell: {
     width: 40,
     height: 40,
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
     borderColor: colors.surface,
   },
   badgeText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 10,
     lineHeight: 13,
@@ -325,4 +325,4 @@ const styles = StyleSheet.create({
   dismissHover: {
     backgroundColor: colors.surfaceLight,
   },
-});
+}));

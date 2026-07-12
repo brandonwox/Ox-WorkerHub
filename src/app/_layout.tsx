@@ -5,15 +5,20 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from '@react-navigation/native';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useSupabaseSession } from '@/integrations/supabase/session';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -38,18 +43,6 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 }
 
-const appTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: colors.primary,
-    background: colors.background,
-    card: colors.surface,
-    text: colors.textPrimary,
-    border: colors.border,
-  },
-};
-
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -66,13 +59,52 @@ export default function RootLayout() {
   // Developer dev base when not signed in).
   useSupabaseSession();
 
+  // The selected theme (store.setTheme keeps the palette module in sync, so
+  // colors.* already resolves against this scheme). The whole tree below is
+  // keyed by it: switching remounts everything with fresh colors.
+  const scheme = useAppStore((s) => s.theme);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Remounting the Stack resets navigation to the initial route, so remember
+  // where the user was and put them back right after a theme switch. The ref
+  // only tracks while the scheme is stable — on the switch render it still
+  // holds the pre-switch route.
+  const prevSchemeRef = useRef(scheme);
+  const pathRef = useRef(pathname);
+  if (scheme === prevSchemeRef.current) {
+    pathRef.current = pathname;
+  }
+  useEffect(() => {
+    if (scheme === prevSchemeRef.current) return;
+    prevSchemeRef.current = scheme;
+    if (pathRef.current && pathRef.current !== '/') {
+      router.replace(pathRef.current as never);
+    }
+  }, [scheme, router]);
+
+  const navTheme = useMemo(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.textPrimary,
+        border: colors.border,
+      },
+    };
+  }, [scheme]);
+
   if (!fontsLoaded) return null;
 
   return (
     // Gesture root for react-native-gesture-handler (pinch-to-zoom on photos).
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={appTheme}>
-        <StatusBar style="light" />
+      <ThemeProvider key={scheme} value={navTheme}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(mobile)" />
           <Stack.Screen name="(desktop)" />

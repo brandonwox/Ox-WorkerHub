@@ -16,7 +16,7 @@ import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { inviteWorker } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppRole, INSTALLER_TYPES, InstallerType, Worker } from '@/types';
 
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
@@ -108,7 +108,7 @@ export default function PeopleScreen() {
             style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
             onPress={() => setAddOpen(true)}
           >
-            <Feather name="user-plus" size={16} color={colors.textPrimary} />
+            <Feather name="user-plus" size={16} color={colors.textOnAccent} />
             <Text style={styles.addButtonText}>Add worker</Text>
           </Pressable>
         </View>
@@ -293,7 +293,7 @@ function InvitedTag() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   addButtonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },
@@ -457,4 +457,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 11,
   },
-});
+}));

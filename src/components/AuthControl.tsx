@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { signOut } from '@/integrations/supabase';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props {
   /** 'card' for the mobile Settings screen, 'bar' for the desktop top bar. */
@@ -62,7 +62,7 @@ export function AuthControl({ variant = 'card' }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -106,4 +106,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 14,
   },
-});
+}));

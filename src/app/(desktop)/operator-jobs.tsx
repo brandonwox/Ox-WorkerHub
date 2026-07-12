@@ -6,7 +6,7 @@ import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
 import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 export default function JobsScreen() {
@@ -56,7 +56,7 @@ export default function JobsScreen() {
             style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
             onPress={() => setCreateOpen(true)}
           >
-            <Feather name="plus" size={16} color={colors.textPrimary} />
+            <Feather name="plus" size={16} color={colors.textOnAccent} />
             <Text style={styles.addButtonText}>Create job</Text>
           </Pressable>
         </View>
@@ -148,7 +148,7 @@ function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   addButtonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },
@@ -268,4 +268,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 13,
   },
-});
+}));

@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { parseTimeInput } from '@/utils/time';
 
 interface Props {
@@ -116,7 +116,7 @@ export function TimeField({ label, value, onChangeText, placeholder }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   field: {
     gap: spacing.xs + 2,
   },
@@ -188,4 +188,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

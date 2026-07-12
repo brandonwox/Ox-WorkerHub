@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 export type ScheduleFilter = 'all' | 'scheduled' | 'unscheduled';
 
@@ -155,7 +155,7 @@ function PriorityDropdown({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   row: {
     flex: 1,
     flexDirection: 'row',
@@ -259,4 +259,4 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
   },
-});
+}));

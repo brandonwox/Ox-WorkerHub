@@ -1,6 +1,6 @@
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props extends TextInputProps {
   label: string;
@@ -21,7 +21,7 @@ export function FormInput({ label, error, style, ...inputProps }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   field: {
     gap: spacing.xs + 2,
   },
@@ -51,4 +51,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
   },
-});
+}));

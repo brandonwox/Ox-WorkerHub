@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props {
   /**
@@ -64,7 +64,7 @@ export function SyncStatusChip({ variant }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -94,4 +94,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
-});
+}));

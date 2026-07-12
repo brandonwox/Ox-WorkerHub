@@ -17,7 +17,7 @@ import {
   jobcardsForInstallerOnDate,
   useAppStore,
 } from '@/store/useAppStore';
-import { colors, fonts, spacing } from '@/theme';
+import { colors, fonts, spacing, themed } from '@/theme';
 import { Jobcard, TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
 
@@ -161,7 +161,7 @@ export function InstallerAgenda() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -199,4 +199,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

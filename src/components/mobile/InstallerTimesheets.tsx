@@ -8,7 +8,7 @@ import { EditLogModal } from '@/components/EditLogModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { TimesheetCard } from '@/components/TimesheetCard';
 import { currentWorkerOf, useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { TimesheetLog } from '@/types';
 import { formatHours, formatMoney } from '@/utils/time';
 
@@ -131,7 +131,7 @@ export function InstallerTimesheets() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -206,4 +206,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
   },
-});
+}));

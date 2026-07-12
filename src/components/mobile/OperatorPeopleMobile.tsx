@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppRole, Worker } from '@/types';
 import { formatMoney } from '@/utils/time';
 
@@ -91,7 +91,7 @@ export function OperatorPeopleMobile() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -199,4 +199,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

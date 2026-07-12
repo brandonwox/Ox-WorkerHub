@@ -19,7 +19,7 @@ import {
   useCurrentRole,
   useCurrentWorker,
 } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
@@ -259,7 +259,7 @@ function FlashingCell({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -388,4 +388,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     outlineWidth: 0,
   },
-});
+}));

@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 
 import { MonthCalendar } from '@/components/MonthCalendar';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 const WEEK_RANGE = 8; // weeks rendered before and after the current week
 
@@ -166,7 +166,7 @@ export function WeekRibbon({ selectedDate, onSelectDate, markedDates }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   monthToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   dayTextSelected: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
   },
   dot: {
     width: 5,
@@ -219,4 +219,4 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'transparent',
   },
-});
+}));

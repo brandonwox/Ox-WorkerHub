@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormInput } from '@/components/FormInput';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
@@ -192,7 +192,7 @@ function JobRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   saveText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },
@@ -299,4 +299,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { ROLE_LABELS } from '@/roles';
 import { currentWorkerOf, useAppStore, useIsDeveloper } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props {
   /** 'card' for the mobile Settings screen, 'bar' for the desktop top bar. */
@@ -97,7 +97,7 @@ export function DevRoleSwitcher({ variant = 'card' }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   cardWrap: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -189,4 +189,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
   },
-});
+}));

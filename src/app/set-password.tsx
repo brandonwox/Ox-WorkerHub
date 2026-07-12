@@ -12,7 +12,7 @@ import {
 import { FormInput } from '@/components/FormInput';
 import { markSelfActive, updatePassword } from '@/integrations/supabase';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * Where invited workers land after clicking their email invite link. The link
@@ -138,7 +138,7 @@ export default function SetPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 16,
   },
-});
+}));

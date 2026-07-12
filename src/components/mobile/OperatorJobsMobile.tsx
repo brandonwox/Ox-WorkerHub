@@ -4,7 +4,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 /**
@@ -130,7 +130,7 @@ export function OperatorJobsMobile() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -229,4 +229,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DisplayPhoto } from '@/components/photos/useJobPhotos';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, darkColors, fonts, radii, spacing, themed } from '@/theme';
 
 /** Thumbnails per row. */
 const COLUMNS = 5;
@@ -94,10 +94,12 @@ export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
                         photo.pending === 'failed' ? 'alert-circle' : 'upload-cloud'
                       }
                       size={11}
+                      // Badges sit on a dark scrim over the photo — dark
+                      // palette in both themes.
                       color={
                         photo.pending === 'failed'
-                          ? colors.warning
-                          : colors.textPrimary
+                          ? darkColors.warning
+                          : darkColors.textPrimary
                       }
                     />
                   </View>
@@ -107,7 +109,7 @@ export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
                     <Feather
                       name="message-square"
                       size={10}
-                      color={colors.textPrimary}
+                      color={darkColors.textPrimary}
                     />
                   </View>
                 )}
@@ -120,7 +122,7 @@ export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   stack: {
     gap: spacing.lg,
   },
@@ -184,4 +186,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
   },
-});
+}));

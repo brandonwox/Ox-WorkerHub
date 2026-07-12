@@ -5,7 +5,7 @@ import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { JobPicsList } from '@/components/photos/JobPicsList';
 import { useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, spacing } from '@/theme';
+import { colors, fonts, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 /**
@@ -30,7 +30,7 @@ export default function InstallerPicsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -45,4 +45,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
-});
+}));

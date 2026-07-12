@@ -11,7 +11,7 @@ import { SystemFlash } from '@/components/desktop/SystemFlash';
 import { SystemMessages } from '@/components/desktop/SystemMessages';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { DesktopNavItem } from '@/roles';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props {
   navItems: DesktopNavItem[];
@@ -90,7 +90,7 @@ export function SidebarShell({ navItems, children }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   root: {
     flex: 1,
     flexDirection: 'row',
@@ -201,4 +201,4 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-});
+}));

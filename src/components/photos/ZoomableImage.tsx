@@ -22,6 +22,8 @@ interface Props {
    * (the photo browser) can lock/unlock its horizontal swipe.
    */
   onZoomChange?: (zoomed: boolean) => void;
+  /** Fires on a plain single tap (once a double-tap has been ruled out). */
+  onSingleTap?: () => void;
 }
 
 /**
@@ -29,7 +31,13 @@ interface Props {
  * double-tap to toggle zoom. Must render under a GestureHandlerRootView —
  * RN Modals don't inherit the app root's, so modals mount their own.
  */
-export function ZoomableImage({ uri, width, height, onZoomChange }: Props) {
+export function ZoomableImage({
+  uri,
+  width,
+  height,
+  onZoomChange,
+  onSingleTap,
+}: Props) {
   // Pan is only enabled while zoomed, so a plain horizontal swipe still falls
   // through to the parent list and pages between photos.
   const [zoomed, setZoomed] = useState(false);
@@ -60,7 +68,10 @@ export function ZoomableImage({ uri, width, height, onZoomChange }: Props) {
 
   const pinch = Gesture.Pinch()
     .onUpdate((e) => {
-      scale.value = Math.min(MAX_SCALE, Math.max(1, savedScale.value * e.scale));
+      scale.value = Math.min(
+        MAX_SCALE,
+        Math.max(1, savedScale.value * e.scale)
+      );
       tx.value = clampTx(tx.value, scale.value);
       ty.value = clampTy(ty.value, scale.value);
     })
@@ -96,8 +107,14 @@ export function ZoomableImage({ uri, width, height, onZoomChange }: Props) {
       runOnJS(setZoomedState)(to > 1);
     });
 
+  // Single tap only fires after the double-tap window closes, so it never
+  // races a zoom toggle.
+  const singleTap = Gesture.Tap().onEnd((_e, success) => {
+    if (success && onSingleTap) runOnJS(onSingleTap)();
+  });
+
   const composed = Gesture.Race(
-    doubleTap,
+    Gesture.Exclusive(doubleTap, singleTap),
     Gesture.Simultaneous(pinch, pan)
   );
 

@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, Jobcard } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 import { comparePriority } from '@/utils/priorityRange';
@@ -236,7 +236,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -391,4 +391,4 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-});
+}));

@@ -14,7 +14,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 interface Props {
@@ -124,7 +124,7 @@ export function JobPhotosModal({ job, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -193,4 +193,4 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xs,
   },
-});
+}));

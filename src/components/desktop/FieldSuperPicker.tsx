@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
 
 interface Props {
@@ -48,7 +48,7 @@ export function FieldSuperPicker({ fieldSupers, selected, onToggle }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   muted: {
     color: colors.textTertiary,
     fontFamily: fonts.regular,
@@ -86,4 +86,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.6,
   },
-});
+}));

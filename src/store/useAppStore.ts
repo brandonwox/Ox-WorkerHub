@@ -18,6 +18,7 @@ import {
   persistDataCache,
   prefetchFlashingPhotos,
 } from '@/store/offlineCache';
+import { setThemeScheme, ThemeScheme } from '@/theme';
 import {
   ActiveShift,
   AppNotification,
@@ -661,6 +662,11 @@ interface AppState {
   /** Bumped on every `flash()` so repeating the same text still re-triggers. */
   flashTick: number;
 
+  /** UI theme — a per-device preference, persisted locally, applied at launch. */
+  theme: ThemeScheme;
+
+  /** Switch the dark/light theme and persist the choice on this device. */
+  setTheme: (scheme: ThemeScheme) => void;
   /** Developer-only "View as": impersonate a role for the UI (or null for none). */
   setViewAs: (userId: string | null) => void;
   /** Bump `savedTick` — called by the write helper after a successful DB write. */
@@ -921,6 +927,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   flashMessage: null,
   flashTone: 'success',
   flashTick: 0,
+  theme: 'dark',
   devMode: false,
   authResolved: false,
   isOnline: true,
@@ -934,6 +941,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     jobcodeMap: defaultJobcodeMap(),
     defaultJobcodeId: defaultJobcodeId(),
     sync: {},
+  },
+
+  setTheme: (scheme) => {
+    if (get().theme === scheme) return;
+    // Swap the live palette first so the remounting tree reads new colors.
+    setThemeScheme(scheme);
+    set({ theme: scheme });
+    AsyncStorage.setItem(THEME_KEY, scheme).catch(() => {});
   },
 
   setViewAs: (userId) => set({ viewAsUserId: userId }),
@@ -2135,6 +2150,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 // queue and a timer retries every 30s until everything lands. Queue entries are
 // mirrored to AsyncStorage (files are already stashed in app storage — see
 // lib/photoFiles) so an app restart resumes instead of losing photos.
+
+// --- Theme preference (device-local) ------------------------------------------
+
+const THEME_KEY = 'oxwh.theme';
+
+// Apply the saved theme at launch. Runs async — the first frames render dark
+// (the default); a saved 'light' flips the tree as soon as the read lands.
+void AsyncStorage.getItem(THEME_KEY)
+  .then((saved) => {
+    if (saved === 'light' || saved === 'dark') {
+      useAppStore.getState().setTheme(saved);
+    }
+  })
+  .catch(() => {});
 
 const PENDING_PHOTOS_KEY = 'oxwh.pendingJobPhotos';
 const PHOTO_RETRY_MS = 30_000;

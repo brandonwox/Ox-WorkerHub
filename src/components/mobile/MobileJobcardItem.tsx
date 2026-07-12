@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -74,7 +74,7 @@ export function MobileJobcardItem({ jobcard, jobName, scheduled, onPress }: Prop
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -122,4 +122,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 11,
   },
-});
+}));

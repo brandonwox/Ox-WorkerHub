@@ -14,7 +14,7 @@ import {
   useAppStore,
   useCurrentWorker,
 } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 interface Props {
@@ -163,7 +163,7 @@ export function JobPicsList({ onSelectJob }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   flex: {
     flex: 1,
   },
@@ -277,4 +277,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
   },
-});
+}));

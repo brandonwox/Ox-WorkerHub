@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 interface Props<T extends string> {
   options: readonly T[];
@@ -33,7 +33,7 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   track: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   labelActive: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.semiBold,
   },
-});
+}));

@@ -27,7 +27,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
 import { useAppStore, uuid } from '@/store/useAppStore';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
   Job,
   JOB_SCOPES,
@@ -1157,7 +1157,7 @@ function ConfirmBar({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -1208,7 +1208,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   deleteArmedText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
@@ -1428,7 +1428,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
   },
   confirmYesText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
@@ -1575,4 +1575,4 @@ const styles = StyleSheet.create({
   flashingValue: {
     flex: 1,
   },
-});
+}));

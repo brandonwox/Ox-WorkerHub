@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { detectDoubleBookings } from '@/utils/doubleBookings';
 
 /**
@@ -116,7 +116,7 @@ export function SystemMessages() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     gap: spacing.xs,
   },
@@ -207,4 +207,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     paddingLeft: spacing.xs,
   },
-});
+}));

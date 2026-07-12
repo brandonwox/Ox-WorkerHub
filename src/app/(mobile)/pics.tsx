@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { JobPicsList } from '@/components/photos/JobPicsList';
 import { useCurrentRole } from '@/store/useAppStore';
-import { colors, fonts, spacing } from '@/theme';
+import { colors, fonts, spacing, themed } from '@/theme';
 
 /** Jobs tab (formerly Pics) — the installer's job dashboard and photo gateway. */
 export default function PicsTab() {
@@ -29,7 +29,7 @@ export default function PicsTab() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -49,4 +49,4 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.md,
   },
-});
+}));

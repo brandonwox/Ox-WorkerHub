@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard, ScheduleAssignment } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
@@ -119,7 +119,7 @@ export function DaySidebar({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     width: 280,
     backgroundColor: colors.surface,
@@ -207,4 +207,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
   },
-});
+}));

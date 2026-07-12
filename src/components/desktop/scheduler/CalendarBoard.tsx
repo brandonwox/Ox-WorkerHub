@@ -10,7 +10,7 @@ import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 
@@ -532,7 +532,7 @@ function CrewChip({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -654,4 +654,4 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: 360,
   },
-});
+}));

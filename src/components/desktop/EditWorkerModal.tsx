@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
 
 export interface WorkerChanges {
@@ -136,7 +136,7 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   deleteTextConfirm: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
   },
   pressed: {
     opacity: 0.85,
@@ -234,8 +234,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

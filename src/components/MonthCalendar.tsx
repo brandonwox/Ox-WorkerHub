@@ -14,7 +14,7 @@ import {
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -104,7 +104,7 @@ export function MonthCalendar({ selectedDate, onSelectDate, markedDates }: Props
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -161,6 +161,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
   },
   dayTextSelected: {
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
   },
   dot: {
@@ -169,4 +170,4 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'transparent',
   },
-});
+}));

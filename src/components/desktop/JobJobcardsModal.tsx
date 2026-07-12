@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { JobcardRow } from '@/components/desktop/JobcardRow';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, Jobcard } from '@/types';
 
 interface Props {
@@ -70,7 +70,7 @@ export function JobJobcardsModal({ job, jobcards, scheduledIds, onClose }: Props
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -129,4 +129,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: spacing.lg,
   },
-});
+}));

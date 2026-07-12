@@ -25,7 +25,7 @@ import {
 import { jobcardStatusColors } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { JOBCARD_STATUSES } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
@@ -363,7 +363,7 @@ export default function JobDetailsScreen() {
                     })
                   }
                 >
-                  <Feather name="camera" size={18} color={colors.textPrimary} />
+                  <Feather name="camera" size={18} color={colors.textOnAccent} />
                   <Text style={styles.cameraText}>Take Photos</Text>
                 </Pressable>
               )}
@@ -474,7 +474,7 @@ function InfoRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   cameraText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.semiBold,
     fontSize: 15,
   },
@@ -699,4 +699,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 15,
   },
-});
+}));

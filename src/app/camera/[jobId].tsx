@@ -21,7 +21,9 @@ import {
 } from '@/components/CameraZoomControl';
 import { compressJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+// Camera chrome sits over the viewfinder — pinned to the dark palette so it
+// stays dark-styled in light mode too.
+import { darkColors as colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * In-app camera for job photos. Stays open across shots so an installer can
@@ -342,7 +344,7 @@ export default function JobCameraScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
@@ -555,4 +557,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
   },
-});
+}));

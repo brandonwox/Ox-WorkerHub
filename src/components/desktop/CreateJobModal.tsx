@@ -5,7 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormInput } from '@/components/FormInput';
 import { MultiCombobox } from '@/components/desktop/Combobox';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { JOB_SCOPES, JobScope, Worker } from '@/types';
 
 export interface NewJobInput {
@@ -143,7 +143,7 @@ export function CreateJobModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -223,8 +223,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

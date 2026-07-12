@@ -1,5 +1,5 @@
 import { PRIORITY_PRESETS } from '@/types';
-import { colors } from '@/theme';
+import { colors, themed } from '@/theme';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
@@ -25,7 +25,7 @@ export function priorityRank(priority: string): number {
   return PRESET_ORDER.length + 1;
 }
 
-const PRIORITY_COLOR: Record<string, string> = {
+const PRIORITY_COLOR: Record<string, string> = themed(() => ({
   Now: colors.danger,
   Tomorrow: colors.warning,
   'This Week': colors.primary,
@@ -38,7 +38,7 @@ const PRIORITY_COLOR: Record<string, string> = {
   High: colors.danger,
   Medium: colors.warning,
   Low: colors.textTertiary,
-};
+}));
 
 /** Accent color for a priority badge/dot; falls back to a neutral grey. */
 export function priorityColor(priority: string): string {

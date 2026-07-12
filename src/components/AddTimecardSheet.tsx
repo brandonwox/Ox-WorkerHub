@@ -16,7 +16,7 @@ import {
 import { FormInput } from '@/components/FormInput';
 import { TimeField } from '@/components/TimeField';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { formatLogDate, parseTimeInput } from '@/utils/time';
 
 interface Props {
@@ -210,7 +210,7 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   backdrop: {
     position: 'absolute',
     top: 0,
@@ -342,8 +342,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   saveText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

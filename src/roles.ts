@@ -35,7 +35,11 @@ export type DesktopHref =
   | '/field-super-calendar'
   | '/installer-schedule'
   | '/installer-timesheets'
-  | '/installer-pics';
+  | '/installer-pics'
+  // The one shared page: every role gets the same Settings. Named
+  // 'console-settings' because the mobile tab already owns '/settings' and
+  // route groups don't namespace URLs.
+  | '/console-settings';
 
 export interface DesktopNavItem {
   href: DesktopHref;
@@ -50,17 +54,20 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/installer-timesheets', label: 'Timesheets', icon: 'file-text' },
     // No live camera on web — the page offers file upload instead.
     { href: '/installer-pics', label: 'Jobs', icon: 'briefcase' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
   ],
   operator: [
     { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
     { href: '/operator-people', label: 'People', icon: 'users' },
     { href: '/operator-timesheets', label: 'Timesheets', icon: 'file-text' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [
     { href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' },
     // Distinct route from the Field Super's '/field-super-jobcards' — the
     // Scheduler creates jobcards across every job, not just their own.
     { href: '/scheduler-jobcards', label: 'Jobcards', icon: 'clipboard' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
   ],
   field_super: [
     // Distinct route from the Operator's '/operator-jobs', shown to the Field
@@ -68,10 +75,14 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/field-super-jobs', label: 'Jobs', icon: 'briefcase' },
     { href: '/field-super-jobcards', label: 'Jobcards', icon: 'clipboard' },
     { href: '/field-super-calendar', label: 'Calendar', icon: 'calendar' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
-  developer: [{ href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' }],
+  developer: [
+    { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+  ],
 };
 
 /**

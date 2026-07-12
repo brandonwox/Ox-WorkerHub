@@ -13,7 +13,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
@@ -182,7 +182,7 @@ export function BacklogCalendar({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -351,4 +351,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-});
+}));

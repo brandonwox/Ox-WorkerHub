@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { comparePriority } from '@/utils/priorityRange';
 
 const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
@@ -115,7 +115,7 @@ export function FieldSuperJobcardsMobile() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -178,4 +178,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
   },
-});
+}));

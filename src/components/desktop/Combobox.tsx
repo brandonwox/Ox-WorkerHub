@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 export interface ComboOption {
   value: string;
@@ -223,7 +223,7 @@ export function MultiCombobox({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -320,4 +320,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
-});
+}));

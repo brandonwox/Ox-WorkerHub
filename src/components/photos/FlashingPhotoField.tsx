@@ -15,7 +15,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { captureSingleJobPhoto, pickSingleJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, darkColors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 
 interface Props {
@@ -118,7 +118,7 @@ export function FlashingPhotoField({ job, editable = false }: Props) {
               onPress={() => setViewerOpen(false)}
               hitSlop={10}
             >
-              <Feather name="x" size={22} color={colors.textPrimary} />
+              <Feather name="x" size={22} color={darkColors.textPrimary} />
             </Pressable>
           </View>
           {job.flashingMaterial ? (
@@ -132,7 +132,7 @@ export function FlashingPhotoField({ job, editable = false }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -186,9 +186,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  // Viewer chrome sits on the black backdrop — pinned to the dark palette so
+  // it stays light-on-dark in light mode too.
   viewerTitle: {
     flexShrink: 1,
-    color: colors.textPrimary,
+    color: darkColors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 13,
     backgroundColor: colors.overlay,
@@ -212,8 +214,8 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'web' ? spacing.lg : spacing.xl + spacing.md,
   },
   viewerCaption: {
-    color: colors.textPrimary,
+    color: darkColors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 14,
   },
-});
+}));

@@ -6,7 +6,7 @@ import { FormInput } from '@/components/FormInput';
 import { MultiCombobox } from '@/components/desktop/Combobox';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
 
 export interface JobChanges {
@@ -219,7 +219,7 @@ export function EditJobModal({
                   disabled={!deleteNameMatches}
                   onPress={remove}
                 >
-                  <Feather name="trash-2" size={15} color={colors.textPrimary} />
+                  <Feather name="trash-2" size={15} color={colors.textOnAccent} />
                   <Text style={[styles.deleteText, styles.deleteTextConfirm]}>
                     Permanently delete job
                   </Text>
@@ -242,7 +242,7 @@ export function EditJobModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   deleteTextConfirm: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
   },
   deleteConfirmBox: {
     gap: spacing.md,
@@ -393,8 +393,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

@@ -7,7 +7,7 @@ import { EditLogModal } from '@/components/EditLogModal';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { TimesheetCard } from '@/components/TimesheetCard';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, spacing } from '@/theme';
+import { colors, fonts, spacing, themed } from '@/theme';
 import { TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
 
@@ -113,7 +113,7 @@ export function OperatorTimesheetsMobile() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -168,4 +168,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

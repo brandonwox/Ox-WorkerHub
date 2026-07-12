@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, spacing } from '@/theme';
+import { colors, fonts, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { comparePriority } from '@/utils/priorityRange';
 
@@ -66,7 +66,7 @@ export function SchedulerBacklogMobile() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -106,4 +106,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

@@ -2,7 +2,7 @@ import { CircleCheck } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 // react-native-web has no native animation module; opt out there to avoid the
 // "useNativeDriver is not supported" warning (animation still runs on the JS side).
@@ -44,7 +44,7 @@ export function Toast({ message, onDone }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   toast: {
     position: 'absolute',
     bottom: 92,
@@ -67,4 +67,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
   },
-});
+}));

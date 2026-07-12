@@ -15,7 +15,7 @@ import {
 import { DisplayPhoto, useIssuePhotos } from '@/components/photos/useJobPhotos';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentRole, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { JobIssue } from '@/types';
 
 /** Thumbnails per row in an issue's gallery. */
@@ -328,7 +328,7 @@ export function IssueCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   card: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -494,4 +494,4 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     padding: 3,
   },
-});
+}));

@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { comparePriority, effectivePriority } from '@/utils/priorityRange';
@@ -130,9 +130,14 @@ export function Backlog({
               <Feather
                 name={selected ? 'crosshair' : 'calendar'}
                 size={10}
-                color={colors.textPrimary}
+                // Solid primary fill while idle; translucent crew tint once
+                // placing — so the label only reads "on accent" when idle.
+                color={selected ? colors.textPrimary : colors.textOnAccent}
               />
-              <Text style={styles.actionText} numberOfLines={1}>
+              <Text
+                style={[styles.actionText, !selected && styles.actionTextOnAccent]}
+                numberOfLines={1}
+              >
                 {selected ? (
                   <>
                     <Text style={styles.placingLabel}>Placing — </Text>
@@ -251,7 +256,7 @@ function PriorityBadge({ card }: { card: Jobcard }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -422,7 +427,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 10,
   },
+  actionTextOnAccent: {
+    color: colors.textOnAccent,
+  },
   placingLabel: {
     color: colors.textSecondary,
   },
-});
+}));

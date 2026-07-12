@@ -16,7 +16,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * A parent Job's page: jobsite info and its photo wall. Installers open it from
@@ -128,7 +128,7 @@ export default function JobSiteScreen() {
                 })
               }
             >
-              <Feather name="camera" size={18} color={colors.textPrimary} />
+              <Feather name="camera" size={18} color={colors.textOnAccent} />
               <Text style={styles.cameraButtonText}>Take Photos</Text>
             </Pressable>
           )}
@@ -188,7 +188,7 @@ export default function JobSiteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md + 2,
   },
   cameraButtonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
   },
@@ -296,4 +296,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
-});
+}));

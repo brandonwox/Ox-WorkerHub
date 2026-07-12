@@ -8,7 +8,9 @@ import {
   View,
 } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+// Camera chrome sits over the viewfinder — pinned to the dark palette so it
+// stays dark-styled in light mode too.
+import { darkColors as colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * Zoom-factor → expo-camera prop mapping. The `zoom` prop is normalized 0..1
@@ -135,7 +137,7 @@ export function CameraZoomControl({ factor, minFactor, onChange }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -181,4 +183,4 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.7)',
     textShadowRadius: 4,
   },
-});
+}));

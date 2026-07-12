@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
 import { priorityMeta } from '@/lib/priority';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
@@ -80,7 +80,7 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   card: {
     position: 'relative',
     backgroundColor: colors.surface,
@@ -137,4 +137,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-});
+}));

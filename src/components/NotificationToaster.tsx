@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStore, useMyNotifications } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppNotification } from '@/types';
 import { installAudioUnlock, playNotificationSound } from '@/utils/sound';
 
@@ -131,7 +131,7 @@ function NotificationToast({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   stack: {
     position: 'absolute',
     top: 76,
@@ -184,4 +184,4 @@ const styles = StyleSheet.create({
   toastClose: {
     padding: 2,
   },
-});
+}));

@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 export interface SelectOption<T extends string> {
   value: T;
@@ -77,7 +77,7 @@ export function InlineSelect<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     position: 'relative',
   },
@@ -129,4 +129,4 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
   },
-});
+}));

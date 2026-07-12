@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { TimesheetLog } from '@/types';
 import { formatHours, formatLogDate, formatTime } from '@/utils/time';
 
@@ -40,7 +40,7 @@ export function TimesheetCard({ log, projectName, onEdit }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   card: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -88,4 +88,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 15,
   },
-});
+}));

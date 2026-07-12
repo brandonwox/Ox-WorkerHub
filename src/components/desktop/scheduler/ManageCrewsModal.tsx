@@ -11,7 +11,7 @@ import {
 
 import { FormInput } from '@/components/FormInput';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, modalShadow, radii, spacing } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -143,7 +143,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
                 onPress={createCrew}
               >
-                <Feather name="plus" size={15} color={colors.textPrimary} />
+                <Feather name="plus" size={15} color={colors.textOnAccent} />
                 <Text style={styles.addBtnText}>Add crew</Text>
               </Pressable>
             </View>
@@ -209,7 +209,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
                 onPress={createDailyCrew}
               >
-                <Feather name="plus" size={15} color={colors.textPrimary} />
+                <Feather name="plus" size={15} color={colors.textOnAccent} />
                 <Text style={styles.addBtnText}>Add daily crew</Text>
               </Pressable>
             </View>
@@ -259,7 +259,7 @@ function InstallerChips({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: 'center',
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   addBtnText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },
@@ -408,4 +408,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing.sm,
   },
-});
+}));

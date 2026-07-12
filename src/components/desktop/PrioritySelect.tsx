@@ -14,7 +14,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { PRIORITY_CHOICES, PriorityChoice } from '@/types';
 import { datesForPriorityChoice } from '@/utils/priorityRange';
 
@@ -262,7 +262,7 @@ function DateField({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     gap: spacing.sm,
   },
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
   },
   pickerDaySelected: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
   },
-});
+}));

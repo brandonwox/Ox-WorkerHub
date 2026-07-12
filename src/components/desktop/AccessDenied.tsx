@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /** Shown when a worker reaches a desktop route their role can't access. */
 export function AccessDenied() {
@@ -18,7 +18,7 @@ export function AccessDenied() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   wrap: {
     flex: 1,
     alignItems: 'center',
@@ -45,4 +45,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
   },
-});
+}));

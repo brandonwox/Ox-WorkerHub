@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { formatJobWindow, formatLogDate } from '@/utils/time';
 
 export type ClockEntryMode = 'custom' | 'search' | null;
@@ -160,7 +160,7 @@ export function ClockEntrySheet({ mode, editing, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   backdrop: {
     position: 'absolute',
     top: 0,
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   startButtonText: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 16,
   },
@@ -260,4 +260,4 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
   },
-});
+}));

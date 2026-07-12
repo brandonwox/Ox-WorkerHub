@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -110,7 +110,7 @@ export function JobcardRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,4 +175,4 @@ const styles = StyleSheet.create({
   statusLink: {
     textDecorationLine: 'underline',
   },
-});
+}));

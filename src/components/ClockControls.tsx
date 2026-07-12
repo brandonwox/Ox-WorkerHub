@@ -12,7 +12,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ShiftStartModal } from '@/components/ShiftStartModal';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { TimesheetLog } from '@/types';
 import { formatElapsed, formatTime } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
@@ -171,7 +171,7 @@ export function ClockControls({
             if (log) onClockedOut(log, projectName);
           }}
         >
-          <ClockCheck size={18} color={colors.textPrimary} />
+          <ClockCheck size={18} color={colors.textOnAccent} />
           <Text style={styles.timer}>
             {formatElapsed(activeShift.startTime, now)}
           </Text>
@@ -229,7 +229,7 @@ export function ClockControls({
           <X size={22} color={colors.textPrimary} />
         ) : (
           <>
-            <ClockPlus size={20} color={colors.textPrimary} />
+            <ClockPlus size={20} color={colors.textOnAccent} />
             <Text style={styles.clockInLabel}>Clock in</Text>
           </>
         )}
@@ -238,7 +238,7 @@ export function ClockControls({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   row: {
     position: 'absolute',
     bottom: spacing.lg,
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   clockInLabel: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 16,
   },
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   timer: {
-    color: colors.textPrimary,
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 15,
     fontVariant: ['tabular-nums'],
@@ -396,4 +396,4 @@ const styles = StyleSheet.create({
     minHeight: 44,
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
   },
-});
+}));

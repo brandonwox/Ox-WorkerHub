@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, fonts, radii, spacing } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * Home tab for the base Developer identity on the phone. The Developer has no
@@ -26,7 +26,7 @@ export function DeveloperHome() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -62,4 +62,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
-});
+}));

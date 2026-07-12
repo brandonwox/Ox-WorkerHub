@@ -4,38 +4,25 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
-in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
+installer -> jobs tab -> job details (viewing a specific job):
+look at the attached image to see how I want to redesign the job details page.
+specifics:
+1. get rid of the "Job Photos" label entirely.
+2. the back button should just be an x instead of saying "< (mobile)".
+3. add a photo above the job name
+4. remove the background color behind the job location and field super name (and when displaying the field supers name just display their name, you don't need to display "Field Super:) (i like the icons on the left of these details, keep that)
+5. it's not in the attached image that we're getting inspiration from, but we need to keep the "Issues" section.
+6. move the "Take Photos" button to the bottom of the page, center it, and swap the typography for an icon instead. move the "upload" button to the same location and replace it with an icon.
 
-mobile installer:
-- clicking the "issue" button on a jobcard to add an issue can be glitchy (similar to how clicking a checkbox used to be glitchy. I think we fixed it by not pushing changes to the database until the change has been untouched for a few seconds or just waiting a few seconds to send changes to the database.) (should we change the way changes are save to the supabase for every change? (What is the best way to save changes to the supabase for every change? can you look into this?))
-- viewing a job photos section: each issue should have a link to it's jobcard, and the text for the link should be the name of the jobcard.
-- notes for pictures are not being saved. (scenario: when i open a job from the pics tab and then click take photos, ill add a note to the pictures i took, but the notes do not save. however, if i take notes on a photo i took on a jobcard, the notes do save to the photo when i view them on the job.)
-- pics tab should be renamed to jobs.
-- now that installers have a job tab it should be a dashboard that shows each job by recency, and lets the user search (which is the current functionality). 
-- clicking on a photo from the job tab (previously known as "pics" tab) currently opens the photo so you can see its details. But i noticed the details don't include the jobcard that the photo was taken in. make sure the name of the jobcard is displayed in the photo details and is clickable to move to the jobcard.
+if there are a lot of issues on a job, rather than displaying each issue it should display a few, then have a display all issues button that opens a dropdown of every issue where the user can scroll through all the issues. (this should be for both jobcards and jobs).
+
+in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
 
 field-super-jobs:
 - add a search bar
 - clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)
 - the job sidebar should show the jobsite address, window flashing material, a jobcards section, an issues section, and a pictures section.
 - basically the job sidebar needs to show a full dashboard for the job.
-
-add settings option so users can choose either dark or light theme.
-
-scheduler-jobcards and field-super-jobcards -> jobcard list -> priority dates: show the start and end dates range, no need to only show one until hover. add the priority flag icon to the start.
-
-added more space between rows in jobcards. (e.g. between each icon and its section.)
-
-jobcards requiring a task to be 15 characters min is annoying, remove the requirement.
-
-notifications on web:
-- make the notifications popup container bigger.
-- allow dismissing of notifications. hovering over a notification should show a dismiss button.
-- clicking on a "New Priority Jobcard" notification should take the scheduler to the calendar and open the jobcard page from that notification.
-
-The clock in for installers:
-1. when selecting or adjusting time, you should not type the time, it should pull up the standard iPhone time selector, and on android it should also pull up the standard android time picker.
-2. theres also a ui ux issue where the start time doesnt fit in the pill its in.
 
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
@@ -56,6 +43,32 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+dark/light theme: every worker can pick Dark or Light under Settings → Appearance; the choice applies instantly (the app re-renders in place and returns to the same page) and is remembered per device. Every role now has a Settings surface on both form factors: the mobile Settings tab already existed for all roles; the web console gained a Settings sidebar entry for every role (route /console-settings — profile + appearance; sign-out and the dev role switcher stay in the top bar). The camera, full-screen photo viewers, and photo-thumbnail badges intentionally stay dark-styled in light mode (their chrome sits on viewfinder/photo content). Buttons with solid blue/red fills keep white labels in both themes.
+
+viewing a photo: deleting a photo while viewing it now moves the user to the nearest remaining photo (and closes the viewer if it was the last one). Root cause was the viewer rendering a stale snapshot of the photo list; it now tracks live data, so the fix holds on every screen that opens the photo viewer.
+
+viewing a photo: tapping once hides the details bars, tapping again shows them (double-tap zoom is unaffected; works on web too). Swiping down dismisses the photo on mobile only — the photo follows the finger and the backdrop fades, springing back if not pulled far enough; disabled while pinch-zoomed so vertical drags still pan the zoomed photo.
+
+offline-first (requested in-session, answers "what is the best way to save changes to supabase?"): every change is device-first — it applies on screen instantly, queues on the phone (surviving force-quits), and pushes to Supabase in order when signal returns. Reads are cached on-device too: a cold offline launch shows all jobs, jobcards, crews, schedules, issues, and the last 90 days of timesheets. Photo areas show "Connect to the internet to view photos" instead of a gallery when offline (flashing-material photos are pre-downloaded so they still render on site). A sync chip (mobile top-right, desktop sidebar bottom) shows offline/pending state; a change the server permanently rejects raises a "couldn't be saved" notification instead of failing silently. Offline creations never overwrite each other (new records have unique ids); only two people editing the same field is last-save-wins. (the cache fills on the first ONLINE open; added @react-native-community/netinfo — run npm install after pulling)
+
+mobile installer:
+- the "issue" button no longer glitches: the root cause was background data refreshes briefly reverting changes whose save was still traveling (same class as the old checkbox glitch); fixed system-wide — refreshes now wait for in-flight saves and keep locally-changed rows.
+- job photos section: each issue now leads with its jobcard's name as a blue link (in both the collapsed row and the expanded card) that jumps to the jobcard.
+- photo notes now save: they were silently dropped whenever the camera or photo viewer closed before the note input lost focus; notes now commit on every capture and on close.
+- pics tab renamed to Jobs (briefcase icon, phone tabs + web console nav).
+- the Jobs tab is a dashboard of every job by recency: clocked-into jobs first (running shift counts as most recent), then jobs by newest photo, then the rest alphabetically; search unchanged.
+- photo details showing the jobcard name as a clickable chip that jumps to the jobcard (was already implemented)
+
+The clock in for installers: selecting or adjusting a time now opens the standard iOS spinner (bottom sheet with Cancel/Done) or the standard Android clock dialog instead of typing — everywhere times are entered (adjust shift start, add timecard, edit timecard). Web keeps the typed input (browsers have no native picker). The start-time pill no longer gets squeezed on narrow phones; the row wraps instead. (added @react-native-community/datetimepicker — run npm install after pulling)
+
+notifications on web: the popup container is bigger (460×600); hovering a notification reveals a dismiss button that deletes it permanently; clicking a "New Priority Jobcard" notification takes the scheduler to the calendar with that jobcard's quick view open (does nothing extra if the card was deleted since the ping).
+
+jobcards no longer require tasks to be 15 characters minimum (removed from the create modal and inline edits; tasks still can't be empty and a card still needs at least one).
+
+more space between rows in the jobcard quick view (between rows and between each icon and its section), and the row icons are slightly larger.
+
+scheduler-jobcards and field-super-jobcards jobcard lists: the priority pill now shows a flag icon and the full start–end date range at all times (no hover needed); "Now" cards still read "Now", undated legacy cards show their label.
 
 jobcard priority is now a date range (start + end). The selector offers "Now" (both dates today), "This week" (Monday → Friday of the current week; from a weekend it rolls to the upcoming week), "Next week" (Monday → Friday of the following week), or "Set dates" (manual date pickers, required before create/save). The two dates cross-clamp so the end can never precede the start. Displays show "Now" or the start date and reveal the full range on hover; when a card's end date arrives and it isn't finished, it escalates to "Now" everywhere (visually at once; persisted + scheduler-pinged by an hourly sweep in non-installer sessions). Legacy label-only cards keep their old behavior. (requires applying the new priority-range Supabase migration)
 
