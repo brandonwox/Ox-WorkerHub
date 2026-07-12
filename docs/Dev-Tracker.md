@@ -4,6 +4,10 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+in the settings theres a new password option: they should have to click a button that says "Change Password" that opens a popup for them to change their password.
+
+web needs a way to access settings: Let's change the log out button at the top of the screen. add a profile image to the left of their name. and instead of signing them out, it opens a large settings page, the sign out button at the bottom of the settings page.
+
 installer -> jobs tab -> job details (viewing a specific job):
 look at the attached image to see how I want to redesign the job details page.
 specifics:

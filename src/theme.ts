@@ -56,24 +56,25 @@ const darkPalette: Palette = {
   overlay: 'rgba(0, 0, 0, 0.7)',
 };
 
-// Same hue system as dark, re-balanced for white surfaces: accents darken for
-// contrast on white, the dim tints lighten, and the grey ramp inverts.
+// Soft near-white UI: white cards on a #FEFEFE page separated by hairline
+// borders, light-grey inset elements, black text with one neutral grey for
+// icons/secondary copy, and the same brand blue as dark mode.
 const lightPalette: Palette = {
-  background: '#F2F3F5',
+  background: '#FEFEFE',
   surface: '#FFFFFF',
-  surfaceLight: '#EAECEF',
-  border: '#DDE0E5',
-  primary: '#2378D4',
-  primaryDim: 'rgba(35, 120, 212, 0.12)',
+  surfaceLight: '#F1F2F4',
+  border: '#E5E6EA',
+  primary: '#3E96F4',
+  primaryDim: 'rgba(62, 150, 244, 0.14)',
   danger: '#D6362F',
   dangerDim: 'rgba(214, 54, 47, 0.12)',
   success: '#1F9D63',
   successDim: 'rgba(31, 157, 99, 0.14)',
   warning: '#B4800E',
   warningDim: 'rgba(180, 128, 14, 0.16)',
-  textPrimary: '#17191C',
-  textSecondary: '#5B6068',
-  textTertiary: '#8D929B',
+  textPrimary: '#000000',
+  textSecondary: '#6B6C71',
+  textTertiary: '#9B9CA1',
   textOnAccent: '#FFFFFF',
   // Stays dark: overlays sit on photos/camera content, not on the page.
   overlay: 'rgba(0, 0, 0, 0.7)',
