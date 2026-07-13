@@ -1,5 +1,6 @@
 import { DeveloperHome } from '@/components/mobile/DeveloperHome';
 import { FieldSuperJobcardsMobile } from '@/components/mobile/FieldSuperJobcardsMobile';
+import { FinanceJobs } from '@/components/finance/FinanceJobs';
 import { InstallerAgenda } from '@/components/mobile/InstallerAgenda';
 import { OperatorJobsMobile } from '@/components/mobile/OperatorJobsMobile';
 import { CrewCalendarMobile } from '@/components/mobile/CrewCalendarMobile';
@@ -17,6 +18,8 @@ export default function HomeTab() {
       return <OperatorJobsMobile />;
     case 'field_super':
       return <FieldSuperJobcardsMobile />;
+    case 'finance_manager':
+      return <FinanceJobs />;
     case 'developer':
       return <DeveloperHome />;
     default:

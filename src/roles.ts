@@ -9,6 +9,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   scheduler: 'Scheduler',
   operator: 'Operator',
   field_super: 'Field Super',
+  finance_manager: 'Finance Manager',
   developer: 'Developer',
 };
 
@@ -29,7 +30,8 @@ export type DesktopHref =
   | '/scheduler-jobcards'
   | '/operator-jobs'
   | '/operator-people'
-  | '/operator-timesheets'
+  | '/finance-manager-jobs'
+  | '/finance-manager-timesheets'
   | '/field-super-jobcards'
   | '/field-super-jobs'
   | '/field-super-calendar'
@@ -59,7 +61,17 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   operator: [
     { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
     { href: '/operator-people', label: 'People', icon: 'users' },
-    { href: '/operator-timesheets', label: 'Timesheets', icon: 'file-text' },
+    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+  ],
+  // Money-facing console: labor budgets + QBT mapping on jobs, and the
+  // timesheet review the Operator used to own.
+  finance_manager: [
+    { href: '/finance-manager-jobs', label: 'Jobs', icon: 'briefcase' },
+    {
+      href: '/finance-manager-timesheets',
+      label: 'Timesheets',
+      icon: 'file-text',
+    },
     { href: '/console-settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [
@@ -136,6 +148,10 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
   operator: [
     { name: 'index', label: 'Jobs', icon: 'briefcase' },
     { name: 'people', label: 'People', icon: 'users' },
+    { name: 'settings', label: 'Settings', icon: 'settings' },
+  ],
+  finance_manager: [
+    { name: 'index', label: 'Jobs', icon: 'briefcase' },
     { name: 'timesheets', label: 'Timesheets', icon: 'file-text' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
@@ -169,6 +185,8 @@ export function desktopHomeHref(role: AppRole): DesktopHref {
       return '/scheduler-calendar';
     case 'field_super':
       return '/field-super-jobcards';
+    case 'finance_manager':
+      return '/finance-manager-jobs';
     case 'developer':
       return '/operator-jobs';
   }

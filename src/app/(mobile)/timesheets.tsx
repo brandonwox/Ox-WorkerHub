@@ -3,10 +3,11 @@ import { InstallerTimesheets } from '@/components/mobile/InstallerTimesheets';
 import { OperatorTimesheetsMobile } from '@/components/mobile/OperatorTimesheetsMobile';
 import { useCurrentRole } from '@/store/useAppStore';
 
-/** Timesheets tab — the installer's own hours, or the Operator's review. */
+/** Timesheets tab — the installer's own hours, or the Finance Manager's
+    review (taken over from the Operator). */
 export default function TimesheetsTab() {
   const role = useCurrentRole();
   if (role === 'installer') return <InstallerTimesheets />;
-  if (role === 'operator') return <OperatorTimesheetsMobile />;
+  if (role === 'finance_manager') return <OperatorTimesheetsMobile />;
   return <AccessDenied />;
 }

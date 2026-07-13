@@ -17,6 +17,7 @@ const ALLOWED_ROLES = [
   'scheduler',
   'operator',
   'field_super',
+  'finance_manager',
   'developer',
 ] as const;
 

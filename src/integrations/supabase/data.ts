@@ -44,6 +44,8 @@ interface JobRow {
   flashing_photo_path: string | null;
   scopes: string[] | null;
   cover_photo_id: string | null;
+  /** numeric arrives from PostgREST as a string. */
+  labor_budget: number | string | null;
 }
 
 interface JobFieldSuperRow {
@@ -173,6 +175,7 @@ function rowToJob(r: JobRow): Job {
       : undefined,
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
     coverPhotoId: r.cover_photo_id ?? undefined,
+    laborBudget: r.labor_budget != null ? Number(r.labor_budget) : undefined,
   };
 }
 
@@ -454,6 +457,7 @@ function jobToRow(job: Job) {
     flashing_photo_path: job.flashingPhotoPath ?? null,
     scopes: job.scopes ?? null,
     cover_photo_id: job.coverPhotoId ?? null,
+    labor_budget: job.laborBudget ?? null,
   };
 }
 

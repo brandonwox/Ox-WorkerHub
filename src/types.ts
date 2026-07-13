@@ -8,6 +8,7 @@ export type AppRole =
   | 'scheduler'
   | 'operator'
   | 'field_super'
+  | 'finance_manager'
   | 'developer';
 
 /** Account lifecycle. `invited` until the person accepts their email invite. */
@@ -95,6 +96,12 @@ export interface Job {
    * installers/schedulers to this one column).
    */
   coverPhotoId?: string;
+  /**
+   * Total labor budget assigned to the job, in dollars. Set by the Finance
+   * Manager; their jobs tab compares it against wages paid out (the summed
+   * earnings of timesheets on this job's jobcards).
+   */
+  laborBudget?: number;
   /**
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field

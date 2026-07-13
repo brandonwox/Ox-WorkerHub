@@ -9,7 +9,13 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppRole, Worker } from '@/types';
 import { formatMoney } from '@/utils/time';
 
-const SECTION_ORDER: AppRole[] = ['operator', 'field_super', 'scheduler', 'installer'];
+const SECTION_ORDER: AppRole[] = [
+  'operator',
+  'finance_manager',
+  'field_super',
+  'scheduler',
+  'installer',
+];
 
 /**
  * The Operator's roster on the phone: workers grouped by role, with rate and

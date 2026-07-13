@@ -4,6 +4,12 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+on web -> viewing the job details sidebar (e.g. field-super-jobs and other pages): 
+- the jobcards, issues, and documents should not all be shown at once, it should be similar to the view on mobile (3 cards that are clickable to toggle through.)
+- make the sidebar decently wider.
+- jobsite address, field super name, and job title should all be displayed in the same way they are on mobile for installers.
+- to sum up the changes, it should all be the same as the mobile installer view, but the field-super view has more fields such as the window opening flashing material
+
 mobile -> viewing a photo -> clicking on the photo's note to edit it: the text area should appear above the keyboard so i can see what I'm typing (I believe this is a problem in other areas too, where the keyboard covers the text area.)
 
 mobile jobcards view:
@@ -26,12 +32,7 @@ web needs a way to access settings: Let's change the log out button at the top o
 
 in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
 
-create finance manager role. 
-1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
-2. The finance manager should have a jobs tab.
-3. each job card in the finance-manager-jobs tab should show the total assigned labor budget for the job. It should also show how much of the labor budget has been paid out.
-4. MENTAL NOTE THAT WILL BE IMPLEMENTED LATER (NOT RIGHT NOW): The field supers OR instalelrs will have to enter how many windows have been done (out of the total) for each job. and those numbers should show up for the finance manager.
-5. At the top of the jobs page there should be a warning of how many jobs do not have an assigned QuickBooks Time jobcode ID (it is the finance-manager who is responsible for assigning a QBT jobcode ID for each job.)
+MENTAL NOTE FOR LATER (NOT RIGHT NOW): field supers OR installers will have to enter how many windows have been done (out of the total) for each job, and those numbers should show up for the finance manager.
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
 
@@ -45,6 +46,12 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+finance manager role (REQUIRES: apply the two new finance-manager Supabase migrations — the enum value and the policies are split because Postgres can't add and use an enum value in one transaction — and redeploy the invite-worker edge function so Finance Managers can be invited):
+- new role "Finance Manager", invitable from the People page like any other role; shows in the people lists.
+- the timesheets review page moved from the Operator to the Finance Manager (route renamed to /finance-manager-timesheets; the Operator's Timesheets nav entry is gone on web and mobile). Same weekly pre-QBT-push review: filters, tallies, per-worker groups, timecard editing.
+- Finance Manager Jobs tab (web + mobile home): every job as a card with an inline-editable QBT jobcode ID (amber outline while missing) and an inline-editable labor budget. Each card shows wages paid out (summed timesheet earnings on the job's jobcards) against the budget with a progress bar that turns red when over budget. A warning banner at the top counts jobs still missing a QBT jobcode ID.
+- jobs got a labor_budget column; the Finance Manager may update ONLY the QBT jobcode + labor budget on a job (RLS policy + guard trigger), and the budget column is blocked for the other limited roles' job updates.
 
 web jobs pages: job dashboard sidebar + search.
 - field-super-jobs: a search bar filters by job name or address; clicking a job now opens a large right-hand sidebar instead of the old dropdown. The sidebar is the job's full dashboard: jobsite address (inline-editable, with copy + open-in-Google-Maps buttons), Window Opening Flashing Material (inline-editable text + the reference photo, hidden for non-window jobs), a Jobcards section (status pill + task progress; clicking one opens the jobcard quick view), an Issues section (open issues with the collapse behavior + the collapsed "Resolved (n)" group), a Documents section (same as mobile — non-installers can add), and a Pictures section with upload. The old jobcards/photos popup modals are gone (the unused JobJobcardsModal component was deleted).

@@ -34,6 +34,8 @@ const SEND_META: Record<
   },
 };
 
+/** Finance Manager → Timesheets: the weekly pre-QBT-push review (moved over
+    from the Operator, who no longer sees timesheets). */
 export default function ReviewScreen() {
   const role = useCurrentRole();
   const logs = useAppStore((s) => s.logs);
@@ -95,7 +97,7 @@ export default function ReviewScreen() {
       .sort((a, b) => a.workerName.localeCompare(b.workerName));
   }, [visibleLogs, workers, filter]);
 
-  if (role !== 'operator') return <AccessDenied />;
+  if (role !== 'finance_manager') return <AccessDenied />;
 
   return (
     <View style={styles.screen}>

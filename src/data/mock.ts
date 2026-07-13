@@ -45,6 +45,18 @@ export const mockWorkers: Worker[] = [
     status: 'active',
   },
   {
+    // Finance Manager: reviews timesheets pre-QBT-push and owns jobcode
+    // mapping + labor budgets (testable via the dev "View as" switcher).
+    id: 'w-fin',
+    name: 'Priya Shah',
+    email: 'priya@ox-glass.com',
+    phone: '(555) 480-1122',
+    role: 'finance_manager',
+    tradeRole: 'Finance Manager',
+    hourlyRate: 0,
+    status: 'active',
+  },
+  {
     id: 'w-sch',
     name: 'Janet Cole',
     email: 'janet@ox-glass.com',
