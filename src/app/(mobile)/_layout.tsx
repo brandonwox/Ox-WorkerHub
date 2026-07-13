@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Redirect, Tabs, usePathname } from 'expo-router';
 import { Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotificationToaster } from '@/components/NotificationToaster';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
@@ -11,7 +12,7 @@ import {
   roleCanAccessMobilePath,
 } from '@/roles';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts } from '@/theme';
+import { colors, fonts, radii, spacing } from '@/theme';
 
 /** Phone tab layout. Every role gets its own tab set (MOBILE_NAV). */
 export default function MobileTabsLayout() {
@@ -20,6 +21,7 @@ export default function MobileTabsLayout() {
   const passwordRecovery = useAppStore((s) => s.passwordRecovery);
   const worker = useCurrentWorker();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
 
   // Wait for the Supabase session to resolve before deciding, so a returning
   // user isn't flashed the login screen on launch.
@@ -57,13 +59,30 @@ export default function MobileTabsLayout() {
     <View style={{ flex: 1 }}>
       <Tabs
         initialRouteName="index"
+        // The bar is a floating island above the home indicator; zero out the
+        // navigator's own bottom inset so it doesn't pad the bar's inside too.
+        safeAreaInsets={{ bottom: 0 }}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
+          // Floating island: in normal layout flow (not absolute) so screen
+          // content — lists, the clock controls — still ends above it.
           tabBarStyle: {
             backgroundColor: colors.surface,
-            borderTopColor: colors.border,
+            height: 62,
+            marginHorizontal: spacing.lg,
+            marginBottom: insets.bottom + spacing.xs,
+            marginTop: spacing.xs,
+            borderRadius: radii.lg * 2,
+            borderTopWidth: 0,
+            borderWidth: 1,
+            borderColor: colors.border,
+            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.25)',
+          },
+          // Nudges the icons (and labels) down — they sat a little high.
+          tabBarItemStyle: {
+            paddingTop: 8,
           },
           tabBarLabelStyle: {
             fontFamily: fonts.medium,

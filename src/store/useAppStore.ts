@@ -809,6 +809,7 @@ interface AppState {
     jobId: string;
     jobcardId?: string;
     issueId?: string;
+    taskId?: string;
     localUris: string[];
   }) => Promise<string[]>;
   /** Set/replace the caption on a photo (pending or uploaded). Owner-only in the UI. */
@@ -1875,6 +1876,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           jobId: input.jobId,
           jobcardId: input.jobcardId,
           issueId: input.issueId,
+          taskId: input.taskId,
           workerId: me.id,
           localUri: stashed,
           takenAt: new Date().toISOString(),
@@ -1888,6 +1890,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           jobId: input.jobId,
           jobcardId: input.jobcardId,
           issueId: input.issueId,
+          taskId: input.taskId,
           workerId: me.id,
           storagePath: '',
           url: stashed,
@@ -2329,6 +2332,7 @@ async function processPhotoQueue(): Promise<void> {
           jobId: current.jobId,
           jobcardId: current.jobcardId,
           issueId: current.issueId,
+          taskId: current.taskId,
           workerId: current.workerId,
           storagePath,
           url: backend.jobPhotoUrl(storagePath),

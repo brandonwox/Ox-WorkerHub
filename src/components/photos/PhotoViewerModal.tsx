@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -32,6 +31,7 @@ import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 // The viewer draws over a black backdrop — pinned to the dark palette so its
 // chrome stays light-on-dark in light mode too.
 import { darkColors as colors, fonts, radii, spacing, themed } from '@/theme';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 interface Props {
   /**
@@ -70,6 +70,10 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   const listRef = useRef<FlatList<DisplayPhoto>>(null);
   // How far a swipe-down-to-dismiss has dragged the viewer (mobile only).
   const dismissTy = useSharedValue(0);
+  // Lifts the (absolutely-positioned) bottom bar above the keyboard so the
+  // note input stays visible while typing — KeyboardAvoidingView can't move
+  // absolute children, which left the input hidden behind the keyboard.
+  const keyboardHeight = useKeyboardHeight();
 
   // The photos prop was captured when the viewer opened; drop anything deleted
   // since (from in here or by a background refresh) so the pager never shows a
@@ -189,10 +193,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
         />
         <GestureDetector gesture={dismissGesture}>
           <Animated.View style={[styles.flex, dismissContentStyle]}>
-            <KeyboardAvoidingView
-              style={styles.flex}
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
+            <View style={styles.flex}>
               <FlatList
                 ref={listRef}
                 data={livePhotos}
@@ -251,9 +252,18 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                 </View>
               )}
 
-              {/* Bottom bar: metadata + note + actions. */}
+              {/* Bottom bar: metadata + note + actions. Rides up with the
+                  keyboard so the note input stays visible while typing. */}
               {detailsVisible && photo && (
-                <View style={styles.bottomBar}>
+                <View
+                  style={[
+                    styles.bottomBar,
+                    keyboardHeight > 0 && {
+                      bottom: keyboardHeight,
+                      paddingBottom: spacing.lg,
+                    },
+                  ]}
+                >
                   <View style={styles.metaRow}>
                     <View style={styles.metaMain}>
                       <Text style={styles.metaName}>
@@ -321,7 +331,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                   ) : null}
                 </View>
               )}
-            </KeyboardAvoidingView>
+            </View>
           </Animated.View>
         </GestureDetector>
       </GestureHandlerRootView>

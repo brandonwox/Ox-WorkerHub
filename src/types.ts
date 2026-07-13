@@ -396,6 +396,12 @@ export interface JobPhoto {
    * parent job) instead of the general photo grids.
    */
   issueId?: string;
+  /**
+   * The jobcard task ({@link JobcardTask.id}) the photo documents, when
+   * captured from a task's camera button. Installers must attach at least one
+   * photo to a task before they can check it off.
+   */
+  taskId?: string;
   /** Worker who took/uploaded the photo. */
   workerId: string;
   /** Object path inside the job-photos bucket ("<jobId>/<photoId>.jpg"). */
@@ -422,6 +428,8 @@ export interface PendingJobPhoto {
   jobcardId?: string;
   /** The issue the photo documents (see {@link JobPhoto.issueId}). */
   issueId?: string;
+  /** The jobcard task the photo documents (see {@link JobPhoto.taskId}). */
+  taskId?: string;
   workerId: string;
   /** Local file uri (native) or blob uri (web) of the compressed image. */
   localUri: string;

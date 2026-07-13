@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
@@ -25,7 +25,7 @@ import {
 } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { JOBCARD_STATUSES } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
@@ -73,6 +73,20 @@ export default function JobDetailsScreen() {
     index: number;
   } | null>(null);
   const statusWrapRef = useRef<View>(null);
+  const insets = useSafeAreaInsets();
+  const me = useCurrentWorker();
+  // Installers must attach at least one photo to a task before checking it
+  // off; office roles (and the dev switcher's other views) are not gated.
+  const requireTaskPhotos = me?.role === 'installer';
+  // Task whose "take a photo first" hint is showing (cleared after a moment).
+  const [photoHintTaskId, setPhotoHintTaskId] = useState<string | null>(null);
+  const photoHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (photoHintTimer.current) clearTimeout(photoHintTimer.current);
+    },
+    []
+  );
 
   if (!job) {
     return (
@@ -86,8 +100,44 @@ export default function JobDetailsScreen() {
     jobcardStatusColors[job.status] ?? jobcardStatusColors.Untouched;
   const timeWindow = formatJobWindow(job.startTime, job.endTime);
 
+  const showPhotoHint = (taskId: string) => {
+    setPhotoHintTaskId(taskId);
+    if (photoHintTimer.current) clearTimeout(photoHintTimer.current);
+    photoHintTimer.current = setTimeout(() => setPhotoHintTaskId(null), 4000);
+  };
+
+  // Capture photos FOR one task: the in-app camera on native, the image picker
+  // on web. Photos carry the task id (and the jobcard/job links as usual).
+  const takeTaskPhotos = async (taskId: string) => {
+    if (!job.jobId) return;
+    if (Platform.OS !== 'web') {
+      router.push({
+        pathname: '/camera/[jobId]',
+        params: { jobId: job.jobId, jobcardId: job.id, taskId },
+      });
+      return;
+    }
+    if (picking) return;
+    setPicking(true);
+    try {
+      const uris = await pickJobPhotos();
+      if (uris.length) {
+        await addJobPhotos({
+          jobId: job.jobId,
+          jobcardId: job.id,
+          taskId,
+          localUris: uris,
+        });
+      }
+    } finally {
+      setPicking(false);
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    // The sheet: page behind stays visible (and undimmed) above the card.
+    <View style={[styles.sheetRoot, { paddingTop: insets.top }]}>
+      <View style={styles.sheetCard}>
       {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
           of the page and it can't be scrolled fully into view. */}
       <ScrollView
@@ -238,7 +288,7 @@ export default function JobDetailsScreen() {
               <View style={styles.infoIcon}>
                 <Feather
                   name="check-square"
-                  size={16}
+                  size={18}
                   color={colors.textSecondary}
                 />
               </View>
@@ -248,14 +298,26 @@ export default function JobDetailsScreen() {
             </View>
             {job.tasks!.map((task) => {
               const taskIssues = issues.filter((i) => i.taskId === task.id);
+              // Photos taken for THIS task (uploaded + still-uploading).
+              const taskPhotos = photos.filter((p) => p.taskId === task.id);
               return (
                 <View key={task.id} style={styles.taskBlock}>
                   <View style={styles.taskRow}>
                     <Pressable
                       hitSlop={10}
-                      onPress={() =>
-                        setJobcardTaskDone(job.id, task.id, !task.done)
-                      }
+                      onPress={() => {
+                        // Installers can't check a task off without at least
+                        // one photo taken for it (unchecking is always fine).
+                        if (
+                          !task.done &&
+                          requireTaskPhotos &&
+                          taskPhotos.length === 0
+                        ) {
+                          showPhotoHint(task.id);
+                          return;
+                        }
+                        setJobcardTaskDone(job.id, task.id, !task.done);
+                      }}
                     >
                       <Feather
                         name={task.done ? 'check-square' : 'square'}
@@ -271,6 +333,23 @@ export default function JobDetailsScreen() {
                     {job.jobId && (
                       <Pressable
                         style={({ pressed }) => [
+                          styles.taskCameraButton,
+                          pressed && styles.closePressed,
+                        ]}
+                        hitSlop={6}
+                        onPress={() => takeTaskPhotos(task.id)}
+                      >
+                        <Feather name="camera" size={12} color={colors.primary} />
+                        {taskPhotos.length > 0 && (
+                          <Text style={styles.taskCameraText}>
+                            {taskPhotos.length}
+                          </Text>
+                        )}
+                      </Pressable>
+                    )}
+                    {job.jobId && (
+                      <Pressable
+                        style={({ pressed }) => [
                           styles.taskIssueButton,
                           pressed && styles.closePressed,
                         ]}
@@ -283,15 +362,17 @@ export default function JobDetailsScreen() {
                           })
                         }
                       >
-                        <Feather
-                          name="alert-triangle"
-                          size={12}
-                          color={colors.warning}
-                        />
+                        <Feather name="plus" size={12} color={colors.warning} />
                         <Text style={styles.taskIssueText}>Issue</Text>
                       </Pressable>
                     )}
                   </View>
+                  {photoHintTaskId === task.id && (
+                    <Text style={styles.taskPhotoHint}>
+                      Take at least one photo of this task before checking it
+                      off.
+                    </Text>
+                  )}
                   {taskIssues.length > 0 && (
                     <View style={styles.taskIssues}>
                       {taskIssues.map((issue) => (
@@ -318,7 +399,7 @@ export default function JobDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.infoRow}>
             <View style={styles.infoIcon}>
-              <Feather name="edit-3" size={16} color={colors.textSecondary} />
+              <Feather name="edit-3" size={18} color={colors.textSecondary} />
             </View>
             <View style={styles.infoText}>
               <Text style={styles.infoLabel}>Field Notes</Text>
@@ -344,7 +425,7 @@ export default function JobDetailsScreen() {
           <View style={styles.section}>
             <View style={styles.infoRow}>
               <View style={styles.infoIcon}>
-                <Feather name="image" size={16} color={colors.textSecondary} />
+                <Feather name="image" size={18} color={colors.textSecondary} />
               </View>
               <View style={styles.infoText}>
                 <Text style={styles.infoLabel}>Photos</Text>
@@ -419,7 +500,7 @@ export default function JobDetailsScreen() {
               <View style={styles.infoIcon}>
                 <Feather
                   name="alert-triangle"
-                  size={16}
+                  size={18}
                   color={colors.textSecondary}
                 />
               </View>
@@ -452,7 +533,8 @@ export default function JobDetailsScreen() {
         initialIndex={viewer?.index ?? null}
         onClose={() => setViewer(null)}
       />
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
@@ -468,7 +550,7 @@ function InfoRow({
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoIcon}>
-        <Feather name={icon} size={16} color={colors.textSecondary} />
+        <Feather name={icon} size={18} color={colors.textSecondary} />
       </View>
       <View style={styles.infoText}>
         <Text style={styles.infoLabel}>{label}</Text>
@@ -483,6 +565,22 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Transparent backdrop — the page behind stays visible above the card,
+  // undimmed. The safe-area top padding is applied inline.
+  sheetRoot: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  sheetCard: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: Platform.OS === 'web' ? 0 : 20,
+    borderTopRightRadius: Platform.OS === 'web' ? 0 : 20,
+    overflow: 'hidden',
+    // No dimmed overlay behind the sheet, so a soft top shadow separates it
+    // from the page instead.
+    boxShadow: '0 -6px 24px rgba(0, 0, 0, 0.3)',
+  },
   center: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -494,7 +592,9 @@ const styles = themed(() => StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    gap: spacing.xl,
+    // No top padding — the X/status row sits right at the top of the sheet.
+    paddingTop: spacing.xs,
+    gap: spacing.xxl,
     paddingBottom: spacing.xxl,
   },
   topRow: {
@@ -517,8 +617,8 @@ const styles = themed(() => StyleSheet.create({
   },
   title: {
     color: colors.textPrimary,
-    fontFamily: fonts.semiBold,
-    fontSize: 22,
+    fontFamily: fonts.medium,
+    fontSize: 26,
   },
   taskBlock: {
     gap: spacing.sm,
@@ -554,6 +654,28 @@ const styles = themed(() => StyleSheet.create({
     color: colors.warning,
     fontFamily: fonts.semiBold,
     fontSize: 11,
+  },
+  taskCameraButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    marginTop: 1,
+  },
+  taskCameraText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+  },
+  taskPhotoHint: {
+    marginLeft: spacing.xl + spacing.sm,
+    color: colors.warning,
+    fontFamily: fonts.medium,
+    fontSize: 12,
   },
   taskIssues: {
     marginLeft: spacing.xl + spacing.sm,
@@ -625,7 +747,7 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
   },
   infoIcon: {
-    width: 20,
+    width: 24,
     alignItems: 'center',
     marginTop: 1,
   },

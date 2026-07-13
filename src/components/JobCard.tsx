@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
-import { priorityMeta } from '@/lib/priority';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
 import { formatJobWindow } from '@/utils/time';
@@ -20,7 +20,11 @@ interface Props {
 export function JobCard({ jobcard, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
-  const priority = priorityMeta(jobcard.priority);
+  // The parent job's name shows with the location. (No priority pill here —
+  // jobcard priority is office-side; installers don't need it.)
+  const parentJob = useAppStore((s) =>
+    s.jobs.find((j) => j.id === jobcard.jobId)
+  );
 
   return (
     <Pressable
@@ -49,17 +53,12 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
         <Text style={styles.title} numberOfLines={1}>
           {jobcard.title}
         </Text>
-        <View style={[styles.priorityPill, { backgroundColor: priority.bg }]}>
-          <Text style={[styles.priorityText, { color: priority.fg }]}>
-            {jobcard.priority}
-          </Text>
-        </View>
         <StatusPill status={jobcard.status} />
       </View>
       <View style={styles.metaRow}>
         <Feather name="map-pin" size={14} color={colors.textSecondary} />
         <Text style={styles.metaText} numberOfLines={1}>
-          {jobcard.address}
+          {parentJob ? `${parentJob.name} · ${jobcard.address}` : jobcard.address}
         </Text>
       </View>
       {timeWindow && (
@@ -116,15 +115,6 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 16,
-  },
-  priorityPill: {
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  priorityText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 11,
   },
   metaRow: {
     flexDirection: 'row',

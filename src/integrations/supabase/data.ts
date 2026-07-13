@@ -128,6 +128,7 @@ interface JobPhotoRow {
   job_id: string;
   jobcard_id: string | null;
   issue_id: string | null;
+  task_id: string | null;
   worker_id: string;
   storage_path: string;
   note: string | null;
@@ -260,6 +261,7 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
     jobId: r.job_id,
     jobcardId: r.jobcard_id ?? undefined,
     issueId: r.issue_id ?? undefined,
+    taskId: r.task_id ?? undefined,
     workerId: r.worker_id,
     storagePath: r.storage_path,
     url: jobPhotoUrl(r.storage_path),
@@ -772,6 +774,7 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
         job_id: photo.jobId,
         jobcard_id: photo.jobcardId ?? null,
         issue_id: photo.issueId ?? null,
+        task_id: photo.taskId ?? null,
         worker_id: photo.workerId,
         storage_path: photo.storagePath,
         note: photo.note ?? null,

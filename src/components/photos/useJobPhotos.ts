@@ -13,6 +13,7 @@ export interface DisplayPhoto {
   jobId: string;
   jobcardId?: string;
   issueId?: string;
+  taskId?: string;
   workerId: string;
   url: string;
   note?: string;
@@ -26,6 +27,7 @@ function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
     jobId: p.jobId,
     jobcardId: p.jobcardId,
     issueId: p.issueId,
+    taskId: p.taskId,
     workerId: p.workerId,
     url: p.url,
     note: p.note,
@@ -39,6 +41,7 @@ function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
     jobId: p.jobId,
     jobcardId: p.jobcardId,
     issueId: p.issueId,
+    taskId: p.taskId,
     workerId: p.workerId,
     url: p.localUri,
     note: p.note,
