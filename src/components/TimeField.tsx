@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { parseTimeInput } from '@/utils/time';
 
@@ -40,6 +41,9 @@ function seedDate(value: string): Date {
 export function TimeField({ label, value, onChangeText, placeholder }: Props) {
   // iOS only — the spinner edits this draft until "Done" commits it.
   const [iosDraft, setIosDraft] = useState<Date | null>(null);
+  // The spinner must match the app theme: a hardcoded variant renders
+  // invisible (white-on-white / black-on-black) digits in the other theme.
+  const theme = useAppStore((s) => s.theme);
 
   const commit = (picked: Date) => onChangeText(format(picked, 'h:mm a'));
 
@@ -102,7 +106,7 @@ export function TimeField({ label, value, onChangeText, placeholder }: Props) {
                   value={iosDraft}
                   mode="time"
                   display="spinner"
-                  themeVariant="dark"
+                  themeVariant={theme}
                   onChange={(_event: DateTimePickerEvent, picked?: Date) => {
                     if (picked) setIosDraft(picked);
                   }}

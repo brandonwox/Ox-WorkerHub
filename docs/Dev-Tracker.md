@@ -20,8 +20,8 @@ here's some more specifics for the field-super-jobs page (and all other jobs pag
 - basically the job sidebar needs to show a full dashboard for the job.
 
 installer viewing their schedule: 
-- jobcards do not need to show priority. jobcard priority is not for the installers, they dont need to worry about it.
-- the jobcard should show the parent job on the jobcard (when viewing their daily schedule.)
+- jobcards do not need to show jobcard priority. jobcard priority is not for the installers, they dont need to worry about it.
+- the jobcard should show the parent job on the jobcard (when viewing their daily schedule.) It should show the name of the parent job on the same row that the location is shown on (directly under the name of the jobcard.)
 
 mobile: the bottom bar icons sit a little high, can we lower them slightly.
 
@@ -50,6 +50,15 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+installer timesheets tab rework (mobile tab + the desktop /installer-timesheets page, which share the screen):
+- the "Timesheets" title and the Today/This Week/Last 30 Days buttons are gone.
+- a bordered stat card sits on top: date range line, then the period title, then Hours worked + Earned. Tapping anywhere on the card cycles Today → This week → This month → All time → repeat. On the week/month steps the title reads "This week | Week to date" with the inactive half grayed out and tappable to flip the stats to the to-date range (same for month).
+- tapping the date range line opens a custom range picker (From/To — Android date dialog, iOS spinner inline, typed YYYY-MM-DD on web). Applying shows "Custom range" stats; tapping the card again returns to Today.
+- below the card, the activity log: a section per day of the current week ("Today", then weekday names) with the day's earnings right-aligned on the header row; older weeks collapse into one container each (date range on the left, week earnings on the right; day sections inside use numeric dates).
+- timecards no longer repeat the date; they show the jobcard name, the parent job's name, start–end times, total hours, and the amount earned on that card.
+
+fixed: adjusting a clock-in start time showed a blank picker — the iOS time spinner was hardcoded to dark digits, invisible against the light-mode sheet. All native pickers now follow the selected theme.
 
 job details page round 2 (REQUIRES: apply the new job-documents/cover-photo Supabase migration, and run npm install after pulling — adds expo-clipboard + expo-document-picker):
 - cover photo is now a centered medium rounded square. It defaults to the job's OLDEST photo; tapping it opens a popup showing the image with a "Change jobsite photo" button that flips into a picker over the job's photos. Any worker can set it (a new RLS policy + guard trigger lets installers/schedulers write only this column).

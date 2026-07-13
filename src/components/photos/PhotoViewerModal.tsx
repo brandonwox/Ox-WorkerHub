@@ -91,9 +91,15 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
       setConfirmingDelete(false);
       setDetailsVisible(true);
       setPhotoZoomed(false);
-      dismissTy.value = 0;
     }
   }
+
+  // Reset the swipe-down offset when the viewer (re)opens. Kept in an effect,
+  // not the render-phase block above, because writing a shared value during
+  // render trips Reanimated's strict-mode warning.
+  useEffect(() => {
+    if (initialIndex != null) dismissTy.value = 0;
+  }, [initialIndex, dismissTy]);
 
   // When the photo being viewed disappears, land on the nearest remaining
   // neighbour; close once nothing is left.
