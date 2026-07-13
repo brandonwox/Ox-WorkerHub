@@ -4,12 +4,6 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
-on web -> viewing the job details sidebar (e.g. field-super-jobs and other pages): 
-- the jobcards, issues, and documents should not all be shown at once, it should be similar to the view on mobile (3 cards that are clickable to toggle through.)
-- make the sidebar decently wider.
-- jobsite address, field super name, and job title should all be displayed in the same way they are on mobile for installers.
-- to sum up the changes, it should all be the same as the mobile installer view, but the field-super view has more fields such as the window opening flashing material
-
 mobile -> viewing a photo -> clicking on the photo's note to edit it: the text area should appear above the keyboard so i can see what I'm typing (I believe this is a problem in other areas too, where the keyboard covers the text area.)
 
 mobile jobcards view:
@@ -46,6 +40,13 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+web job dashboard sidebar now mirrors the mobile installer job details view (field-super-jobs and operator-jobs):
+- wider panel (640px), X top-left like mobile.
+- centered cover photo (rounded square; oldest photo by default, tap → popup with "Change jobsite photo" picker over the job's photos — same as mobile).
+- centered job name, tappable location (popup with Copy / Open in Google Maps), and centered Field Super names.
+- Jobcards / Issues / Documents no longer stack all at once — the same three clickable section cards as mobile (counts on each; the active card hides and its section shows below, one at a time). The photo wall stays always visible underneath with the Upload button.
+- the field-super/operator extras sit in their own bordered block under the header: inline-editable jobsite address and (window jobs) the flashing material text + reference photo.
 
 finance manager role (REQUIRES: apply the two new finance-manager Supabase migrations — the enum value and the policies are split because Postgres can't add and use an enum value in one transaction — and redeploy the invite-worker edge function so Finance Managers can be invited):
 - new role "Finance Manager", invitable from the People page like any other role; shows in the people lists.
