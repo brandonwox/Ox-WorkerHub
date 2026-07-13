@@ -89,6 +89,13 @@ export interface Job {
   /** Renderable URL of the flashing photo (public bucket URL; local uri in dev). */
   flashingPhotoUrl?: string;
   /**
+   * The {@link JobPhoto} shown as the job's cover on its details page. Unset
+   * means "no explicit choice" — the app falls back to the job's oldest
+   * photo. Any worker may change it ("Change jobsite photo"; RLS guards
+   * installers/schedulers to this one column).
+   */
+  coverPhotoId?: string;
+  /**
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field
    * Super sees ONLY the jobs they're in here — and, transitively, only those
@@ -447,6 +454,34 @@ export interface JobIssue {
   /** ISO datetime the issue was resolved. */
   resolvedAt?: string;
   /** ISO datetime the issue was raised. */
+  createdAt: string;
+}
+
+/** What a job document holds: an image, a PDF file, or a plain text note. */
+export type JobDocumentKind = 'photo' | 'pdf' | 'text';
+
+/**
+ * A document attached to a {@link Job}: a photo, a PDF, or a text note, each
+ * with a required title. Created by any non-installer role (installers can
+ * view them); listed in the Documents section of the job details page. File
+ * bytes live in the job-documents storage bucket.
+ */
+export interface JobDocument {
+  id: string;
+  /** Parent Job (jobsite) the document belongs to. */
+  jobId: string;
+  /** Worker who created the document. */
+  workerId: string;
+  kind: JobDocumentKind;
+  /** Display title, typed at creation (required). */
+  title: string;
+  /** The content of a 'text' document. */
+  body?: string;
+  /** Object path inside the job-documents bucket (photo/pdf kinds). */
+  storagePath?: string;
+  /** Renderable/openable URL (public bucket URL; a local uri in local dev). */
+  url?: string;
+  /** ISO datetime the document was created. */
   createdAt: string;
 }
 

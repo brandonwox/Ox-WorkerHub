@@ -4,6 +4,21 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+mobile jobcards view:
+- increase the font size for the jobcard name. make it not so bold either.
+- increase the space between section rows. (each section that has an icon on the left needs a little more space between the other sections.)
+- the "Issues" button that adds an issue needs to have a + icon, like "+ Issue".
+- in order for an installer to check off a task for a jobcard, they must have at least one photo taken for the task. (add functionality for this).
+- increase the size of section icons slightly.
+- at the top of the screen, get rid of the top margin/padding for the top section (the section that holds the X button and the status pill.) (only remove the top margin, so the jobard is just slightly higher up.) also: do not dim the page behind the jobcard.
+
+update the field-super-jobs and other jobs pages that make sense for this change: I want the web version of the job details to have a sidebar view that is closer to the view that is on mobile. 
+here's some more specifics for the field-super-jobs page (and all other jobs pages):
+- add a search bar
+- clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)
+- the job sidebar should show the jobsite address, window flashing material, a jobcards section, an issues section, and a pictures section.
+- basically the job sidebar needs to show a full dashboard for the job.
+
 installer viewing their schedule: 
 - jobcards do not need to show priority. jobcard priority is not for the installers, they dont need to worry about it.
 - the jobcard should show the parent job on the jobcard (when viewing their daily schedule.)
@@ -15,12 +30,6 @@ in the settings theres a new password option: they should have to click a button
 web needs a way to access settings: Let's change the log out button at the top of the screen. add a profile image to the left of their name. and instead of signing them out, it opens a large settings page, the sign out button at the bottom of the settings page.
 
 in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
-
-field-super-jobs:
-- add a search bar
-- clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)
-- the job sidebar should show the jobsite address, window flashing material, a jobcards section, an issues section, and a pictures section.
-- basically the job sidebar needs to show a full dashboard for the job.
 
 create finance manager role. 
 1. Finance manager role takes over the operator-timesheets page (operator role no longer needs to see timesheets, rename the page to finance-manager-timesheets). 
@@ -41,6 +50,15 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+job details page round 2 (REQUIRES: apply the new job-documents/cover-photo Supabase migration, and run npm install after pulling — adds expo-clipboard + expo-document-picker):
+- cover photo is now a centered medium rounded square. It defaults to the job's OLDEST photo; tapping it opens a popup showing the image with a "Change jobsite photo" button that flips into a picker over the job's photos. Any worker can set it (a new RLS policy + guard trigger lets installers/schedulers write only this column).
+- job name, location, and field super names are centered; tapping the location opens a popup with "Copy" and "Open in Maps" (Apple Maps on iOS, the geo: handler on Android, Google Maps in a tab on web).
+- below the field supers sit three section cards styled like the reference screenshot — Issues (n Open), Documents (n Total), Jobcards (n Total). None is open by default; opening one hides its own card and shows that section below (one at a time). The photo wall stays always visible underneath, with more space between the major blocks.
+- Jobcards section lists the job's jobcards with status pill + task progress; tapping opens the jobcard.
+- Documents section: photos, PDFs, and text notes, each with a required title. Non-installers get a + button (Photo = take/upload, PDF = file picker, Text = typed in place); installers view only (enforced by RLS too). Photo documents open in a full-screen pinch-zoom viewer, PDFs open in the browser, text expands in place. Text documents queue offline like other writes; photo/PDF files upload immediately and need a connection.
+
+issue resolving: installers can now resolve/reopen issues (was Field Super only; RLS updated to match). On the job details page, resolved issues no longer mix into the list — they sit in a collapsed "Resolved (n)" group at the very bottom of the Issues section. Collapsed issue rows now show only the description; expanding shows the clickable jobcard name, the task, and the worker + date as before.
 
 installer job details page redesign: no more "Job Photos" nav header — the page has a plain X close button top-left instead of the "< (mobile)" back button. The job's newest photo shows as a cover image above the job name (tap it to open the viewer; quiet placeholder until the job has photos). Location and Field Super rows lost their card background (icons kept, and it now shows just the supers' names without the "Field Super:" prefix). The Issues section stays. Take Photos and Upload became icon-only round buttons floating centered at the bottom of the page (camera is native-only as before; web shows upload alone).
 

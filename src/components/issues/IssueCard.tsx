@@ -37,8 +37,8 @@ interface Props {
 
 /**
  * One field issue: who raised it and when, its description, its photo gallery,
- * and the actions the viewer's role allows (installer delete / photo capture,
- * Field Super resolve).
+ * and the actions the viewer's role allows (creator edit/delete, photo
+ * capture, Field Super / installer resolve).
  */
 export function IssueCard({
   issue,
@@ -70,7 +70,8 @@ export function IssueCard({
 
   const resolved = issue.status === 'resolved';
   const isCreator = me?.id === issue.workerId;
-  const canResolve = role === 'field_super';
+  // Field Supers and installers both resolve/reopen issues (RLS matches).
+  const canResolve = role === 'field_super' || role === 'installer';
   // Issues sit collapsed (one description line + a chevron) until opened. A
   // brand-new issue starts expanded so its creator can describe it right away.
   const [expanded, setExpanded] = useState(
@@ -120,20 +121,8 @@ export function IssueCard({
         onPress={() => setExpanded(true)}
       >
         <Feather name="chevron-right" size={16} color={colors.textSecondary} />
-        {/* On the parent job page the collapsed row leads with the source
-            jobcard's name — tapping the name jumps to that jobcard. */}
-        {showJobcardLink && jobcard && (
-          <Pressable
-            hitSlop={6}
-            onPress={() =>
-              router.push({ pathname: '/job/[id]', params: { id: jobcard.id } })
-            }
-          >
-            <Text style={styles.collapsedJobcardLink} numberOfLines={1}>
-              {jobcard.title}
-            </Text>
-          </Pressable>
-        )}
+        {/* Collapsed rows show only the description — the jobcard link, task,
+            and author/date appear once expanded. */}
         <Text
           style={[
             styles.collapsedText,
@@ -349,12 +338,6 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.regular,
-    fontSize: 13,
-  },
-  collapsedJobcardLink: {
-    maxWidth: 150,
-    color: colors.primary,
-    fontFamily: fonts.medium,
     fontSize: 13,
   },
   headerRow: {

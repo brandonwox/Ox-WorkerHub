@@ -8,6 +8,7 @@ import {
   DailyCrew,
   Job,
   Jobcard,
+  JobDocument,
   JobIssue,
   ScheduleAssignment,
   TimesheetLog,
@@ -42,6 +43,12 @@ export interface CachedCollections {
   assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
   jobIssues: JobIssue[];
+  /**
+   * Document rows (titles/text bodies cache fine; photo/pdf files still need
+   * a connection to open, like job photos). Absent in caches written before
+   * the documents feature — readers default to [].
+   */
+  jobDocuments?: JobDocument[];
   cachedAt: string;
 }
 
@@ -64,6 +71,7 @@ export function persistDataCache(
       (log) => (log.date ?? log.startTime.slice(0, 10)) >= cutoff
     ),
     jobIssues: data.jobIssues,
+    jobDocuments: data.jobDocuments,
     cachedAt: new Date().toISOString(),
   };
   AsyncStorage.setItem(

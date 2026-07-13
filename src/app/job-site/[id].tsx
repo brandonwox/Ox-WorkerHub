@@ -1,8 +1,11 @@
 import { Feather } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,17 +20,29 @@ import {
 
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
+import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
+import { StatusPill } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing, themed } from '@/theme';
+import {
+  colors,
+  fonts,
+  modalShadow,
+  radii,
+  spacing,
+  themed,
+} from '@/theme';
+
+type SectionKey = 'issues' | 'documents' | 'jobcards';
 
 /**
- * A parent Job's page: a cover photo, jobsite info, issues, and the photo
- * wall. Installers open it from the Jobs tab. Capture/upload live as icon
- * buttons floating at the bottom (no live camera on web — upload only there).
+ * A parent Job's page: centered cover photo + header, section cards
+ * (Issues / Documents / Jobcards — one open at a time), and the photo wall.
+ * Installers open it from the Jobs tab. Capture/upload float at the bottom as
+ * icon buttons (no live camera on web — upload only there).
  */
 export default function JobSiteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,22 +50,43 @@ export default function JobSiteScreen() {
   const insets = useSafeAreaInsets();
   const job = useAppStore((s) => s.jobs.find((j) => j.id === id));
   const workers = useAppStore((s) => s.workers);
+  const jobcards = useAppStore((s) => s.jobcards);
+  const jobDocuments = useAppStore((s) => s.jobDocuments);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
+  const updateJob = useAppStore((s) => s.updateJob);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobPhotos(job?.id);
-  // This job's issues from every jobcard: open ones first, then newest first.
+
+  // This job's issues from every jobcard, newest first; split by status below.
   const issues = useMemo(
     () =>
       jobIssues
         .filter((issue) => issue.jobId === job?.id)
-        .sort((a, b) =>
-          a.status !== b.status
-            ? a.status === 'open'
-              ? -1
-              : 1
-            : b.createdAt.localeCompare(a.createdAt)
-        ),
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [jobIssues, job?.id]
+  );
+  const openIssues = useMemo(
+    () => issues.filter((issue) => issue.status === 'open'),
+    [issues]
+  );
+  const resolvedIssues = useMemo(
+    () => issues.filter((issue) => issue.status === 'resolved'),
+    [issues]
+  );
+
+  const jobJobcards = useMemo(
+    () =>
+      jobcards
+        .filter((card) => card.jobId === job?.id)
+        .sort((a, b) =>
+          (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
+        ),
+    [jobcards, job?.id]
+  );
+
+  const documentCount = useMemo(
+    () => jobDocuments.filter((d) => d.jobId === job?.id).length,
+    [jobDocuments, job?.id]
   );
 
   const [viewer, setViewer] = useState<{
@@ -58,6 +94,12 @@ export default function JobSiteScreen() {
     index: number;
   } | null>(null);
   const [picking, setPicking] = useState(false);
+  const [section, setSection] = useState<SectionKey | null>(null);
+  const [resolvedOpen, setResolvedOpen] = useState(false);
+  // Cover popup: 'view' shows the image + change button; 'pick' the grid.
+  const [coverModal, setCoverModal] = useState<'view' | 'pick' | null>(null);
+  const [mapsOpen, setMapsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fieldSupers = useMemo(
     () =>
@@ -67,8 +109,14 @@ export default function JobSiteScreen() {
     [job, workers]
   );
 
-  // Newest photo doubles as the page's cover image.
-  const coverPhoto = photos[0];
+  // Cover: the explicitly chosen photo, else the job's OLDEST photo (photos
+  // arrive newest-first), else a placeholder.
+  const coverPhoto = useMemo(() => {
+    const chosen = job?.coverPhotoId
+      ? photos.find((p) => p.id === job.coverPhotoId)
+      : undefined;
+    return chosen ?? (photos.length ? photos[photos.length - 1] : undefined);
+  }, [job?.coverPhotoId, photos]);
 
   const close = () => {
     if (router.canGoBack()) router.back();
@@ -94,6 +142,61 @@ export default function JobSiteScreen() {
     }
   };
 
+  const copyAddress = async () => {
+    await Clipboard.setStringAsync(job.location);
+    setCopied(true);
+    setTimeout(() => {
+      setMapsOpen(false);
+      setCopied(false);
+    }, 700);
+  };
+
+  const openInMaps = () => {
+    const q = encodeURIComponent(job.location);
+    const url =
+      Platform.OS === 'ios'
+        ? `http://maps.apple.com/?q=${q}`
+        : Platform.OS === 'android'
+          ? `geo:0,0?q=${q}`
+          : `https://www.google.com/maps/search/?api=1&query=${q}`;
+    void Linking.openURL(url);
+    setMapsOpen(false);
+  };
+
+  const sectionCards: {
+    key: SectionKey;
+    label: string;
+    sub: string;
+    icon: keyof typeof Feather.glyphMap;
+    tint: string;
+    dim: string;
+  }[] = [
+    {
+      key: 'issues',
+      label: 'Issues',
+      sub: `${openIssues.length} Open`,
+      icon: 'alert-circle',
+      tint: colors.danger,
+      dim: colors.dangerDim,
+    },
+    {
+      key: 'documents',
+      label: 'Documents',
+      sub: `${documentCount} Total`,
+      icon: 'file-text',
+      tint: colors.primary,
+      dim: colors.primaryDim,
+    },
+    {
+      key: 'jobcards',
+      label: 'Jobcards',
+      sub: `${jobJobcards.length} Total`,
+      icon: 'clipboard',
+      tint: colors.success,
+      dim: colors.successDim,
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
@@ -113,50 +216,56 @@ export default function JobSiteScreen() {
           </Pressable>
         </View>
 
-        {/* Cover: the job's newest photo (tap to view); a quiet placeholder
-            until the job has photos. */}
-        {coverPhoto ? (
-          <Pressable
-            style={({ pressed }) => [pressed && styles.pressed]}
-            onPress={() =>
-              setViewer({
-                photos,
-                index: 0,
-              })
-            }
-          >
+        {/* Cover: a centered rounded square. Tapping opens the cover popup
+            with the "Change jobsite photo" button. */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.coverWrap,
+            pressed && photos.length > 0 && styles.pressed,
+          ]}
+          disabled={photos.length === 0}
+          onPress={() => setCoverModal('view')}
+        >
+          {coverPhoto ? (
             <Image
               source={{ uri: coverPhoto.url }}
               style={styles.cover}
               contentFit="cover"
               transition={120}
             />
-          </Pressable>
-        ) : (
-          <View style={[styles.cover, styles.coverEmpty]}>
-            <Feather name="image" size={28} color={colors.textTertiary} />
-          </View>
-        )}
-
-        <View style={styles.header}>
-          <Text style={styles.title}>{job.name}</Text>
-          {job.status === 'Finished' && (
-            <View style={styles.archivedPill}>
-              <Text style={styles.archivedText}>Finished</Text>
+          ) : (
+            <View style={[styles.cover, styles.coverEmpty]}>
+              <Feather name="image" size={26} color={colors.textTertiary} />
             </View>
           )}
-        </View>
+        </Pressable>
 
-        <View style={styles.infoBlock}>
-          <View style={styles.infoRow}>
-            <Feather name="map-pin" size={15} color={colors.textSecondary} />
-            <Text style={styles.infoValue}>
+        {/* Centered header: name, tappable location, Field Supers. */}
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{job.name}</Text>
+            {job.status === 'Finished' && (
+              <View style={styles.archivedPill}>
+                <Text style={styles.archivedText}>Finished</Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
+            onPress={() => job.location && setMapsOpen(true)}
+            disabled={!job.location}
+          >
+            <Feather name="map-pin" size={14} color={colors.textSecondary} />
+            <Text
+              style={[styles.infoValue, job.location && styles.locationText]}
+              numberOfLines={2}
+            >
               {job.location || 'No location set'}
             </Text>
-          </View>
+          </Pressable>
           <View style={styles.infoRow}>
-            <Feather name="user" size={15} color={colors.textSecondary} />
-            <Text style={styles.infoValue}>
+            <Feather name="user" size={14} color={colors.textSecondary} />
+            <Text style={styles.infoValue} numberOfLines={2}>
               {fieldSupers.length
                 ? fieldSupers.join(', ')
                 : 'No Field Super assigned'}
@@ -164,28 +273,135 @@ export default function JobSiteScreen() {
           </View>
         </View>
 
-        {/* Field issues raised on this job's cards, with a link back to each
-            card. Field Supers resolve them from here. Long lists collapse
-            behind a "View all" toggle. */}
-        {issues.length > 0 && (
+        {/* Section cards — the active one hides its button and shows below. */}
+        <View style={styles.cardsRow}>
+          {sectionCards
+            .filter((card) => card.key !== section)
+            .map((card) => (
+              <Pressable
+                key={card.key}
+                style={({ pressed }) => [
+                  styles.sectionCard,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => setSection(card.key)}
+              >
+                <View style={[styles.sectionIcon, { backgroundColor: card.dim }]}>
+                  <Feather name={card.icon} size={17} color={card.tint} />
+                </View>
+                <Text style={styles.sectionLabel}>{card.label}</Text>
+                <Text style={styles.sectionSub}>{card.sub}</Text>
+              </Pressable>
+            ))}
+        </View>
+
+        {section === 'issues' && (
           <View style={styles.issuesSection}>
-            <Text style={styles.issuesHeader}>Issues</Text>
-            <CollapsibleIssueList
-              issues={issues}
-              renderIssue={(issue) => (
-                <IssueCard
-                  key={issue.id}
-                  issue={issue}
-                  showJobcardLink
-                  onPhotoPress={(photo, all) =>
-                    setViewer({
-                      photos: all,
-                      index: all.findIndex((p) => p.id === photo.id),
-                    })
-                  }
-                />
-              )}
-            />
+            <Text style={styles.sectionHeader}>Issues</Text>
+            {openIssues.length === 0 && resolvedIssues.length === 0 && (
+              <Text style={styles.emptyText}>No issues.</Text>
+            )}
+            {openIssues.length > 0 && (
+              <CollapsibleIssueList
+                issues={openIssues}
+                renderIssue={(issue) => (
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    showJobcardLink
+                    onPhotoPress={(photo, all) =>
+                      setViewer({
+                        photos: all,
+                        index: all.findIndex((p) => p.id === photo.id),
+                      })
+                    }
+                  />
+                )}
+              />
+            )}
+            {/* Resolved issues live in a collapsed group at the very bottom. */}
+            {resolvedIssues.length > 0 && (
+              <>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.resolvedToggle,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setResolvedOpen((o) => !o)}
+                >
+                  <Feather
+                    name={resolvedOpen ? 'chevron-up' : 'chevron-down'}
+                    size={15}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.resolvedToggleText}>
+                    Resolved ({resolvedIssues.length})
+                  </Text>
+                </Pressable>
+                {resolvedOpen &&
+                  resolvedIssues.map((issue) => (
+                    <IssueCard
+                      key={issue.id}
+                      issue={issue}
+                      showJobcardLink
+                      onPhotoPress={(photo, all) =>
+                        setViewer({
+                          photos: all,
+                          index: all.findIndex((p) => p.id === photo.id),
+                        })
+                      }
+                    />
+                  ))}
+              </>
+            )}
+          </View>
+        )}
+
+        {section === 'documents' && <JobDocumentsSection jobId={job.id} />}
+
+        {section === 'jobcards' && (
+          <View style={styles.issuesSection}>
+            <Text style={styles.sectionHeader}>Jobcards</Text>
+            {jobJobcards.length === 0 ? (
+              <Text style={styles.emptyText}>No jobcards yet.</Text>
+            ) : (
+              jobJobcards.map((card) => {
+                const tasks = card.tasks ?? [];
+                const done = tasks.filter((t) => t.done).length;
+                return (
+                  <Pressable
+                    key={card.id}
+                    style={({ pressed }) => [
+                      styles.jobcardRow,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/job/[id]',
+                        params: { id: card.id },
+                      })
+                    }
+                  >
+                    <View style={styles.jobcardText}>
+                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                        {card.title}
+                      </Text>
+                      {tasks.length > 0 && (
+                        <Text style={styles.jobcardMeta}>
+                          {done}/{tasks.length} tasks
+                        </Text>
+                      )}
+                    </View>
+                    <StatusPill status={card.status} />
+                    <Feather
+                      name="chevron-right"
+                      size={16}
+                      color={colors.textTertiary}
+                    />
+                  </Pressable>
+                );
+              })
+            )}
           </View>
         )}
 
@@ -235,6 +451,133 @@ export default function JobSiteScreen() {
         </Pressable>
       </View>
 
+      {/* Cover popup: the image plus "Change jobsite photo" (which flips the
+          popup into a picker over the job's photos). */}
+      <Modal
+        visible={coverModal != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCoverModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setCoverModal(null)}
+          />
+          <View style={styles.coverCard}>
+            <View style={styles.coverCardHeader}>
+              <Text style={styles.modalTitle}>
+                {coverModal === 'pick' ? 'Pick a jobsite photo' : 'Jobsite photo'}
+              </Text>
+              <Pressable onPress={() => setCoverModal(null)} hitSlop={8}>
+                <Feather name="x" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            {coverModal === 'view' ? (
+              <>
+                {coverPhoto ? (
+                  <Image
+                    source={{ uri: coverPhoto.url }}
+                    style={styles.coverLarge}
+                    contentFit="cover"
+                    transition={120}
+                  />
+                ) : (
+                  <View style={[styles.coverLarge, styles.coverEmpty]}>
+                    <Feather name="image" size={30} color={colors.textTertiary} />
+                  </View>
+                )}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.changeCoverButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setCoverModal('pick')}
+                >
+                  <Feather name="image" size={15} color={colors.textOnAccent} />
+                  <Text style={styles.changeCoverText}>
+                    Change jobsite photo
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <ScrollView style={styles.pickScroll}>
+                <View style={styles.pickGrid}>
+                  {photos.map((photo) => (
+                    <Pressable
+                      key={photo.id}
+                      style={styles.pickCell}
+                      onPress={() => {
+                        updateJob(job.id, { coverPhotoId: photo.id });
+                        setCoverModal(null);
+                      }}
+                    >
+                      <Image
+                        source={{ uri: photo.url }}
+                        style={[
+                          styles.pickThumb,
+                          photo.id === coverPhoto?.id && styles.pickThumbActive,
+                        ]}
+                        contentFit="cover"
+                        transition={100}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Location popup: copy the address, or open it in the maps app. */}
+      <Modal
+        visible={mapsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMapsOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setMapsOpen(false)}
+          />
+          <View style={styles.mapsCard}>
+            <Text style={styles.mapsAddress}>{job.location}</Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.mapsButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={copyAddress}
+            >
+              <Feather
+                name={copied ? 'check' : 'copy'}
+                size={15}
+                color={colors.primary}
+              />
+              <Text style={styles.mapsButtonText}>
+                {copied ? 'Copied' : 'Copy'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.mapsButton,
+                styles.mapsButtonPrimary,
+                pressed && styles.pressed,
+              ]}
+              onPress={openInMaps}
+            >
+              <Feather name="map" size={15} color={colors.textOnAccent} />
+              <Text style={styles.mapsButtonPrimaryText}>
+                {Platform.OS === 'web' ? 'Open in Google Maps' : 'Open in Maps'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <PhotoViewerModal
         photos={viewer?.photos ?? []}
         initialIndex={viewer?.index ?? null}
@@ -260,7 +603,8 @@ const styles = themed(() => StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    gap: spacing.lg,
+    // Extra air between the major blocks (header / sections / photos).
+    gap: spacing.xl,
     // Clears the floating capture bar so the last grid rows stay reachable.
     paddingBottom: spacing.xxl * 3,
   },
@@ -268,10 +612,13 @@ const styles = themed(() => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  coverWrap: {
+    alignSelf: 'center',
+  },
   cover: {
-    width: '100%',
-    height: 190,
-    borderRadius: radii.lg,
+    width: 132,
+    height: 132,
+    borderRadius: radii.lg + 8,
     backgroundColor: colors.surfaceLight,
   },
   coverEmpty: {
@@ -279,8 +626,13 @@ const styles = themed(() => StyleSheet.create({
     justifyContent: 'center',
   },
   header: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
   },
   title: {
@@ -288,6 +640,7 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 22,
+    textAlign: 'center',
   },
   archivedPill: {
     backgroundColor: colors.surfaceLight,
@@ -302,29 +655,104 @@ const styles = themed(() => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  infoBlock: {
-    gap: spacing.md,
-  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'center',
+    gap: spacing.xs + 2,
+    maxWidth: '90%',
   },
   infoValue: {
-    flex: 1,
+    flexShrink: 1,
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 14,
+    textAlign: 'center',
   },
-  issuesSection: {
+  locationText: {
+    color: colors.primary,
+  },
+  cardsRow: {
+    flexDirection: 'row',
     gap: spacing.md,
   },
-  issuesHeader: {
+  sectionCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.xs + 2,
+  },
+  sectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionLabel: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  sectionSub: {
+    color: colors.textTertiary,
+    fontFamily: fonts.medium,
+    fontSize: 11,
+  },
+  sectionHeader: {
     color: colors.textSecondary,
     fontFamily: fonts.semiBold,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  issuesSection: {
+    gap: spacing.md,
+  },
+  emptyText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  resolvedToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceLight,
+    paddingVertical: spacing.sm + 2,
+  },
+  resolvedToggleText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  jobcardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  jobcardText: {
+    flex: 1,
+    gap: 2,
+  },
+  jobcardTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  jobcardMeta: {
+    color: colors.textTertiary,
+    fontFamily: fonts.medium,
+    fontSize: 11,
   },
   actionBar: {
     position: 'absolute',
@@ -357,5 +785,116 @@ const styles = themed(() => StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  modalTitle: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 16,
+  },
+  coverCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...modalShadow,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  coverCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  coverLarge: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceLight,
+  },
+  changeCoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.md,
+  },
+  changeCoverText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  pickScroll: {
+    flexShrink: 1,
+  },
+  pickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    margin: -spacing.xs / 2,
+  },
+  pickCell: {
+    width: '25%',
+    aspectRatio: 1,
+    padding: spacing.xs / 2,
+  },
+  pickThumb: {
+    flex: 1,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceLight,
+  },
+  pickThumbActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  mapsCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...modalShadow,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  mapsAddress: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  mapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: spacing.md - 2,
+  },
+  mapsButtonText: {
+    color: colors.primary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  mapsButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  mapsButtonPrimaryText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 14,
   },
 }));

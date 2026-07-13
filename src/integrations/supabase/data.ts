@@ -10,6 +10,8 @@ import {
   JobcardPriority,
   JobcardStatus,
   JobcardTask,
+  JobDocument,
+  JobDocumentKind,
   JobIssue,
   JobIssueStatus,
   JobPhoto,
@@ -41,6 +43,7 @@ interface JobRow {
   flashing_material: string | null;
   flashing_photo_path: string | null;
   scopes: string[] | null;
+  cover_photo_id: string | null;
 }
 
 interface JobFieldSuperRow {
@@ -142,6 +145,17 @@ interface JobIssueRow {
   created_at: string;
 }
 
+interface JobDocumentRow {
+  id: string;
+  job_id: string;
+  worker_id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  storage_path: string | null;
+  created_at: string;
+}
+
 // --- Mappers (row -> domain) -------------------------------------------------
 
 function rowToJob(r: JobRow): Job {
@@ -158,6 +172,7 @@ function rowToJob(r: JobRow): Job {
       ? jobPhotoUrl(r.flashing_photo_path)
       : undefined,
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
+    coverPhotoId: r.cover_photo_id ?? undefined,
   };
 }
 
@@ -250,6 +265,30 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
   };
 }
 
+/** The storage bucket job documents (photos/PDFs) live in (public reads). */
+const DOCUMENT_BUCKET = 'job-documents';
+
+/** Public render/open URL for a document's storage object. */
+export function jobDocumentUrl(storagePath: string): string {
+  return getSupabase()
+    .storage.from(DOCUMENT_BUCKET)
+    .getPublicUrl(storagePath).data.publicUrl;
+}
+
+function rowToJobDocument(r: JobDocumentRow): JobDocument {
+  return {
+    id: r.id,
+    jobId: r.job_id,
+    workerId: r.worker_id,
+    kind: r.kind as JobDocumentKind,
+    title: r.title,
+    body: r.body ?? undefined,
+    storagePath: r.storage_path ?? undefined,
+    url: r.storage_path ? jobDocumentUrl(r.storage_path) : undefined,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToJobIssue(r: JobIssueRow): JobIssue {
   return {
     id: r.id,
@@ -277,6 +316,7 @@ export interface BackendData {
   logs: TimesheetLog[];
   jobPhotos: JobPhoto[];
   jobIssues: JobIssue[];
+  jobDocuments: JobDocument[];
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -296,6 +336,7 @@ export async function fetchAllData(): Promise<BackendData> {
     timesheetsR,
     jobPhotosR,
     jobIssuesR,
+    jobDocumentsR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -309,6 +350,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('timesheets').select('*'),
     sb.from('job_photos').select('*'),
     sb.from('job_issues').select('*'),
+    sb.from('job_documents').select('*'),
   ]);
 
   const firstError =
@@ -331,6 +373,13 @@ export async function fetchAllData(): Promise<BackendData> {
   // Issues degrade the same way while their migration hasn't run yet.
   if (jobIssuesR.error) {
     console.warn('Job issues load failed; none shown.', jobIssuesR.error.message);
+  }
+  // Documents degrade the same way while their migration hasn't run yet.
+  if (jobDocumentsR.error) {
+    console.warn(
+      'Job documents load failed; none shown.',
+      jobDocumentsR.error.message
+    );
   }
 
   // Group Field Super assignments by job so each Job carries its own
@@ -381,6 +430,9 @@ export async function fetchAllData(): Promise<BackendData> {
     logs: ((timesheetsR.data ?? []) as TimesheetRow[]).map(rowToTimesheet),
     jobPhotos: ((jobPhotosR.data ?? []) as JobPhotoRow[]).map(rowToJobPhoto),
     jobIssues: ((jobIssuesR.data ?? []) as JobIssueRow[]).map(rowToJobIssue),
+    jobDocuments: ((jobDocumentsR.data ?? []) as JobDocumentRow[]).map(
+      rowToJobDocument
+    ),
   };
 }
 
@@ -401,6 +453,7 @@ function jobToRow(job: Job) {
     flashing_material: job.flashingMaterial ?? null,
     flashing_photo_path: job.flashingPhotoPath ?? null,
     scopes: job.scopes ?? null,
+    cover_photo_id: job.coverPhotoId ?? null,
   };
 }
 
@@ -724,6 +777,75 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
   );
 }
 
+// --- Job documents -------------------------------------------------------------
+
+/**
+ * Push a document's file bytes (image or PDF) to the job-documents bucket.
+ * Same transport as {@link uploadJobPhoto}: raw bytes on native, blob on web.
+ */
+export async function uploadJobDocumentFile(
+  localUri: string,
+  storagePath: string,
+  contentType: string
+): Promise<void> {
+  const auth = getSupabase().auth;
+  let session = (await auth.getSession()).data.session;
+  if (!session) session = (await auth.refreshSession()).data.session;
+  if (!session) {
+    throw new Error(
+      'No auth session — document upload would run as anon. Sign out and back in.'
+    );
+  }
+  let body: Blob | ArrayBuffer;
+  if (Platform.OS === 'web') {
+    body = await (await fetch(localUri)).blob();
+  } else {
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    body = base64ToBytes(base64).buffer as ArrayBuffer;
+  }
+  const { error } = await getSupabase()
+    .storage.from(DOCUMENT_BUCKET)
+    .upload(storagePath, body, { contentType, upsert: true });
+  if (error) throw new Error(error.message);
+}
+
+export async function insertJobDocument(doc: JobDocument): Promise<void> {
+  check(
+    (
+      await getSupabase().from('job_documents').insert({
+        id: doc.id,
+        job_id: doc.jobId,
+        worker_id: doc.workerId,
+        kind: doc.kind,
+        title: doc.title,
+        body: doc.body ?? null,
+        storage_path: doc.storagePath ?? null,
+        created_at: doc.createdAt,
+      })
+    ).error
+  );
+}
+
+/**
+ * Delete a document: the row first, then its storage object (photo/pdf). A
+ * failed object removal leaves a harmless orphan file.
+ */
+export async function deleteJobDocument(
+  id: string,
+  storagePath: string | undefined
+): Promise<void> {
+  check((await getSupabase().from('job_documents').delete().eq('id', id)).error);
+  if (!storagePath) return;
+  const { error } = await getSupabase()
+    .storage.from(DOCUMENT_BUCKET)
+    .remove([storagePath]);
+  if (error) {
+    console.warn('Job document storage object not removed:', error.message);
+  }
+}
+
 // --- Job issues ----------------------------------------------------------------
 
 function jobIssueToRow(issue: JobIssue) {
@@ -829,6 +951,7 @@ const REALTIME_TABLES = [
   'timesheets',
   'job_photos',
   'job_issues',
+  'job_documents',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the

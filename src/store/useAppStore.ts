@@ -28,6 +28,8 @@ import {
   Job,
   Jobcard,
   JobcardStatus,
+  JobDocument,
+  JobDocumentKind,
   JobIssue,
   JobPhoto,
   JobStatus,
@@ -208,12 +210,14 @@ const pendingIssueUpserts = new Map<string, number>();
 const pendingIssueDeletes = new Map<string, number>();
 const pendingPhotoNotes = new Map<string, number>();
 const pendingJobcardTaskWrites = new Map<string, number>();
+const pendingDocumentInserts = new Map<string, number>();
 
 const GUARD_MAPS = {
   issueUpsert: pendingIssueUpserts,
   issueDelete: pendingIssueDeletes,
   photoNote: pendingPhotoNotes,
   jobcardTasks: pendingJobcardTaskWrites,
+  documentInsert: pendingDocumentInserts,
 } as const;
 
 /** Which guard map a queued op holds a row in (serialized with the op). */
@@ -277,6 +281,7 @@ const OUTBOX_EXECUTORS = {
     backend.updateJobPhotoNote(p.id, p.note),
   deleteJobPhoto: (p: { id: string; storagePath: string }) =>
     backend.deleteJobPhoto(p.id, p.storagePath),
+  insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
@@ -628,6 +633,8 @@ interface AppState {
   jobPhotos: JobPhoto[];
   /** Installer-raised field issues (children of jobs, linked to jobcards). */
   jobIssues: JobIssue[];
+  /** Documents attached to jobs (photo/pdf/text; created by non-installers). */
+  jobDocuments: JobDocument[];
   /**
    * Photos captured on THIS device still waiting to upload. Separate from
    * `jobPhotos` so a realtime refetch never wipes the queue; uploads retry
@@ -818,6 +825,25 @@ interface AppState {
    */
   setJobFlashingPhoto: (jobId: string, localUri: string) => Promise<boolean>;
 
+  // --- Job documents ---
+  /**
+   * Attach a document to a job (non-installers only; the UI hides the button
+   * for installers). 'text' documents queue offline like any other write;
+   * 'photo'/'pdf' upload their file immediately (like the flashing photo) and
+   * need a connection. Returns false when the upload failed or was offline.
+   */
+  addJobDocument: (input: {
+    jobId: string;
+    kind: JobDocumentKind;
+    title: string;
+    /** Content of a 'text' document. */
+    body?: string;
+    /** Local file uri of a 'photo'/'pdf' document. */
+    localUri?: string;
+    /** MIME type of the file ('image/jpeg' | 'application/pdf'). */
+    contentType?: string;
+  }) => Promise<boolean>;
+
   // --- Job issues ---
   /**
    * Raise a new (empty) issue on a job from a jobcard's screen. Returns the
@@ -921,6 +947,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   logs: [],
   jobPhotos: [],
   jobIssues: [],
+  jobDocuments: [],
   pendingPhotos: [],
   notifications: [],
   savedTick: 0,
@@ -1011,6 +1038,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       logs: seed.mockLogs,
       jobPhotos: [],
       jobIssues: [],
+      jobDocuments: [],
       pendingPhotos: [],
       devMode: true,
       devBaseUserId: seed.DEVELOPER_ID,
@@ -1043,6 +1071,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           assignments: cached.assignments,
           logs: cached.logs,
           jobIssues: cached.jobIssues,
+          // Older caches predate documents — tolerate their absence.
+          jobDocuments: cached.jobDocuments ?? [],
         });
       }
     }
@@ -1063,6 +1093,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         logs: data.logs,
         jobPhotos: data.jobPhotos,
         jobIssues: data.jobIssues,
+        jobDocuments: data.jobDocuments,
       });
       if (me0) {
         persistDataCache(me0.id, data);
@@ -1153,6 +1184,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         const local = state.jobPhotos.find((p) => p.id === photo.id);
         return local ? { ...photo, note: local.note } : photo;
       }),
+      // Documents with a queued insert survive refreshes that predate them.
+      jobDocuments: [
+        ...state.jobDocuments.filter(
+          (doc) =>
+            pendingDocumentInserts.has(doc.id) &&
+            !data.jobDocuments.some((f) => f.id === doc.id)
+        ),
+        ...data.jobDocuments,
+      ],
       // Issues with unsettled writes keep their local shape: pending deletes
       // stay gone, pending inserts/updates keep the local row (including ones
       // the fetched snapshot predates entirely).
@@ -1224,6 +1264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // their owner signs back in (restorePendingPhotos filters by worker).
       jobPhotos: [],
       jobIssues: [],
+      jobDocuments: [],
       pendingPhotos: [],
       notifications: [],
       devMode: false,
@@ -1943,6 +1984,58 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     // The replaced object is unreferenced now — clean it up best-effort.
     if (previousPath) void backend.removePhotoObject(previousPath);
+    return true;
+  },
+
+  addJobDocument: async (input) => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return false;
+    const isBackend = backendActive(state);
+    const doc: JobDocument = {
+      id: uuid(),
+      jobId: input.jobId,
+      workerId: me.id,
+      kind: input.kind,
+      title: input.title.trim(),
+      body: input.kind === 'text' ? input.body : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (input.kind !== 'text') {
+      if (!input.localUri) return false;
+      if (!isBackend) {
+        // Local dev: the local uri renders/opens directly this session.
+        doc.url = input.localUri;
+        set((s) => ({ jobDocuments: [doc, ...s.jobDocuments] }));
+        return true;
+      }
+      // Files upload immediately (like the flashing photo) — no offline queue
+      // for bytes, so this needs a connection.
+      const ext = input.kind === 'photo' ? 'jpg' : 'pdf';
+      const storagePath = `${input.jobId}/doc-${doc.id}.${ext}`;
+      try {
+        await backend.uploadJobDocumentFile(
+          input.localUri,
+          storagePath,
+          input.contentType ?? (input.kind === 'photo' ? 'image/jpeg' : 'application/pdf')
+        );
+      } catch (e) {
+        console.error('Document upload failed:', e);
+        get().flash(
+          'Document upload failed — check your signal and retry',
+          'warning'
+        );
+        return false;
+      }
+      doc.storagePath = storagePath;
+      doc.url = backend.jobDocumentUrl(storagePath);
+    }
+
+    set((s) => ({ jobDocuments: [doc, ...s.jobDocuments] }));
+    if (isBackend) {
+      write('insertJobDocument', doc, { map: 'documentInsert', id: doc.id });
+    }
     return true;
   },
 
