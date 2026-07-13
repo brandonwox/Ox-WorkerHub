@@ -10,9 +10,7 @@ import {
 } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
-import { JobJobcardsModal } from '@/components/desktop/JobJobcardsModal';
-import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
-import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
+import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import {
   jobsForFieldSuper,
   useAppStore,
@@ -20,24 +18,23 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Job } from '@/types';
-import { jobAllowsWindows } from '@/utils/jobScopes';
 
-/** Field Super → Jobs: a card per job; open one to edit its flashing material. */
+/**
+ * Field Super → Jobs: searchable list of their jobs; clicking one opens the
+ * job dashboard sidebar (address, flashing material, jobcards, issues,
+ * documents, pictures) on the right.
+ */
 export default function FieldSuperJobsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
-  const assignments = useAppStore((s) => s.assignments);
-  const updateJob = useAppStore((s) => s.updateJob);
 
-  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
-  const [viewJob, setViewJob] = useState<Job | null>(null);
-  const [photosJob, setPhotosJob] = useState<Job | null>(null);
+  const [query, setQuery] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   // A Field Super sees ONLY the jobs they're assigned to, Active first.
-  const sortedJobs = useMemo(
+  const myJobs = useMemo(
     () =>
       (me ? jobsForFieldSuper(jobs, me.id) : []).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
@@ -45,10 +42,19 @@ export default function FieldSuperJobsScreen() {
     [jobs, me]
   );
 
-  // "On the calendar" = the jobcard has a row in `assignments`.
-  const scheduledIds = useMemo(
-    () => new Set(assignments.map((a) => a.jobcardId)),
-    [assignments]
+  const visibleJobs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return myJobs;
+    return myJobs.filter(
+      (job) =>
+        job.name.toLowerCase().includes(q) ||
+        (job.location ?? '').toLowerCase().includes(q)
+    );
+  }, [myJobs, query]);
+
+  const selectedJob = useMemo(
+    () => myJobs.find((job) => job.id === selectedJobId) ?? null,
+    [myJobs, selectedJobId]
   );
 
   if (role !== 'field_super') return <AccessDenied />;
@@ -60,200 +66,85 @@ export default function FieldSuperJobsScreen() {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionHint}>
-          A card for every job. Open one to set its Window Opening Flashing
-          Material — new window jobcards inherit it automatically.
+          A card for every job — open one for its full dashboard: address,
+          flashing material, jobcards, issues, documents, and pictures.
         </Text>
 
-        {sortedJobs.length === 0 ? (
+        <View style={styles.searchWrap}>
+          <Feather name="search" size={15} color={colors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search jobs by name or address…"
+            placeholderTextColor={colors.textTertiary}
+          />
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <Feather name="x" size={15} color={colors.textTertiary} />
+            </Pressable>
+          )}
+        </View>
+
+        {myJobs.length === 0 ? (
           <Text style={styles.emptyText}>
             No jobs assigned to you yet — the Operator assigns Field Supers to
             jobs.
           </Text>
+        ) : visibleJobs.length === 0 ? (
+          <Text style={styles.emptyText}>No jobs match “{query.trim()}”.</Text>
         ) : (
           <View style={styles.cardStack}>
-            {sortedJobs.map((job) => (
-              <JobRow
-                key={job.id}
-                job={job}
-                jobcardCount={jobcardCountFor(job.id)}
-                expanded={expandedJobId === job.id}
-                onToggle={() =>
-                  setExpandedJobId((id) => (id === job.id ? null : job.id))
-                }
-                onViewJobcards={() => setViewJob(job)}
-                onViewPhotos={() => setPhotosJob(job)}
-                onCommitLocation={(location) =>
-                  updateJob(job.id, { location })
-                }
-                onCommitFlashing={(flashingMaterial) =>
-                  updateJob(job.id, { flashingMaterial })
-                }
-              />
-            ))}
+            {visibleJobs.map((job) => {
+              const count = jobcardCountFor(job.id);
+              const selected = job.id === selectedJobId;
+              return (
+                <Pressable
+                  key={job.id}
+                  style={({ pressed }) => [
+                    styles.jobCard,
+                    selected && styles.jobCardSelected,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() =>
+                    setSelectedJobId((id) => (id === job.id ? null : job.id))
+                  }
+                >
+                  <View style={styles.jobCardMain}>
+                    <View style={styles.jobCardTitleRow}>
+                      <Text style={styles.jobName} numberOfLines={1}>
+                        {job.name}
+                      </Text>
+                      {job.status === 'Finished' && (
+                        <View style={styles.archivedPill}>
+                          <Text style={styles.archivedText}>Finished</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.jobLocation} numberOfLines={1}>
+                      {job.location || 'No location set'}
+                    </Text>
+                  </View>
+                  <Text style={styles.jobcardCount}>
+                    {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                  </Text>
+                  <Feather
+                    name="chevron-right"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                </Pressable>
+              );
+            })}
           </View>
         )}
       </ScrollView>
 
-      <JobJobcardsModal
-        job={viewJob}
-        jobcards={jobcards}
-        scheduledIds={scheduledIds}
-        onClose={() => setViewJob(null)}
-      />
-
-      <JobPhotosModal job={photosJob} onClose={() => setPhotosJob(null)} />
-    </View>
-  );
-}
-
-/** A job as an expandable card; expanded reveals the editable flashing field. */
-function JobRow({
-  job,
-  jobcardCount,
-  expanded,
-  onToggle,
-  onViewJobcards,
-  onViewPhotos,
-  onCommitLocation,
-  onCommitFlashing,
-}: {
-  job: Job;
-  jobcardCount: number;
-  expanded: boolean;
-  onToggle: () => void;
-  onViewJobcards: () => void;
-  onViewPhotos: () => void;
-  onCommitLocation: (value: string) => void;
-  onCommitFlashing: (value: string | undefined) => void;
-}) {
-  return (
-    <View style={styles.jobCard}>
-      <Pressable style={styles.jobCardHead} onPress={onToggle}>
-        <View style={styles.jobCardMain}>
-          <View style={styles.jobCardTitleRow}>
-            <Text style={styles.jobName} numberOfLines={1}>
-              {job.name}
-            </Text>
-            {job.status === 'Finished' && (
-              <View style={styles.archivedPill}>
-                <Text style={styles.archivedText}>Finished</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.jobLocation} numberOfLines={1}>
-            {job.location || 'No location set'}
-          </Text>
-        </View>
-        {/* Nested Pressable: opens the popup without toggling the flashing row. */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.viewButton,
-            pressed && styles.viewButtonPressed,
-          ]}
-          onPress={onViewJobcards}
-        >
-          <Feather name="clipboard" size={14} color={colors.primary} />
-          <Text style={styles.viewButtonText}>
-            {jobcardCount} {jobcardCount === 1 ? 'jobcard' : 'jobcards'}
-          </Text>
-        </Pressable>
-        {/* Nested Pressable: opens the job's photo wall. */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.viewButton,
-            pressed && styles.viewButtonPressed,
-          ]}
-          onPress={onViewPhotos}
-        >
-          <Feather name="image" size={14} color={colors.primary} />
-          <Text style={styles.viewButtonText}>Pics</Text>
-        </Pressable>
-        <Feather
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={colors.textSecondary}
-        />
-      </Pressable>
-
-      {expanded && (
-        <View style={styles.jobCardBody}>
-          <Text style={styles.fieldLabel}>Jobsite address</Text>
-          <AddressCell job={job} onCommit={onCommitLocation} />
-
-          {/* Hidden entirely for jobs whose scopes exclude window work. */}
-          {jobAllowsWindows(job) && (
-            <>
-              <Text style={styles.fieldLabel}>
-                Window Opening Flashing Material
-              </Text>
-              <View style={styles.flashRow}>
-                <FlashingCell job={job} onCommit={onCommitFlashing} />
-                <FlashingPhotoField job={job} editable />
-              </View>
-              <Text style={styles.fieldHint}>
-                New jobcards with the Windows scope inherit this value (editable
-                per card). The photo shows on every jobcard of this job.
-              </Text>
-            </>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
-/** Inline editable jobsite address; commits on blur. */
-function AddressCell({
-  job,
-  onCommit,
-}: {
-  job: Job;
-  onCommit: (value: string) => void;
-}) {
-  const [text, setText] = useState(job.location ?? '');
-
-  const commit = () => onCommit(text.trim());
-
-  return (
-    <View style={styles.flashWrap}>
-      <TextInput
-        style={styles.flashInput}
-        value={text}
-        onChangeText={setText}
-        onBlur={commit}
-        onEndEditing={commit}
-        placeholder="123 Main St, Park City, UT"
-        placeholderTextColor={colors.textTertiary}
-      />
-    </View>
-  );
-}
-
-/** Inline editable Window Opening Flashing Material; commits on blur. */
-function FlashingCell({
-  job,
-  onCommit,
-}: {
-  job: Job;
-  onCommit: (value: string | undefined) => void;
-}) {
-  const [text, setText] = useState(job.flashingMaterial ?? '');
-
-  const commit = () => {
-    const trimmed = text.trim();
-    onCommit(trimmed || undefined);
-  };
-
-  return (
-    <View style={styles.flashWrap}>
-      <TextInput
-        style={styles.flashInput}
-        value={text}
-        onChangeText={setText}
-        onBlur={commit}
-        onEndEditing={commit}
-        placeholder="not set"
-        placeholderTextColor={colors.textTertiary}
+      <JobDashboardSidebar
+        job={selectedJob}
+        onClose={() => setSelectedJobId(null)}
+        editable
+        quickViewJobs={myJobs}
       />
     </View>
   );
@@ -276,6 +167,25 @@ const styles = themed(() => StyleSheet.create({
     lineHeight: 19,
     maxWidth: 640,
   },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    maxWidth: 480,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    outlineWidth: 0,
+  },
   emptyText: {
     color: colors.textTertiary,
     fontFamily: fonts.regular,
@@ -285,18 +195,18 @@ const styles = themed(() => StyleSheet.create({
     gap: spacing.sm,
   },
   jobCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  jobCardHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  jobCardSelected: {
+    borderColor: colors.primary,
   },
   jobCardMain: {
     flex: 1,
@@ -317,21 +227,9 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  viewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primaryDim,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-  },
-  viewButtonPressed: {
-    opacity: 0.85,
-  },
-  viewButtonText: {
-    color: colors.primary,
-    fontFamily: fonts.semiBold,
+  jobcardCount: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
     fontSize: 12,
   },
   archivedPill: {
@@ -347,45 +245,7 @@ const styles = themed(() => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  jobCardBody: {
-    gap: spacing.xs + 2,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  fieldLabel: {
-    color: colors.textSecondary,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    marginTop: spacing.sm,
-  },
-  fieldHint: {
-    color: colors.textTertiary,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  flashRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  flashWrap: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-  },
-  flashInput: {
-    minWidth: 220,
-    paddingVertical: spacing.sm,
-    color: colors.textPrimary,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    outlineWidth: 0,
+  pressed: {
+    opacity: 0.9,
   },
 }));

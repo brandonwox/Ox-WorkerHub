@@ -4,6 +4,8 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+mobile -> viewing a photo -> clicking on the photo's note to edit it: the text area should appear above the keyboard so i can see what I'm typing (I believe this is a problem in other areas too, where the keyboard covers the text area.)
+
 mobile jobcards view:
 - increase the font size for the jobcard name. make it not so bold either.
 - increase the space between section rows. (each section that has an icon on the left needs a little more space between the other sections.)
@@ -11,13 +13,6 @@ mobile jobcards view:
 - in order for an installer to check off a task for a jobcard, they must have at least one photo taken for the task. (add functionality for this).
 - increase the size of section icons slightly.
 - at the top of the screen, get rid of the top margin/padding for the top section (the section that holds the X button and the status pill.) (only remove the top margin, so the jobard is just slightly higher up.) also: do not dim the page behind the jobcard.
-
-update the field-super-jobs and other jobs pages that make sense for this change: I want the web version of the job details to have a sidebar view that is closer to the view that is on mobile. 
-here's some more specifics for the field-super-jobs page (and all other jobs pages):
-- add a search bar
-- clicking a job should open a large sidebar on the right with the job details (instead of opening a dropdown.)
-- the job sidebar should show the jobsite address, window flashing material, a jobcards section, an issues section, and a pictures section.
-- basically the job sidebar needs to show a full dashboard for the job.
 
 installer viewing their schedule: 
 - jobcards do not need to show jobcard priority. jobcard priority is not for the installers, they dont need to worry about it.
@@ -50,6 +45,11 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+web jobs pages: job dashboard sidebar + search.
+- field-super-jobs: a search bar filters by job name or address; clicking a job now opens a large right-hand sidebar instead of the old dropdown. The sidebar is the job's full dashboard: jobsite address (inline-editable, with copy + open-in-Google-Maps buttons), Window Opening Flashing Material (inline-editable text + the reference photo, hidden for non-window jobs), a Jobcards section (status pill + task progress; clicking one opens the jobcard quick view), an Issues section (open issues with the collapse behavior + the collapsed "Resolved (n)" group), a Documents section (same as mobile — non-installers can add), and a Pictures section with upload. The old jobcards/photos popup modals are gone (the unused JobJobcardsModal component was deleted).
+- operator-jobs: same search bar; clicking a job card opens the same dashboard sidebar (the Edit button still opens the full editor with delete/QBT/field-super controls).
+- the installer's web jobs page keeps navigating to the full job details page, which already mirrors mobile.
 
 installer timesheets tab rework (mobile tab + the desktop /installer-timesheets page, which share the screen):
 - the "Timesheets" title and the Today/This Week/Last 30 Days buttons are gone.

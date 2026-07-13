@@ -1,10 +1,18 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
 import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
+import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
@@ -20,10 +28,27 @@ export default function JobsScreen() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
+  const [query, setQuery] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const fieldSupers = useMemo(
     () => workers.filter((w) => w.role === 'field_super'),
     [workers]
+  );
+
+  const visibleJobs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter(
+      (job) =>
+        job.name.toLowerCase().includes(q) ||
+        (job.location ?? '').toLowerCase().includes(q)
+    );
+  }, [jobs, query]);
+
+  const selectedJob = useMemo(
+    () => jobs.find((job) => job.id === selectedJobId) ?? null,
+    [jobs, selectedJobId]
   );
 
   if (role !== 'operator') return <AccessDenied />;
@@ -61,11 +86,36 @@ export default function JobsScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.grid}>
-          {jobs.map((job) => (
-            <JobCard key={job.id} job={job} onEdit={() => setEditing(job)} />
-          ))}
+        <View style={styles.searchWrap}>
+          <Feather name="search" size={15} color={colors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search jobs by name or address…"
+            placeholderTextColor={colors.textTertiary}
+          />
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <Feather name="x" size={15} color={colors.textTertiary} />
+            </Pressable>
+          )}
         </View>
+
+        {visibleJobs.length === 0 && query.trim().length > 0 ? (
+          <Text style={styles.noMatches}>No jobs match “{query.trim()}”.</Text>
+        ) : (
+          <View style={styles.grid}>
+            {visibleJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                onOpen={() => setSelectedJobId(job.id)}
+                onEdit={() => setEditing(job)}
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <CreateJobModal
@@ -82,18 +132,37 @@ export default function JobsScreen() {
         onSave={handleSave}
         onDelete={handleDelete}
       />
+
+      <JobDashboardSidebar
+        job={selectedJob}
+        onClose={() => setSelectedJobId(null)}
+        editable
+        quickViewJobs={jobs}
+      />
     </View>
   );
 }
 
-/** Square-ish job card shown in the grid; the edit button opens the full editor. */
-function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
+/** Square-ish job card: click to open the dashboard sidebar; the edit button
+    opens the full editor. */
+function JobCard({
+  job,
+  onOpen,
+  onEdit,
+}: {
+  job: Job;
+  onOpen: () => void;
+  onEdit: () => void;
+}) {
   const archived = job.status === 'Finished';
   const unmapped = !job.qbtJobcodeId;
   const fieldSuperCount = job.fieldSuperIds?.length ?? 0;
 
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={onOpen}
+    >
       <View style={styles.cardHeader}>
         <Text style={styles.name} numberOfLines={2}>
           {job.name}
@@ -144,7 +213,7 @@ function JobCard({ job, onEdit }: { job: Job; onEdit: () => void }) {
         <Feather name="edit-2" size={14} color={colors.textPrimary} />
         <Text style={styles.editButtonText}>Edit</Text>
       </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -185,6 +254,33 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    maxWidth: 480,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    outlineWidth: 0,
+  },
+  noMatches: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  cardPressed: {
+    opacity: 0.92,
   },
   grid: {
     flexDirection: 'row',
