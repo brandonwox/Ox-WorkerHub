@@ -64,11 +64,29 @@ export type JobStatus = 'Active' | 'Finished';
 
 export interface Job {
   id: string;
-  /** e.g. "Snyderville Commercial Complex". */
+  /**
+   * e.g. "Snyderville Commercial Complex". Sub-job names are stored WITHOUT
+   * the parent's name ("Lot 2", not "Vista Homes Lot 2") — surfaces that want
+   * the combined form conjoin them at display time (utils/jobName.ts).
+   */
   name: string;
   /** Jobsite address / location. */
   location: string;
   status: JobStatus;
+  /**
+   * Set when this job is a SUB-JOB: a piece of the referenced parent job.
+   * Sub-jobs behave exactly like jobs (own QBT jobcode, jobcards, photos,
+   * issues, documents) but: one level only, Field Supers are inherited from
+   * the parent (mirrored server-side, never set directly), and office job
+   * lists show them only inside their parent's Sub-Jobs section.
+   */
+  parentJobId?: string;
+  /**
+   * "This job has Sub-Jobs": shows the Sub-Jobs section on the job's details
+   * page. A UI toggle persisted on the job (web users flip it; deactivating
+   * hides the section but the sub-jobs themselves live on).
+   */
+  hasSubJobs?: boolean;
   /**
    * QuickBooks Time jobcode this Job maps to. Set manually by the Operator;
    * timesheet hours sync under this code. Optional until mapped.

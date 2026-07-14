@@ -20,6 +20,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, Jobcard } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
+import { jobDisplayNameById } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
 
 interface Props {
@@ -65,7 +66,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
   );
 
   const jobNameFor = (card: Jobcard) =>
-    jobs.find((j) => j.id === card.jobId)?.name ?? 'Unlinked job';
+    jobDisplayNameById(card.jobId, jobs) || 'Unlinked job';
 
   // Work Requests = jobcards with no assignment row anywhere (same rule as the
   // desktop board's backlog).

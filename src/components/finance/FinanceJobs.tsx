@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { jobDisplayName } from '@/utils/jobName';
 import { formatMoney } from '@/utils/time';
 
 /**
@@ -27,11 +28,13 @@ export function FinanceJobs() {
   const logs = useAppStore((s) => s.logs);
   const updateJob = useAppStore((s) => s.updateJob);
 
+  // Sub-jobs need their own QBT jobcode/budget, so they list like any job —
+  // sorted and shown under their conjoined name ("Vista Homes Lot 2").
   const sortedJobs = useMemo(
     () =>
       [...jobs].sort((a, b) =>
         a.status === b.status
-          ? a.name.localeCompare(b.name)
+          ? jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs))
           : a.status === 'Active'
             ? -1
             : 1
@@ -82,6 +85,7 @@ export function FinanceJobs() {
             <FinanceJobCard
               key={job.id}
               job={job}
+              displayName={jobDisplayName(job, jobs)}
               paidOut={paidByJob.get(job.id) ?? 0}
               onCommitJobcode={(qbtJobcodeId) =>
                 updateJob(job.id, { qbtJobcodeId })
@@ -99,11 +103,14 @@ export function FinanceJobs() {
 
 function FinanceJobCard({
   job,
+  displayName,
   paidOut,
   onCommitJobcode,
   onCommitBudget,
 }: {
   job: Job;
+  /** Conjoined for sub-jobs ("Vista Homes Lot 2"); the plain name otherwise. */
+  displayName: string;
   paidOut: number;
   onCommitJobcode: (value: string | undefined) => void;
   onCommitBudget: (value: number | undefined) => void;
@@ -117,7 +124,7 @@ function FinanceJobCard({
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.jobName} numberOfLines={1}>
-          {job.name}
+          {displayName}
         </Text>
         {job.status === 'Finished' && (
           <View style={styles.archivedPill}>

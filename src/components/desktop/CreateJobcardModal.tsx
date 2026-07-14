@@ -21,6 +21,7 @@ import {
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JobScope, JOB_SCOPES, READINESS_PRESETS } from '@/types';
+import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { useTypewriter } from '@/utils/useTypewriter';
 
@@ -86,8 +87,10 @@ export function CreateJobcardModal({ visible, jobs, onClose, onSubmit }: Props) 
 
   const titlePlaceholder = useTypewriter(TITLE_PHRASES);
 
+  // Sub-jobs are pickable parents too, listed with their parent's name
+  // conjoined ("Vista Homes Lot 2") so they're identifiable.
   const jobOptions = useMemo(
-    () => jobs.map((j) => ({ value: j.id, label: j.name })),
+    () => jobs.map((j) => ({ value: j.id, label: jobDisplayName(j, jobs) })),
     [jobs]
   );
   const selectedJob = jobs.find((j) => j.id === jobId);

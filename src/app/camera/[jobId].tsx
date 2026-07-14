@@ -24,6 +24,7 @@ import { useAppStore } from '@/store/useAppStore';
 // Camera chrome sits over the viewfinder — pinned to the dark palette so it
 // stays dark-styled in light mode too.
 import { darkColors as colors, fonts, radii, spacing, themed } from '@/theme';
+import { jobDisplayName } from '@/utils/jobName';
 
 /**
  * In-app camera for job photos. Stays open across shots so an installer can
@@ -41,7 +42,8 @@ export default function JobCameraScreen() {
     taskId?: string;
   }>();
   const router = useRouter();
-  const job = useAppStore((s) => s.jobs.find((j) => j.id === jobId));
+  const jobs = useAppStore((s) => s.jobs);
+  const job = jobs.find((j) => j.id === jobId);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const setJobPhotoNote = useAppStore((s) => s.setJobPhotoNote);
   const deleteJobPhoto = useAppStore((s) => s.deleteJobPhoto);
@@ -205,7 +207,7 @@ export default function JobCameraScreen() {
             <Feather name="x" size={22} color={colors.textPrimary} />
           </Pressable>
           <Text style={styles.jobName} numberOfLines={1}>
-            {job?.name ?? 'Job photos'}
+            {job ? jobDisplayName(job, jobs) : 'Job photos'}
           </Text>
           <Pressable
             style={styles.roundButton}

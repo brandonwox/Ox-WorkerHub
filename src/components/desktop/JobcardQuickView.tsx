@@ -38,6 +38,7 @@ import {
   READINESS_PRESETS,
 } from '@/types';
 import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
+import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
@@ -175,11 +176,13 @@ export function JobcardQuickView({
   const activeJobs = jobs.filter((j) => j.status === 'Active');
   // Offer active jobs plus the card's own parent (which may be archived) so a
   // reparent never silently drops an archived-job parent.
+  // Sub-jobs are listed with their parent's name conjoined ("Vista Homes
+  // Lot 2") so they're identifiable in the picker.
   const jobOptions = (
     parentJob && !activeJobs.some((j) => j.id === parentJob.id)
       ? [parentJob, ...activeJobs]
       : activeJobs
-  ).map((j) => ({ value: j.id, label: j.name }));
+  ).map((j) => ({ value: j.id, label: jobDisplayName(j, jobs) }));
   const tasks = jobcard.tasks ?? [];
   const scopes = jobcard.scopes ?? [];
   // Installer-raised issues on this card, newest first — nested under the task
@@ -592,7 +595,9 @@ export function JobcardQuickView({
               ) : (
                 <Editable onPress={() => setEditing('job')}>
                   <Text style={styles.valueText}>
-                    {parentJob?.name ?? 'Unlinked job'}
+                    {parentJob
+                      ? jobDisplayName(parentJob, jobs)
+                      : 'Unlinked job'}
                   </Text>
                 </Editable>
               )}

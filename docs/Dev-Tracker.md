@@ -4,21 +4,28 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
-mobile -> viewing a photo -> clicking on the photo's note to edit it: the text area should appear above the keyboard so i can see what I'm typing (I believe this is a problem in other areas too, where the keyboard covers the text area.)
+job details right sidebar on web: add an edit button to the top right of the sidebar (now that we have an edit button we can remove the second jobsite address, and just allow the original to be edited when the edit button is active.
 
-mobile jobcards view:
-- increase the font size for the jobcard name. make it not so bold either.
-- increase the space between section rows. (each section that has an icon on the left needs a little more space between the other sections.)
-- the "Issues" button that adds an issue needs to have a + icon, like "+ Issue".
-- in order for an installer to check off a task for a jobcard, they must have at least one photo taken for the task. (add functionality for this).
-- increase the size of section icons slightly.
-- at the top of the screen, get rid of the top margin/padding for the top section (the section that holds the X button and the status pill.) (only remove the top margin, so the jobard is just slightly higher up.) also: do not dim the page behind the jobcard.
+make the jobcard creation form have the same layout, style, sizes, placements, etc as the normal jobcard popup view. (remember jobcards are created on the jobcards page, so it should show up in the right sidebar rather than a popup.) (the only difference on the creation form and simply viewing a jobcard is that there should be a "Cancel" and a "Create Jobcard" Button at the bottom. (and if they don't meet the requirments it wont create the jobcard)). 
 
-installer viewing their schedule: 
-- jobcards do not need to show jobcard priority. jobcard priority is not for the installers, they dont need to worry about it.
-- the jobcard should show the parent job on the jobcard (when viewing their daily schedule.) It should show the name of the parent job on the same row that the location is shown on (directly under the name of the jobcard.)
+jobcard popup: parent job should not be switchable once a jobcard has been created. (and move the parent job name above the jobcard name (like how it is when an installer views a jobcard on mobile.))
 
-mobile: the bottom bar icons sit a little high, can we lower them slightly.
+field-super-jobcards and other jobcards pages: clicking on a jobcard from the jobcard should open it up in a right sidebar (the sidebar should be the same size as the job details sidebar.) (this change should not affect how jobcards pop up in the calendar pages, only in jobcard pages.)
+
+when a field-super is viewing a jobcard, do not allow them to open the crew selector popup. (clicking the rounded square should not show the list of crews.) (because we do not want them switching crews around. all the field super can do is hover over the rounded square to see the name of the crew that's been assigned.)
+
+jobcard popup viewed on web:
+- make the jobcard popup just slightly wider on web.
+- at the bottom it says "Installer photos" and "No photos taken for this jobcard yet". (but the photos for a jobcard aren't strictly for installers. all roles that can access the jobcard should be able to take or upload photos.)
+
+create "Sub-Jobs":
+- web users like schedulers and field supers can be create a sub-job inside the details page of a job (there should be an options button in the job details sidebar, the options button allows you to activate a button called "This job has Sub-Jobs". activating that button adds another section to the job details page directly above the photos section. the section is the Sub-Jobs section that shows a list of every sub-job under the current job. sub-jobs work exactly the same as normal jobs do (exactly the same other than being tied into a parent/normal job (they still need their own QuickBooks Time jobcard id, name, etc.).)).
+- when a subjob is created, the name of the subjob gets a prefix that is the parent job's name. for example if i create a subjob inside of a parent job called "Vista Homes", and i name the subjob "Lot 2" the subjob's name would actually become "Vista Homes Lot 2" once created. (it should be apparent while typing the name for the subjob, it should have the parent job's name prefilled in and not editable.)
+- please ask any and all questions (IF you have valid questions) before making these changes.  
+
+let schedulers and field supers create TOP-LEVEL jobs (without requiring a QBT Jobcode ID — the finance manager fills those in later). Sub-job creation already works for them; this is about normal jobs. Needs UI (a create button on a page schedulers/field supers can reach) plus a Supabase policy change (their job INSERTs are currently limited to sub-jobs, and a field super creating a top-level job must also be auto-assigned to it or they won't see it).
+
+when i log in on web, if i enter a site that my role as a worker doesnt have access to it displayed a weird page, are we able to customize the page so that it says something like "You don't have access to this page." and there should be a button below on the page that takes them to their dashboard.
 
 in the settings theres a new password option: they should have to click a button that says "Change Password" that opens a popup for them to change their password.
 
@@ -40,6 +47,19 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+mobile jobcards view (REQUIRES: apply the new job-photos task_id Supabase migration — task-linked photo uploads are rejected without it):
+- jobcard name is bigger and less bold (22 semibold → 26 medium).
+- more space between the icon-led sections, and the section icons are slightly larger.
+- the per-task issue button is now "+ Issue" (plus icon).
+- installers can't check off a task without at least one photo taken FOR that task: each task row has a camera button (in-app camera on phones, image picker on web) with a count once photos exist; photos carry the task's id, and a blocked tap shows a "take at least one photo of this task" hint under the row. Unchecking is never blocked, office roles aren't gated, and task photos still show in the jobcard's Photos section.
+- top margin above the X/status row removed, and the page behind the jobcard is no longer dimmed: iOS dims its sheet presentation at the OS level, so the jobcard is now a self-drawn sheet over a transparent backdrop (sits slightly higher, soft top shadow instead of the dim). Swipe-down-to-dismiss went away with this presentation — the X closes it.
+
+mobile -> editing a photo's note: the note input now rides above the keyboard. Root cause: the viewer's bottom bar is absolutely positioned, and KeyboardAvoidingView padding never moves absolute children — a new keyboard-height hook lifts the bar by the keyboard's exact height on iOS (Android resizes the window itself; every other input surface in the app uses in-flow content that KeyboardAvoidingView already handles).
+
+installer schedule: jobcards no longer show priority, and the row under the jobcard name now reads "Parent Job · address".
+
+mobile bottom bar: now a floating island (rounded, inset from the screen edges, floating above the home indicator, border + soft shadow) and the icons sit slightly lower inside it.
 
 web job dashboard sidebar now mirrors the mobile installer job details view (field-super-jobs and operator-jobs):
 - wider panel (640px), X top-left like mobile.

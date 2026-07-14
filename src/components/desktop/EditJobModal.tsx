@@ -24,6 +24,11 @@ interface Props {
   job: Job | null;
   /** Roster of field supers the Operator can assign to this job. */
   fieldSupers: Worker[];
+  /**
+   * How many sub-jobs hang off this job — deleting it deletes them (and their
+   * jobcards) too, so the delete confirmation calls it out.
+   */
+  subJobCount?: number;
   onClose: () => void;
   onSave: (id: string, changes: JobChanges) => void;
   onDelete: (id: string) => void;
@@ -37,6 +42,7 @@ const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
 export function EditJobModal({
   job,
   fieldSupers,
+  subJobCount = 0,
   onClose,
   onSave,
   onDelete,
@@ -187,7 +193,15 @@ export function EditJobModal({
             <View style={styles.deleteConfirmBox}>
               <Text style={styles.deleteWarning}>
                 This permanently deletes &ldquo;{job?.name}&rdquo; and every one
-                of its jobcards. A deleted job cannot be restored.
+                of its jobcards
+                {subJobCount > 0
+                  ? ` — including its ${
+                      subJobCount === 1
+                        ? 'sub-job'
+                        : `${subJobCount} sub-jobs`
+                    } and their jobcards`
+                  : ''}
+                . A deleted job cannot be restored.
               </Text>
               <FormInput
                 label="Type the job name to confirm"

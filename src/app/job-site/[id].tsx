@@ -48,7 +48,8 @@ export default function JobSiteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const job = useAppStore((s) => s.jobs.find((j) => j.id === id));
+  const jobs = useAppStore((s) => s.jobs);
+  const job = jobs.find((j) => j.id === id);
   const workers = useAppStore((s) => s.workers);
   const jobcards = useAppStore((s) => s.jobcards);
   const jobDocuments = useAppStore((s) => s.jobDocuments);
@@ -87,6 +88,21 @@ export default function JobSiteScreen() {
   const documentCount = useMemo(
     () => jobDocuments.filter((d) => d.jobId === job?.id).length,
     [jobDocuments, job?.id]
+  );
+
+  // This job's sub-jobs (for the Sub-Jobs section) and — when the job IS a
+  // sub-job — its parent (for the header link back).
+  const subJobs = useMemo(
+    () =>
+      jobs
+        .filter((j) => j.parentJobId === job?.id)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [jobs, job?.id]
+  );
+  const parentJob = useMemo(
+    () =>
+      job?.parentJobId ? jobs.find((j) => j.id === job.parentJobId) : undefined,
+    [jobs, job?.parentJobId]
   );
 
   const [viewer, setViewer] = useState<{
@@ -240,8 +256,22 @@ export default function JobSiteScreen() {
           )}
         </Pressable>
 
-        {/* Centered header: name, tappable location, Field Supers. */}
+        {/* Centered header: name, tappable location, Field Supers. A sub-job
+            leads with its parent's name as a link back to the parent. */}
         <View style={styles.header}>
+          {parentJob && (
+            <Pressable
+              hitSlop={6}
+              onPress={() =>
+                router.push({
+                  pathname: '/job-site/[id]',
+                  params: { id: parentJob.id },
+                })
+              }
+            >
+              <Text style={styles.parentLink}>{parentJob.name}</Text>
+            </Pressable>
+          )}
           <View style={styles.titleRow}>
             <Text style={styles.title}>{job.name}</Text>
             {job.status === 'Finished' && (
@@ -402,6 +432,46 @@ export default function JobSiteScreen() {
                 );
               })
             )}
+          </View>
+        )}
+
+        {/* Sub-Jobs — directly above the photos. Names render PLAIN here (no
+            parent prefix inside the parent's own page); rows open each
+            sub-job's page. Managed (created/toggled) from the web console. */}
+        {job.hasSubJobs && !job.parentJobId && subJobs.length > 0 && (
+          <View style={styles.issuesSection}>
+            <Text style={styles.sectionHeader}>Sub-Jobs</Text>
+            {subJobs.map((sub) => (
+              <Pressable
+                key={sub.id}
+                style={({ pressed }) => [
+                  styles.jobcardRow,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/job-site/[id]',
+                    params: { id: sub.id },
+                  })
+                }
+              >
+                <View style={styles.jobcardText}>
+                  <Text style={styles.jobcardTitle} numberOfLines={1}>
+                    {sub.name}
+                  </Text>
+                  {sub.location ? (
+                    <Text style={styles.jobcardMeta} numberOfLines={1}>
+                      {sub.location}
+                    </Text>
+                  ) : null}
+                </View>
+                <Feather
+                  name="chevron-right"
+                  size={16}
+                  color={colors.textTertiary}
+                />
+              </Pressable>
+            ))}
           </View>
         )}
 
@@ -628,6 +698,12 @@ const styles = themed(() => StyleSheet.create({
   header: {
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  parentLink: {
+    color: colors.primary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    textAlign: 'center',
   },
   titleRow: {
     flexDirection: 'row',

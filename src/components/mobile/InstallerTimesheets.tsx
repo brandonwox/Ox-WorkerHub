@@ -36,6 +36,7 @@ import {
   themed,
 } from '@/theme';
 import { TimesheetLog } from '@/types';
+import { jobDisplayNameById } from '@/utils/jobName';
 import { formatHours, formatMoney } from '@/utils/time';
 
 /** The stat-card periods the tap cycle walks through (custom sits outside). */
@@ -232,7 +233,7 @@ export function InstallerTimesheets() {
   const jobNameFor = (log: TimesheetLog) => {
     if (!log.jobcardId) return undefined;
     const jobId = jobcards.find((j) => j.id === log.jobcardId)?.jobId;
-    return jobId ? jobs.find((j) => j.id === jobId)?.name : undefined;
+    return jobId ? jobDisplayNameById(jobId, jobs) || undefined : undefined;
   };
 
   const toggleWeek = (key: string) =>

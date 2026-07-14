@@ -16,6 +16,10 @@ import {
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import {
+  CreateSubJobModal,
+  NewSubJobInput,
+} from '@/components/desktop/CreateSubJobModal';
 import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
@@ -36,11 +40,18 @@ interface Props {
   onClose: () => void;
   /**
    * Whether the viewer may edit the jobsite address / flashing material inline
-   * (Field Supers and the Operator; RLS matches).
+   * (Field Supers and the Operator; RLS matches). Also gates the options
+   * button and sub-job creation.
    */
   editable?: boolean;
   /** Jobs passed through to the jobcard quick view (the viewer's scope). */
   quickViewJobs: Job[];
+  /**
+   * Swap the sidebar to another job — used by the Sub-Jobs section (open a
+   * sub-job) and a sub-job's parent link (back to the parent). Without it,
+   * those rows render non-navigable.
+   */
+  onOpenJob?: (jobId: string) => void;
 }
 
 /**
@@ -56,12 +67,15 @@ export function JobDashboardSidebar({
   onClose,
   editable = false,
   quickViewJobs,
+  onOpenJob,
 }: Props) {
   const workers = useAppStore((s) => s.workers);
+  const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const updateJob = useAppStore((s) => s.updateJob);
+  const addSubJob = useAppStore((s) => s.addSubJob);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
@@ -79,6 +93,11 @@ export function JobDashboardSidebar({
   const [mapsOpen, setMapsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [picking, setPicking] = useState(false);
+  // Options popup; 'confirm-hide' is the deactivation confirmation step.
+  const [optionsOpen, setOptionsOpen] = useState<
+    'menu' | 'confirm-hide' | null
+  >(null);
+  const [subJobModalOpen, setSubJobModalOpen] = useState(false);
 
   // Reset transient view state when the sidebar switches to another job.
   const [lastJobId, setLastJobId] = useState(job?.id);
@@ -88,7 +107,26 @@ export function JobDashboardSidebar({
     setResolvedOpen(false);
     setCoverModal(null);
     setMapsOpen(false);
+    setOptionsOpen(null);
+    setSubJobModalOpen(false);
   }
+
+  // This job's sub-jobs (for the Sub-Jobs section) and — when the job IS a
+  // sub-job — its parent (for the header link back).
+  const subJobs = useMemo(
+    () =>
+      jobs
+        .filter((j) => j.parentJobId === job?.id)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [jobs, job?.id]
+  );
+  const parentJob = useMemo(
+    () =>
+      job?.parentJobId
+        ? jobs.find((j) => j.id === job.parentJobId)
+        : undefined,
+    [jobs, job?.parentJobId]
+  );
 
   const jobJobcards = useMemo(
     () =>
@@ -204,7 +242,8 @@ export function JobDashboardSidebar({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* X top-left, mirroring the mobile page. */}
+        {/* X top-left, mirroring the mobile page; options top-right (sub-job
+            controls — hidden on sub-jobs themselves, one level only). */}
         <View style={styles.topRow}>
           <Pressable
             style={({ pressed }) => [pressed && styles.pressed]}
@@ -213,6 +252,22 @@ export function JobDashboardSidebar({
           >
             <Feather name="x" size={24} color={colors.textPrimary} />
           </Pressable>
+          {editable && !job.parentJobId && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.optionsButton,
+                pressed && styles.pressed,
+              ]}
+              hitSlop={8}
+              onPress={() => setOptionsOpen('menu')}
+            >
+              <Feather
+                name="more-horizontal"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+          )}
         </View>
 
         {/* Cover: centered rounded square; tap to view / change. */}
@@ -238,8 +293,18 @@ export function JobDashboardSidebar({
           )}
         </Pressable>
 
-        {/* Centered header: name, tappable location, Field Supers. */}
+        {/* Centered header: name, tappable location, Field Supers. A sub-job
+            leads with its parent's name as a link back to the parent. */}
         <View style={styles.header}>
+          {parentJob && (
+            <Pressable
+              hitSlop={6}
+              disabled={!onOpenJob}
+              onPress={() => onOpenJob?.(parentJob.id)}
+            >
+              <Text style={styles.parentLink}>{parentJob.name}</Text>
+            </Pressable>
+          )}
           <View style={styles.titleRow}>
             <Text style={styles.title}>{job.name}</Text>
             {job.status === 'Finished' && (
@@ -419,6 +484,70 @@ export function JobDashboardSidebar({
           </View>
         )}
 
+        {/* Sub-Jobs — directly above the photos section. Shown once the
+            "This job has Sub-Jobs" option is active (never on sub-jobs; one
+            level only). Names render PLAIN here — no parent prefix inside
+            the parent's own page. */}
+        {job.hasSubJobs && !job.parentJobId && (
+          <View style={styles.section}>
+            <View style={styles.picturesHeader}>
+              <Text style={styles.sectionHeader}>Sub-Jobs</Text>
+              {editable && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.uploadButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setSubJobModalOpen(true)}
+                >
+                  <Feather name="plus" size={13} color={colors.primary} />
+                  <Text style={styles.uploadText}>New Sub-Job</Text>
+                </Pressable>
+              )}
+            </View>
+            {subJobs.length === 0 ? (
+              <Text style={styles.emptyText}>No sub-jobs yet.</Text>
+            ) : (
+              subJobs.map((sub) => {
+                const count = jobcards.filter(
+                  (c) => c.jobId === sub.id
+                ).length;
+                return (
+                  <Pressable
+                    key={sub.id}
+                    style={({ pressed }) => [
+                      styles.jobcardRow,
+                      pressed && styles.pressed,
+                    ]}
+                    disabled={!onOpenJob}
+                    onPress={() => onOpenJob?.(sub.id)}
+                  >
+                    <View style={styles.jobcardText}>
+                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                        {sub.name}
+                      </Text>
+                      <Text style={styles.jobcardMeta} numberOfLines={1}>
+                        {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                        {sub.location ? ` · ${sub.location}` : ''}
+                      </Text>
+                    </View>
+                    {sub.status === 'Finished' && (
+                      <View style={styles.archivedPill}>
+                        <Text style={styles.archivedText}>Finished</Text>
+                      </View>
+                    )}
+                    <Feather
+                      name="chevron-right"
+                      size={16}
+                      color={colors.textTertiary}
+                    />
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        )}
+
         {/* Photo wall — always visible, like mobile. */}
         <View style={styles.section}>
           <View style={styles.picturesHeader}>
@@ -572,6 +701,102 @@ export function JobDashboardSidebar({
         </View>
       </Modal>
 
+      {/* Options popup: the "This job has Sub-Jobs" toggle. Deactivating asks
+          for confirmation — it hides the section, the sub-jobs live on. */}
+      <Modal
+        visible={optionsOpen != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOptionsOpen(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setOptionsOpen(null)}
+          />
+          <View style={styles.mapsCard}>
+            {optionsOpen === 'confirm-hide' ? (
+              <>
+                <Text style={styles.optionsTitle}>Hide Sub-Jobs?</Text>
+                <Text style={styles.optionsHint}>
+                  This hides the Sub-Jobs section on this job&apos;s page. The{' '}
+                  {subJobs.length === 1
+                    ? 'sub-job itself is'
+                    : `${subJobs.length} sub-jobs themselves are`}{' '}
+                  kept and stay where they already show.
+                </Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.mapsButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setOptionsOpen('menu')}
+                >
+                  <Text style={styles.mapsButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.mapsButton,
+                    styles.mapsButtonPrimary,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    updateJob(job.id, { hasSubJobs: false });
+                    setOptionsOpen(null);
+                  }}
+                >
+                  <Text style={styles.mapsButtonPrimaryText}>
+                    Hide Sub-Jobs section
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.optionsTitle}>Options</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.optionRow,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    if (job.hasSubJobs) {
+                      setOptionsOpen('confirm-hide');
+                    } else {
+                      updateJob(job.id, { hasSubJobs: true });
+                      setOptionsOpen(null);
+                    }
+                  }}
+                >
+                  <Feather
+                    name={job.hasSubJobs ? 'check-square' : 'square'}
+                    size={18}
+                    color={job.hasSubJobs ? colors.primary : colors.textSecondary}
+                  />
+                  <Text style={styles.optionRowText}>
+                    This job has Sub-Jobs
+                  </Text>
+                </Pressable>
+                <Text style={styles.optionsHint}>
+                  Adds a Sub-Jobs section to this job&apos;s page, where the
+                  job can be broken into pieces that work exactly like jobs.
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <CreateSubJobModal
+        parentJob={subJobModalOpen ? job : null}
+        onClose={() => setSubJobModalOpen(false)}
+        onSubmit={(input: NewSubJobInput) => {
+          const created = addSubJob({ parentJobId: job.id, ...input });
+          if (created) {
+            flash(`Sub-job "${job.name} ${created.name}" created`, 'success');
+          }
+        }}
+      />
+
       <JobcardQuickView
         jobcardId={viewingCardId}
         jobs={quickViewJobs}
@@ -663,6 +888,45 @@ const styles = themed(() =>
     topRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    optionsButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.pill,
+      padding: spacing.xs + 2,
+    },
+    parentLink: {
+      color: colors.primary,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+    optionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      padding: spacing.md,
+    },
+    optionRowText: {
+      flex: 1,
+      color: colors.textPrimary,
+      fontFamily: fonts.semiBold,
+      fontSize: 14,
+    },
+    optionsHint: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    optionsTitle: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 16,
     },
     scroll: {
       flex: 1,

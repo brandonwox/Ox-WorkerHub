@@ -36,15 +36,22 @@ export default function JobsScreen() {
     [workers]
   );
 
+  // Sub-jobs stay out of the top-level grid — they live inside their parent's
+  // Sub-Jobs section (the sidebar navigates to them from there).
+  const topLevelJobs = useMemo(
+    () => jobs.filter((job) => !job.parentJobId),
+    [jobs]
+  );
+
   const visibleJobs = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return jobs;
-    return jobs.filter(
+    if (!q) return topLevelJobs;
+    return topLevelJobs.filter(
       (job) =>
         job.name.toLowerCase().includes(q) ||
         (job.location ?? '').toLowerCase().includes(q)
     );
-  }, [jobs, query]);
+  }, [topLevelJobs, query]);
 
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
@@ -74,8 +81,8 @@ export default function JobsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <Text style={styles.subtitle}>
-            {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} ·{' '}
-            {jobs.filter((j) => j.status === 'Active').length} active
+            {topLevelJobs.length} {topLevelJobs.length === 1 ? 'job' : 'jobs'} ·{' '}
+            {topLevelJobs.filter((j) => j.status === 'Active').length} active
           </Text>
           <Pressable
             style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
@@ -128,6 +135,9 @@ export default function JobsScreen() {
       <EditJobModal
         job={editing}
         fieldSupers={fieldSupers}
+        subJobCount={
+          editing ? jobs.filter((j) => j.parentJobId === editing.id).length : 0
+        }
         onClose={() => setEditing(null)}
         onSave={handleSave}
         onDelete={handleDelete}
@@ -138,6 +148,7 @@ export default function JobsScreen() {
         onClose={() => setSelectedJobId(null)}
         editable
         quickViewJobs={jobs}
+        onOpenJob={setSelectedJobId}
       />
     </View>
   );

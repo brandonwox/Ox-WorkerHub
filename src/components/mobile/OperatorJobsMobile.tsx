@@ -17,13 +17,17 @@ export function OperatorJobsMobile() {
   const jobcards = useAppStore((s) => s.jobcards);
   const workers = useAppStore((s) => s.workers);
 
+  // Sub-jobs stay out of this office list — they're reached through their
+  // parent's details sidebar on the web console.
   const sorted = useMemo(
     () =>
-      [...jobs].sort((a, b) => {
-        // Active sites first, then alphabetical.
-        if (a.status !== b.status) return a.status === 'Active' ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      }),
+      jobs
+        .filter((job) => !job.parentJobId)
+        .sort((a, b) => {
+          // Active sites first, then alphabetical.
+          if (a.status !== b.status) return a.status === 'Active' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        }),
     [jobs]
   );
 

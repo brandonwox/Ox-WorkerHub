@@ -42,15 +42,22 @@ export default function FieldSuperJobsScreen() {
     [jobs, me]
   );
 
+  // Sub-jobs stay out of the top-level list — they live inside their parent's
+  // Sub-Jobs section (myJobs keeps them for the sidebar/quick-view lookups).
+  const listJobs = useMemo(
+    () => myJobs.filter((job) => !job.parentJobId),
+    [myJobs]
+  );
+
   const visibleJobs = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return myJobs;
-    return myJobs.filter(
+    if (!q) return listJobs;
+    return listJobs.filter(
       (job) =>
         job.name.toLowerCase().includes(q) ||
         (job.location ?? '').toLowerCase().includes(q)
     );
-  }, [myJobs, query]);
+  }, [listJobs, query]);
 
   const selectedJob = useMemo(
     () => myJobs.find((job) => job.id === selectedJobId) ?? null,
@@ -86,7 +93,7 @@ export default function FieldSuperJobsScreen() {
           )}
         </View>
 
-        {myJobs.length === 0 ? (
+        {listJobs.length === 0 ? (
           <Text style={styles.emptyText}>
             No jobs assigned to you yet — the Operator assigns Field Supers to
             jobs.
@@ -145,6 +152,7 @@ export default function FieldSuperJobsScreen() {
         onClose={() => setSelectedJobId(null)}
         editable
         quickViewJobs={myJobs}
+        onOpenJob={setSelectedJobId}
       />
     </View>
   );

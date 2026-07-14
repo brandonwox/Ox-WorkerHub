@@ -17,6 +17,7 @@ import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { useAppStore, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
+import { jobDisplayName } from '@/utils/jobName';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
@@ -115,9 +116,10 @@ export function JobcardsScreen({
     }).length;
   }, [showFalseStarts, jobcards, assignments]);
 
+  // Sub-jobs display conjoined with their parent's name ("Vista Homes Lot 2").
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
-    jobs.forEach((j) => map.set(j.id, j.name));
+    jobs.forEach((j) => map.set(j.id, jobDisplayName(j, jobs)));
     return map;
   }, [jobs]);
   const jobNameFor = (jobId?: string) =>

@@ -8,6 +8,7 @@ import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
 import { Jobcard } from '@/types';
+import { jobDisplayNameById } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
 
 /**
@@ -31,7 +32,7 @@ export function SchedulerBacklogMobile() {
   );
 
   const jobNameFor = (card: Jobcard) =>
-    jobs.find((j) => j.id === card.jobId)?.name ?? 'Unlinked job';
+    jobDisplayNameById(card.jobId, jobs) || 'Unlinked job';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>

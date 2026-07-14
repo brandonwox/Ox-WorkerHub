@@ -32,6 +32,7 @@ import {
   JobDocumentKind,
   JobIssue,
   JobPhoto,
+  JobScope,
   JobStatus,
   NotificationType,
   PendingJobPhoto,
@@ -43,6 +44,7 @@ import {
   TimesheetLog,
   Worker,
 } from '@/types';
+import { jobDisplayNameById } from '@/utils/jobName';
 import { hoursBetween } from '@/utils/time';
 
 /** Pay rate for a worker, or 0 if unknown. */
@@ -82,7 +84,7 @@ function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
   const recipients = schedulerIds(state.workers);
   if (recipients.length === 0) return;
   const jobName = card.jobId
-    ? state.jobs.find((j) => j.id === card.jobId)?.name
+    ? jobDisplayNameById(card.jobId, state.jobs) || undefined
     : undefined;
   get().pushNotification({
     recipientIds: recipients,
@@ -159,7 +161,7 @@ function notifyScheduleChange(
 ): void {
   if (installerIds.length === 0) return;
   const jobName = card.jobId
-    ? get().jobs.find((j) => j.id === card.jobId)?.name
+    ? jobDisplayNameById(card.jobId, get().jobs) || undefined
     : undefined;
   get().pushNotification({
     recipientIds: installerIds,
@@ -721,6 +723,23 @@ interface AppState {
   // --- Jobs (jobsites — Operator) ---
   /** Create a jobsite. Returns the created record. */
   addJob: (job: Omit<Job, 'id' | 'status'> & { id?: string; status?: JobStatus }) => Job;
+  /**
+   * Create a SUB-JOB under a parent job (web: schedulers, field supers, the
+   * operator). Inherits the parent's address, scopes, flashing material (+
+   * reference photo), and Field Supers; the name is stored WITHOUT the
+   * parent's name. Returns null when the parent is missing or is itself a
+   * sub-job (one level only).
+   */
+  addSubJob: (input: {
+    parentJobId: string;
+    name: string;
+    /** Override the inherited jobsite address (creation form edit). */
+    location?: string;
+    /** Override the inherited scopes (creation form edit). */
+    scopes?: JobScope[];
+    /** Override the inherited flashing material (creation form edit). */
+    flashingMaterial?: string;
+  }) => Job | null;
   updateJob: (id: string, changes: Partial<Job>) => void;
   /**
    * Delete a jobsite and everything hanging off it. Mirrors the DB's
@@ -1374,13 +1393,53 @@ export const useAppStore = create<AppState>((set, get) => ({
     return created;
   },
 
+  addSubJob: ({ parentJobId, name, location, scopes, flashingMaterial }) => {
+    const state = get();
+    const parent = state.jobs.find((j) => j.id === parentJobId);
+    // One level only — a sub-job can't parent another.
+    if (!parent || parent.parentJobId) return null;
+    const isBackend = backendActive(state);
+    const created: Job = {
+      id: isBackend ? uuid() : `job-${nextJobId++}`,
+      name,
+      status: 'Active',
+      parentJobId,
+      // Inherited from the parent (the creation form may override; all remain
+      // editable on the sub-job afterwards).
+      location: location ?? parent.location,
+      scopes: scopes ?? (parent.scopes ? [...parent.scopes] : undefined),
+      flashingMaterial: flashingMaterial ?? parent.flashingMaterial,
+      flashingPhotoPath: parent.flashingPhotoPath,
+      flashingPhotoUrl: parent.flashingPhotoUrl,
+      // For immediate UI only — the DB trigger mirrors the join-table rows
+      // (insertJob skips setJobFieldSupers for sub-jobs; the creator may not
+      // have write access to job_field_supers).
+      fieldSuperIds: parent.fieldSuperIds ? [...parent.fieldSuperIds] : [],
+    };
+    set((s) => ({ jobs: [created, ...s.jobs] }));
+    if (isBackend) write('insertJob', created);
+    return created;
+  },
+
   updateJob: (id, changes) => {
     let updated: Job | undefined;
     set((state) => ({
       jobs: state.jobs.map((job) => {
-        if (job.id !== id) return job;
-        updated = { ...job, ...changes };
-        return updated;
+        if (job.id === id) {
+          updated = { ...job, ...changes };
+          return updated;
+        }
+        // Sub-jobs inherit the parent's Field Supers — mirror the DB trigger
+        // locally so the change shows on them without waiting for a refetch.
+        if ('fieldSuperIds' in changes && job.parentJobId === id) {
+          return {
+            ...job,
+            fieldSuperIds: changes.fieldSuperIds
+              ? [...changes.fieldSuperIds]
+              : [],
+          };
+        }
+        return job;
       }),
     }));
     if (backendActive(get()) && updated) {
@@ -1401,14 +1460,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeJob: (id) => {
     set((state) => {
-      // Cascade locally the way the DB does: drop child jobcards, then any
-      // schedule assignments pointing at those (now-orphaned) cards.
+      // Cascade locally the way the DB does: drop the job's SUB-JOBS, every
+      // affected job's jobcards, then any schedule assignments pointing at
+      // those (now-orphaned) cards.
+      const removedJobIds = new Set([
+        id,
+        ...state.jobs
+          .filter((job) => job.parentJobId === id)
+          .map((job) => job.id),
+      ]);
       const orphanedCardIds = new Set(
-        state.jobcards.filter((c) => c.jobId === id).map((c) => c.id)
+        state.jobcards
+          .filter((c) => c.jobId && removedJobIds.has(c.jobId))
+          .map((c) => c.id)
       );
       return {
-        jobs: state.jobs.filter((job) => job.id !== id),
-        jobcards: state.jobcards.filter((c) => c.jobId !== id),
+        jobs: state.jobs.filter((job) => !removedJobIds.has(job.id)),
+        jobcards: state.jobcards.filter(
+          (c) => !(c.jobId && removedJobIds.has(c.jobId))
+        ),
         assignments: state.assignments.filter(
           (a) => !orphanedCardIds.has(a.jobcardId)
         ),

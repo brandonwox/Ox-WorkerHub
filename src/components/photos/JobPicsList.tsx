@@ -16,6 +16,7 @@ import {
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { jobDisplayName } from '@/utils/jobName';
 
 interface Props {
   /** Open a job's photo page/modal. */
@@ -63,16 +64,20 @@ export function JobPicsList({ onSelectJob }: Props) {
         const pb = latestPhotoAt.get(b.id);
         if (pa && pb) return pb.localeCompare(pa);
         if (pa || pb) return pa ? -1 : 1;
-        return a.name.localeCompare(b.name);
+        return jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs));
       });
     return [...clocked, ...rest];
   }, [me, logs, jobcards, jobs, activeShift, jobPhotos, pendingPhotos]);
 
+  // Sub-jobs are listed like any job, under their conjoined name ("Vista
+  // Homes Lot 2") — searching either the parent's or the sub-job's name hits.
   const results = useMemo(() => {
     if (!query) return byRecency;
     return jobs
-      .filter((job) => job.name.toLowerCase().includes(query))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter((job) => jobDisplayName(job, jobs).toLowerCase().includes(query))
+      .sort((a, b) =>
+        jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs))
+      );
   }, [query, byRecency, jobs]);
 
   const photoCountFor = (jobId: string) =>
@@ -131,7 +136,7 @@ export function JobPicsList({ onSelectJob }: Props) {
                 <View style={styles.rowMain}>
                   <View style={styles.rowTitleWrap}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
-                      {job.name}
+                      {jobDisplayName(job, jobs)}
                     </Text>
                     {job.status === 'Finished' && (
                       <View style={styles.archivedPill}>

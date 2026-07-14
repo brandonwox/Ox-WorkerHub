@@ -46,6 +46,8 @@ interface JobRow {
   cover_photo_id: string | null;
   /** numeric arrives from PostgREST as a string. */
   labor_budget: number | string | null;
+  parent_job_id: string | null;
+  has_sub_jobs: boolean | null;
 }
 
 interface JobFieldSuperRow {
@@ -177,6 +179,8 @@ function rowToJob(r: JobRow): Job {
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
     coverPhotoId: r.cover_photo_id ?? undefined,
     laborBudget: r.labor_budget != null ? Number(r.labor_budget) : undefined,
+    parentJobId: r.parent_job_id ?? undefined,
+    hasSubJobs: r.has_sub_jobs ?? undefined,
   };
 }
 
@@ -460,11 +464,16 @@ function jobToRow(job: Job) {
     scopes: job.scopes ?? null,
     cover_photo_id: job.coverPhotoId ?? null,
     labor_budget: job.laborBudget ?? null,
+    parent_job_id: job.parentJobId ?? null,
+    has_sub_jobs: job.hasSubJobs ?? false,
   };
 }
 
 export async function insertJob(job: Job): Promise<void> {
   check((await getSupabase().from('jobs').insert(jobToRow(job))).error);
+  // Sub-jobs inherit the parent's Field Supers via a DB trigger (the creator —
+  // a scheduler or field super — has no write grant on job_field_supers).
+  if (job.parentJobId) return;
   // Field Super assignments live in the job_field_supers join table, not on the
   // jobs row.
   await setJobFieldSupers(job.id, job.fieldSuperIds ?? []);

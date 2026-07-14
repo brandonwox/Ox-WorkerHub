@@ -13,6 +13,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
+import { jobDisplayNameById } from '@/utils/jobName';
 
 interface Props {
   /**
@@ -245,7 +246,7 @@ export function CalendarBoard({
   };
 
   const jobNameFor = (jobId?: string) =>
-    jobs.find((j) => j.id === jobId)?.name ?? 'Unlinked job';
+    jobDisplayNameById(jobId, jobs) || 'Unlinked job';
 
   // Work Requests = jobcards with no assignment row anywhere.
   const unassigned = useMemo(

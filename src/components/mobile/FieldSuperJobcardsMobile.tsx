@@ -8,6 +8,7 @@ import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { jobDisplayName } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
 
 const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
@@ -32,9 +33,10 @@ export function FieldSuperJobcardsMobile() {
     [jobs, me]
   );
 
+  // Sub-jobs display conjoined with their parent's name ("Vista Homes Lot 2").
   const jobNameById = useMemo(
-    () => new Map(myJobs.map((job) => [job.id, job.name])),
-    [myJobs]
+    () => new Map(myJobs.map((job) => [job.id, jobDisplayName(job, jobs)])),
+    [myJobs, jobs]
   );
 
   const scheduledIds = useMemo(

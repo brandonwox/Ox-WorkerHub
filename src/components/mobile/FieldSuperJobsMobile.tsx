@@ -31,8 +31,13 @@ export function FieldSuperJobsMobile() {
   const updateJob = useAppStore((s) => s.updateJob);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Sub-jobs stay out of this office list — they're managed from the web job
+  // details sidebar (their jobcards still show on the Jobcards tab).
   const myJobs = useMemo(
-    () => (me ? jobsForFieldSuper(jobs, me.id) : []),
+    () =>
+      (me ? jobsForFieldSuper(jobs, me.id) : []).filter(
+        (job) => !job.parentJobId
+      ),
     [jobs, me]
   );
 
