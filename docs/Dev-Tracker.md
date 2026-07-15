@@ -1,33 +1,22 @@
 # Dev Tracker
-This file is used by the developer of Ox WorkerHub. It should not be used in any way by any ai agents.
+This file is used by the developer of Ox WorkerHub. (Agents may use this file in accordance to instructions from the developer.)
 
 
 # Awaiting
 
+on mobile -> field super jobs tab -> clicking on a job: should open the job details for the job (like it does ).
+
+on the calendar -> viewing the monthly calendar -> inside a day -> displaying multiple jobcards -> if a jobcard has been assigned multiple crews it currently shows "Crew A" and "Crew B" (or whatever the crew name is). but it shouldn't be saying "Crew" it should just be showing "A" and "B" (or whatever letters the crew name is)
+
+jobcard details right sidebar -> the parent job should be clickable, which opens the job details right sidebar over top of the current jobcards right sidebar. there should be a back button in the top left. (and when viewing from a calendar it should also open the job details page, but over the current jobcard in the popup)
+
+job details page: there needs to be a search option for the sub-jobs section.
+
 job details page:
-- put the subjobs section into a button next to the three buttons for "Issues", "Jobcards", and "Documents". the subjobs section should be open by default.
-- the subjobs section should collapse to 3 by default unless expanded.
+- put the subjobs section into a button next to the three buttons for "Issues", "Jobcards", and "Documents". the subjobs section should be open by default. (it should rotate out when one of the other options is clicked.)
+- the subjobs section should collapse to 3 sub-jobs displayed by default unless expanded the section is expanded.
 
-make it easier to navigate from and to sub-jobs for field supers and schedulers
-
-job details right sidebar on web: add an edit button to the top right of the sidebar (now that we have an edit button we can remove the second jobsite address, and just allow the original to be edited when the edit button is active.
-
-make the jobcard creation form have the same layout, style, sizes, placements, etc as the normal jobcard popup view. (remember jobcards are created on the jobcards page, so it should show up in the right sidebar rather than a popup.) (the only difference on the creation form and simply viewing a jobcard is that there should be a "Cancel" and a "Create Jobcard" Button at the bottom. (and if they don't meet the requirments it wont create the jobcard)). 
-
-jobcard popup: parent job should not be switchable once a jobcard has been created. (and move the parent job name above the jobcard name (like how it is when an installer views a jobcard on mobile.))
-
-field-super-jobcards and other jobcards pages: clicking on a jobcard from the jobcard should open it up in a right sidebar (the sidebar should be the same size as the job details sidebar.) (this change should not affect how jobcards pop up in the calendar pages, only in jobcard pages.)
-
-when a field-super is viewing a jobcard, do not allow them to open the crew selector popup. (clicking the rounded square should not show the list of crews.) (because we do not want them switching crews around. all the field super can do is hover over the rounded square to see the name of the crew that's been assigned.)
-
-jobcard popup viewed on web:
-- make the jobcard popup just slightly wider on web.
-- at the bottom it says "Installer photos" and "No photos taken for this jobcard yet". (but the photos for a jobcard aren't strictly for installers. all roles that can access the jobcard should be able to take or upload photos.)
-
-create "Sub-Jobs":
-- web users like schedulers and field supers can be create a sub-job inside the details page of a job (there should be an options button in the job details sidebar, the options button allows you to activate a button called "This job has Sub-Jobs". activating that button adds another section to the job details page directly above the photos section. the section is the Sub-Jobs section that shows a list of every sub-job under the current job. sub-jobs work exactly the same as normal jobs do (exactly the same other than being tied into a parent/normal job (they still need their own QuickBooks Time jobcard id, name, etc.).)).
-- when a subjob is created, the name of the subjob gets a prefix that is the parent job's name. for example if i create a subjob inside of a parent job called "Vista Homes", and i name the subjob "Lot 2" the subjob's name would actually become "Vista Homes Lot 2" once created. (it should be apparent while typing the name for the subjob, it should have the parent job's name prefilled in and not editable.)
-- please ask any and all questions (IF you have valid questions) before making these changes.  
+job details -> right sidebar on web: add an edit button to the top right of the sidebar (now that we have an edit button we can remove the second jobsite address, and just allow the original to be edited when the edit button is active.
 
 let schedulers and field supers create TOP-LEVEL jobs (without requiring a QBT Jobcode ID — the finance manager fills those in later). Sub-job creation already works for them; this is about normal jobs. Needs UI (a create button on a page schedulers/field supers can reach) plus a Supabase policy change (their job INSERTs are currently limited to sub-jobs, and a field super creating a top-level job must also be auto-assigned to it or they won't see it).
 
@@ -53,6 +42,13 @@ create sms provider account (twilio is the standard). This would allow us to sen
 
 
 # DONE
+
+jobcard sidebar + creation rework:
+- field-super-jobcards and other jobcards pages (not the calendar pages): clicking a jobcard opens it in a right sidebar the same size as the job details sidebar, instead of the old centered popup.
+- creating a jobcard now happens in that same right sidebar, using the identical layout/style/sizing as viewing a jobcard — the only difference is "Cancel" and "Create Jobcard" buttons at the bottom, and creation is blocked with an inline error until requirements are met. The old separate creation modal is gone.
+- the parent job name now sits directly above the jobcard name on every jobcard view (popup and sidebar), matching the mobile installer layout. It's no longer switchable once a jobcard exists — only the creation draft still picks a parent.
+- field supers can no longer open the crew selector on a jobcard (clicking the rounded square does nothing for them); hovering still shows the assigned crew's name. Schedulers are unaffected.
+- the web jobcard popup is slightly wider, and the photos section wording changed from "Installer photos" / "No photos taken for this jobcard yet" to role-neutral "Photos" / "No photos for this jobcard yet".
 
 mobile jobcards view (REQUIRES: apply the new job-photos task_id Supabase migration — task-linked photo uploads are rejected without it):
 - jobcard name is bigger and less bold (22 semibold → 26 medium).

@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
@@ -35,8 +36,13 @@ import {
   spacing,
   themed,
 } from '@/theme';
+import { Job } from '@/types';
 
-type SectionKey = 'issues' | 'documents' | 'jobcards';
+type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
+
+/** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
+const defaultSectionFor = (job?: Job): SectionKey =>
+  job?.hasSubJobs && !job.parentJobId ? 'subjobs' : 'issues';
 
 /**
  * A parent Job's page: centered cover photo + header, section cards
@@ -110,8 +116,14 @@ export default function JobSiteScreen() {
     index: number;
   } | null>(null);
   const [picking, setPicking] = useState(false);
-  const [section, setSection] = useState<SectionKey | null>(null);
+  // One section is always open (no "closed" state); cycle by tapping a card.
+  const [section, setSection] = useState<SectionKey>(() =>
+    defaultSectionFor(job)
+  );
   const [resolvedOpen, setResolvedOpen] = useState(false);
+  // Sub-Jobs section: name search + collapse-to-3.
+  const [subJobSearch, setSubJobSearch] = useState('');
+  const [subJobsExpanded, setSubJobsExpanded] = useState(false);
   // Cover popup: 'view' shows the image + change button; 'pick' the grid.
   const [coverModal, setCoverModal] = useState<'view' | 'pick' | null>(null);
   const [mapsOpen, setMapsOpen] = useState(false);
@@ -179,6 +191,16 @@ export default function JobSiteScreen() {
     setMapsOpen(false);
   };
 
+  // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
+  const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
+  // Sub-Jobs list: name-only search, then collapse to 3 unless expanded.
+  const filteredSubJobs = subJobs.filter((s) =>
+    s.name.toLowerCase().includes(subJobSearch.trim().toLowerCase())
+  );
+  const visibleSubJobs = subJobsExpanded
+    ? filteredSubJobs
+    : filteredSubJobs.slice(0, 3);
+
   const sectionCards: {
     key: SectionKey;
     label: string;
@@ -187,6 +209,19 @@ export default function JobSiteScreen() {
     tint: string;
     dim: string;
   }[] = [
+    // Sub-Jobs leads the row when present (it's the default-open section).
+    ...(hasSubJobsSection
+      ? [
+          {
+            key: 'subjobs' as const,
+            label: 'Sub-Jobs',
+            sub: `${subJobs.length} Total`,
+            icon: 'git-branch' as const,
+            tint: colors.warning,
+            dim: colors.warningDim,
+          },
+        ]
+      : []),
     {
       key: 'issues',
       label: 'Issues',
@@ -435,43 +470,85 @@ export default function JobSiteScreen() {
           </View>
         )}
 
-        {/* Sub-Jobs — directly above the photos. Names render PLAIN here (no
-            parent prefix inside the parent's own page); rows open each
+        {/* Sub-Jobs — a section card like the others. Names render PLAIN here
+            (no parent prefix inside the parent's own page); rows open each
             sub-job's page. Managed (created/toggled) from the web console. */}
-        {job.hasSubJobs && !job.parentJobId && subJobs.length > 0 && (
+        {section === 'subjobs' && hasSubJobsSection && (
           <View style={styles.issuesSection}>
             <Text style={styles.sectionHeader}>Sub-Jobs</Text>
-            {subJobs.map((sub) => (
-              <Pressable
-                key={sub.id}
-                style={({ pressed }) => [
-                  styles.jobcardRow,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/job-site/[id]',
-                    params: { id: sub.id },
-                  })
-                }
-              >
-                <View style={styles.jobcardText}>
-                  <Text style={styles.jobcardTitle} numberOfLines={1}>
-                    {sub.name}
-                  </Text>
-                  {sub.location ? (
-                    <Text style={styles.jobcardMeta} numberOfLines={1}>
-                      {sub.location}
-                    </Text>
-                  ) : null}
-                </View>
-                <Feather
-                  name="chevron-right"
-                  size={16}
-                  color={colors.textTertiary}
+            {/* Search once the list is long enough to warrant it (name only). */}
+            {subJobs.length > 3 && (
+              <View style={styles.searchRow}>
+                <Feather name="search" size={14} color={colors.textTertiary} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={subJobSearch}
+                  onChangeText={setSubJobSearch}
+                  placeholder="Search sub-jobs by name…"
+                  placeholderTextColor={colors.textTertiary}
                 />
-              </Pressable>
-            ))}
+              </View>
+            )}
+            {subJobs.length === 0 ? (
+              <Text style={styles.emptyText}>No sub-jobs yet.</Text>
+            ) : filteredSubJobs.length === 0 ? (
+              <Text style={styles.emptyText}>No sub-jobs match.</Text>
+            ) : (
+              <>
+                {visibleSubJobs.map((sub) => (
+                  <Pressable
+                    key={sub.id}
+                    style={({ pressed }) => [
+                      styles.jobcardRow,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/job-site/[id]',
+                        params: { id: sub.id },
+                      })
+                    }
+                  >
+                    <View style={styles.jobcardText}>
+                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                        {sub.name}
+                      </Text>
+                      {sub.location ? (
+                        <Text style={styles.jobcardMeta} numberOfLines={1}>
+                          {sub.location}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Feather
+                      name="chevron-right"
+                      size={16}
+                      color={colors.textTertiary}
+                    />
+                  </Pressable>
+                ))}
+                {/* Collapsed to 3 by default; expand/collapse the rest. */}
+                {filteredSubJobs.length > 3 && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.resolvedToggle,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setSubJobsExpanded((o) => !o)}
+                  >
+                    <Feather
+                      name={subJobsExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={15}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.resolvedToggleText}>
+                      {subJobsExpanded
+                        ? 'Show fewer'
+                        : `View all ${filteredSubJobs.length} sub-jobs`}
+                    </Text>
+                  </Pressable>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -787,6 +864,23 @@ const styles = themed(() => StyleSheet.create({
   },
   issuesSection: {
     gap: spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    color: colors.textPrimary,
+    fontFamily: fonts.regular,
+    fontSize: 14,
   },
   emptyText: {
     color: colors.textTertiary,

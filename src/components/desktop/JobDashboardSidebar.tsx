@@ -32,7 +32,11 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
-type SectionKey = 'issues' | 'documents' | 'jobcards';
+type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
+
+/** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
+const defaultSectionFor = (job: Job | null): SectionKey =>
+  job?.hasSubJobs && !job.parentJobId ? 'subjobs' : 'issues';
 
 interface Props {
   /** The job to dashboard, or null when the sidebar is closed. */
@@ -86,8 +90,17 @@ export function JobDashboardSidebar({
     photos: DisplayPhoto[];
     index: number;
   } | null>(null);
-  const [section, setSection] = useState<SectionKey | null>(null);
+  // One section is always open (no "closed" state) — you cycle by clicking
+  // another card. Defaults per {@link defaultSectionFor}.
+  const [section, setSection] = useState<SectionKey>(() =>
+    defaultSectionFor(job)
+  );
   const [resolvedOpen, setResolvedOpen] = useState(false);
+  // Sub-Jobs section: name search + collapse-to-3.
+  const [subJobSearch, setSubJobSearch] = useState('');
+  const [subJobsExpanded, setSubJobsExpanded] = useState(false);
+  // Edit toggle: address (and flashing) are read-only until this is on.
+  const [editMode, setEditMode] = useState(false);
   // Cover popup: 'view' shows the image + change button; 'pick' the grid.
   const [coverModal, setCoverModal] = useState<'view' | 'pick' | null>(null);
   const [mapsOpen, setMapsOpen] = useState(false);
@@ -103,8 +116,11 @@ export function JobDashboardSidebar({
   const [lastJobId, setLastJobId] = useState(job?.id);
   if (job?.id !== lastJobId) {
     setLastJobId(job?.id);
-    setSection(null);
+    setSection(defaultSectionFor(job));
     setResolvedOpen(false);
+    setSubJobSearch('');
+    setSubJobsExpanded(false);
+    setEditMode(false);
     setCoverModal(null);
     setMapsOpen(false);
     setOptionsOpen(null);
@@ -201,6 +217,16 @@ export function JobDashboardSidebar({
   const openPhoto = (photo: DisplayPhoto, all: DisplayPhoto[]) =>
     setViewer({ photos: all, index: all.findIndex((p) => p.id === photo.id) });
 
+  // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
+  const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
+  // Sub-Jobs list: name-only search, then collapse to 3 unless expanded.
+  const filteredSubJobs = subJobs.filter((s) =>
+    s.name.toLowerCase().includes(subJobSearch.trim().toLowerCase())
+  );
+  const visibleSubJobs = subJobsExpanded
+    ? filteredSubJobs
+    : filteredSubJobs.slice(0, 3);
+
   const sectionCards: {
     key: SectionKey;
     label: string;
@@ -209,6 +235,19 @@ export function JobDashboardSidebar({
     tint: string;
     dim: string;
   }[] = [
+    // Sub-Jobs leads the row when present (it's the default-open section).
+    ...(hasSubJobsSection
+      ? [
+          {
+            key: 'subjobs' as const,
+            label: 'Sub-Jobs',
+            sub: `${subJobs.length} Total`,
+            icon: 'git-branch' as const,
+            tint: colors.warning,
+            dim: colors.warningDim,
+          },
+        ]
+      : []),
     {
       key: 'issues',
       label: 'Issues',
@@ -242,8 +281,8 @@ export function JobDashboardSidebar({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* X top-left, mirroring the mobile page; options top-right (sub-job
-            controls — hidden on sub-jobs themselves, one level only). */}
+        {/* X top-left, mirroring the mobile page; edit toggle + options
+            top-right (options: sub-job controls, parent jobs only). */}
         <View style={styles.topRow}>
           <Pressable
             style={({ pressed }) => [pressed && styles.pressed]}
@@ -252,21 +291,40 @@ export function JobDashboardSidebar({
           >
             <Feather name="x" size={24} color={colors.textPrimary} />
           </Pressable>
-          {editable && !job.parentJobId && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.optionsButton,
-                pressed && styles.pressed,
-              ]}
-              hitSlop={8}
-              onPress={() => setOptionsOpen('menu')}
-            >
-              <Feather
-                name="more-horizontal"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </Pressable>
+          {editable && (
+            <View style={styles.topRowActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.optionsButton,
+                  editMode && styles.editButtonActive,
+                  pressed && styles.pressed,
+                ]}
+                hitSlop={8}
+                onPress={() => setEditMode((on) => !on)}
+              >
+                <Feather
+                  name={editMode ? 'check' : 'edit-2'}
+                  size={17}
+                  color={editMode ? colors.textOnAccent : colors.textSecondary}
+                />
+              </Pressable>
+              {!job.parentJobId && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.optionsButton,
+                    pressed && styles.pressed,
+                  ]}
+                  hitSlop={8}
+                  onPress={() => setOptionsOpen('menu')}
+                >
+                  <Feather
+                    name="more-horizontal"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
 
@@ -313,19 +371,32 @@ export function JobDashboardSidebar({
               </View>
             )}
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
-            onPress={() => job.location && setMapsOpen(true)}
-            disabled={!job.location}
-          >
-            <Feather name="map-pin" size={14} color={colors.textSecondary} />
-            <Text
-              style={[styles.infoValue, job.location && styles.locationText]}
-              numberOfLines={2}
+          {/* The one jobsite address: a tappable maps link, or an inline
+              editor while Edit mode is on (no duplicate field below). */}
+          {editMode ? (
+            <View style={styles.headerEditRow}>
+              <Feather name="map-pin" size={14} color={colors.textSecondary} />
+              <AddressInput
+                key={`addr-${job.id}`}
+                value={job.location ?? ''}
+                onCommit={(location) => updateJob(job.id, { location })}
+              />
+            </View>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
+              onPress={() => job.location && setMapsOpen(true)}
+              disabled={!job.location}
             >
-              {job.location || 'No location set'}
-            </Text>
-          </Pressable>
+              <Feather name="map-pin" size={14} color={colors.textSecondary} />
+              <Text
+                style={[styles.infoValue, job.location && styles.locationText]}
+                numberOfLines={2}
+              >
+                {job.location || 'No location set'}
+              </Text>
+            </Pressable>
+          )}
           <View style={styles.infoRow}>
             <Feather name="user" size={14} color={colors.textSecondary} />
             <Text style={styles.infoValue} numberOfLines={2}>
@@ -336,33 +407,23 @@ export function JobDashboardSidebar({
           </View>
         </View>
 
-        {/* The extra fields the mobile installer view doesn't have: inline
-            editors for the address and (window jobs) the flashing material. */}
-        {editable && (
+        {/* Window Opening Flashing Material — editable inline while Edit mode
+            is on (window jobs only). The address is edited up in the header. */}
+        {editable && editMode && jobAllowsWindows(job) && (
           <View style={styles.editBlock}>
-            <Text style={styles.fieldLabel}>Jobsite address</Text>
-            <AddressInput
-              key={`addr-${job.id}`}
-              value={job.location ?? ''}
-              onCommit={(location) => updateJob(job.id, { location })}
-            />
-            {jobAllowsWindows(job) && (
-              <>
-                <Text style={styles.fieldLabel}>
-                  Window Opening Flashing Material
-                </Text>
-                <View style={styles.flashRow}>
-                  <FlashingInput
-                    key={`flash-${job.id}`}
-                    value={job.flashingMaterial ?? ''}
-                    onCommit={(flashingMaterial) =>
-                      updateJob(job.id, { flashingMaterial })
-                    }
-                  />
-                  <FlashingPhotoField job={job} editable />
-                </View>
-              </>
-            )}
+            <Text style={styles.fieldLabel}>
+              Window Opening Flashing Material
+            </Text>
+            <View style={styles.flashRow}>
+              <FlashingInput
+                key={`flash-${job.id}`}
+                value={job.flashingMaterial ?? ''}
+                onCommit={(flashingMaterial) =>
+                  updateJob(job.id, { flashingMaterial })
+                }
+              />
+              <FlashingPhotoField job={job} editable />
+            </View>
           </View>
         )}
 
@@ -484,11 +545,10 @@ export function JobDashboardSidebar({
           </View>
         )}
 
-        {/* Sub-Jobs — directly above the photos section. Shown once the
-            "This job has Sub-Jobs" option is active (never on sub-jobs; one
-            level only). Names render PLAIN here — no parent prefix inside
-            the parent's own page. */}
-        {job.hasSubJobs && !job.parentJobId && (
+        {/* Sub-Jobs — a section card like the others (never on sub-jobs
+            themselves; one level only). Names render PLAIN here — no parent
+            prefix inside the parent's own page. */}
+        {section === 'subjobs' && hasSubJobsSection && (
           <View style={styles.section}>
             <View style={styles.picturesHeader}>
               <Text style={styles.sectionHeader}>Sub-Jobs</Text>
@@ -505,45 +565,83 @@ export function JobDashboardSidebar({
                 </Pressable>
               )}
             </View>
+            {/* Search once the list is long enough to warrant it (name only). */}
+            {subJobs.length > 3 && (
+              <View style={styles.searchRow}>
+                <Feather name="search" size={14} color={colors.textTertiary} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={subJobSearch}
+                  onChangeText={setSubJobSearch}
+                  placeholder="Search sub-jobs by name…"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
+            )}
             {subJobs.length === 0 ? (
               <Text style={styles.emptyText}>No sub-jobs yet.</Text>
+            ) : filteredSubJobs.length === 0 ? (
+              <Text style={styles.emptyText}>No sub-jobs match.</Text>
             ) : (
-              subJobs.map((sub) => {
-                const count = jobcards.filter(
-                  (c) => c.jobId === sub.id
-                ).length;
-                return (
+              <>
+                {visibleSubJobs.map((sub) => {
+                  const count = jobcards.filter(
+                    (c) => c.jobId === sub.id
+                  ).length;
+                  return (
+                    <Pressable
+                      key={sub.id}
+                      style={({ pressed }) => [
+                        styles.jobcardRow,
+                        pressed && styles.pressed,
+                      ]}
+                      disabled={!onOpenJob}
+                      onPress={() => onOpenJob?.(sub.id)}
+                    >
+                      <View style={styles.jobcardText}>
+                        <Text style={styles.jobcardTitle} numberOfLines={1}>
+                          {sub.name}
+                        </Text>
+                        <Text style={styles.jobcardMeta} numberOfLines={1}>
+                          {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                          {sub.location ? ` · ${sub.location}` : ''}
+                        </Text>
+                      </View>
+                      {sub.status === 'Finished' && (
+                        <View style={styles.archivedPill}>
+                          <Text style={styles.archivedText}>Finished</Text>
+                        </View>
+                      )}
+                      <Feather
+                        name="chevron-right"
+                        size={16}
+                        color={colors.textTertiary}
+                      />
+                    </Pressable>
+                  );
+                })}
+                {/* Collapsed to 3 by default; expand/collapse the rest. */}
+                {filteredSubJobs.length > 3 && (
                   <Pressable
-                    key={sub.id}
                     style={({ pressed }) => [
-                      styles.jobcardRow,
+                      styles.resolvedToggle,
                       pressed && styles.pressed,
                     ]}
-                    disabled={!onOpenJob}
-                    onPress={() => onOpenJob?.(sub.id)}
+                    onPress={() => setSubJobsExpanded((o) => !o)}
                   >
-                    <View style={styles.jobcardText}>
-                      <Text style={styles.jobcardTitle} numberOfLines={1}>
-                        {sub.name}
-                      </Text>
-                      <Text style={styles.jobcardMeta} numberOfLines={1}>
-                        {count} {count === 1 ? 'jobcard' : 'jobcards'}
-                        {sub.location ? ` · ${sub.location}` : ''}
-                      </Text>
-                    </View>
-                    {sub.status === 'Finished' && (
-                      <View style={styles.archivedPill}>
-                        <Text style={styles.archivedText}>Finished</Text>
-                      </View>
-                    )}
                     <Feather
-                      name="chevron-right"
-                      size={16}
-                      color={colors.textTertiary}
+                      name={subJobsExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={15}
+                      color={colors.textSecondary}
                     />
+                    <Text style={styles.resolvedToggleText}>
+                      {subJobsExpanded
+                        ? 'Show fewer'
+                        : `View all ${filteredSubJobs.length} sub-jobs`}
+                    </Text>
                   </Pressable>
-                );
-              })
+                )}
+              </>
             )}
           </View>
         )}
@@ -890,11 +988,44 @@ const styles = themed(() =>
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    topRowActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
     optionsButton: {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.pill,
       padding: spacing.xs + 2,
+    },
+    editButtonActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    headerEditRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs + 2,
+      alignSelf: 'stretch',
+    },
+    searchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+    },
+    searchInput: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      outlineWidth: 0,
     },
     parentLink: {
       color: colors.primary,
@@ -1009,6 +1140,7 @@ const styles = themed(() =>
       marginTop: spacing.xs,
     },
     addressInput: {
+      flex: 1,
       backgroundColor: colors.background,
       borderWidth: 1,
       borderColor: colors.border,
