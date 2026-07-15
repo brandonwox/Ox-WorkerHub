@@ -4,10 +4,9 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-  CreateJobcardModal,
+  JobcardQuickView,
   NewJobcardInput,
-} from '@/components/desktop/CreateJobcardModal';
-import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
+} from '@/components/desktop/JobcardQuickView';
 import {
   JobcardFilters,
   ScheduleFilter,
@@ -49,9 +48,24 @@ export function JobcardsScreen({
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const flash = useAppStore((s) => s.flash);
 
+  // The right sidebar shows either one jobcard or the creation draft —
+  // opening one closes the other.
   const [createOpen, setCreateOpen] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [photosJob, setPhotosJob] = useState<Job | null>(null);
+
+  const openCreate = () => {
+    setViewingId(null);
+    setCreateOpen(true);
+  };
+  const openCard = (id: string) => {
+    setCreateOpen(false);
+    setViewingId(id);
+  };
+  const closeSidebar = () => {
+    setCreateOpen(false);
+    setViewingId(null);
+  };
 
   // Filters / sort (all stack).
   const [search, setSearch] = useState('');
@@ -274,7 +288,7 @@ export function JobcardsScreen({
               activeJobs.length === 0 && styles.addButtonDisabled,
               pressed && activeJobs.length > 0 && styles.pressed,
             ]}
-            onPress={() => setCreateOpen(true)}
+            onPress={openCreate}
             disabled={activeJobs.length === 0}
           >
             <Feather name="plus" size={16} color={colors.textOnAccent} />
@@ -328,7 +342,7 @@ export function JobcardsScreen({
                             ? () => onViewCalendar(date)
                             : undefined
                         }
-                        onPress={() => setViewingId(card.id)}
+                        onPress={() => openCard(card.id)}
                       />
                     );
                   })}
@@ -353,7 +367,7 @@ export function JobcardsScreen({
                       ? () => onViewCalendar(date)
                       : undefined
                   }
-                  onPress={() => setViewingId(card.id)}
+                  onPress={() => openCard(card.id)}
                 />
               );
             })}
@@ -361,18 +375,16 @@ export function JobcardsScreen({
         )}
       </ScrollView>
 
-      <CreateJobcardModal
-        visible={createOpen}
-        jobs={activeJobs}
-        onClose={() => setCreateOpen(false)}
-        onSubmit={handleCreate}
-      />
-
+      {/* Viewing and creating share the same right sidebar (the jobcard
+          layout; creation adds Cancel / Create Jobcard at the bottom). */}
       <JobcardQuickView
+        variant="sidebar"
         jobcardId={viewingId}
+        creating={createOpen}
         jobs={jobs}
-        onClose={() => setViewingId(null)}
+        onClose={closeSidebar}
         onDelete={handleDelete}
+        onCreate={handleCreate}
       />
 
       <JobPhotosModal job={photosJob} onClose={() => setPhotosJob(null)} />

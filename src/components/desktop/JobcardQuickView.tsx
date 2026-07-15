@@ -27,11 +27,12 @@ import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
-import { useAppStore, uuid } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
   Job,
   JOB_SCOPES,
+  Jobcard,
   JOBCARD_STATUSES,
   JobcardStatus,
   JobScope,
@@ -47,10 +48,46 @@ import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
 const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
 
+/**
+ * Payload handed to `addJobcard` when the quick view creates a card.
+ * (Moved here from the retired CreateJobcardModal.)
+ */
+export interface NewJobcardInput {
+  jobId: string;
+  title: string;
+  scopes: JobScope[];
+  tasks: string[];
+  readiness: string;
+  priority: string;
+  /** Priority window (yyyy-MM-dd), from the range-based selector. */
+  priorityStartDate: string;
+  priorityEndDate: string;
+  materials?: string;
+  /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
+  flashingMaterial?: string;
+  notes?: string;
+  /** Required Yes/No answer; true also requires {@link pickupLocation}. */
+  pickupRequired: boolean;
+  pickupLocation?: string;
+}
+
+/** Blank draft backing create mode — the same shape as a stored card. */
+const emptyDraft = (): Jobcard => ({
+  id: '',
+  title: '',
+  address: '',
+  date: '',
+  status: 'Untouched',
+  priorityOrder: 0,
+  priority: '',
+  scopes: [],
+  tasks: [],
+  details: { generalContractor: '', managerName: '', managerPhone: '' },
+});
+
 /** Which field is being edited inline. Only one edits at a time. */
 type EditField =
   | 'title'
-  | 'job'
   | 'scopes'
   | 'readiness'
   | 'priority'
@@ -67,10 +104,23 @@ type PressState = { pressed: boolean; hovered?: boolean };
 interface Props {
   /** Id of the jobcard to show, or null when the popup is closed. */
   jobcardId: string | null;
+  /**
+   * Author a new jobcard instead of showing a stored one: the exact same
+   * layout, backed by a local draft, plus Cancel / Create Jobcard buttons at
+   * the bottom. Takes precedence over `jobcardId`.
+   */
+  creating?: boolean;
   /** Jobs in the viewer's scope — parent-job options and lookups. */
   jobs: Job[];
+  /**
+   * 'popup' (default): centered floating card. 'sidebar': a right-hand panel
+   * the same size as the job dashboard sidebar (the jobcards pages).
+   */
+  variant?: 'popup' | 'sidebar';
   onClose: () => void;
   onDelete: (id: string) => void;
+  /** Receives the validated draft when `creating`; required in that mode. */
+  onCreate?: (input: NewJobcardInput) => void;
 }
 
 /**
@@ -79,15 +129,24 @@ interface Props {
  * click. Edits save automatically as they're made (no Save/Cancel) — the only
  * guarded actions are delete (two-click confirm), status changes, and marking
  * readiness "Now" (both confirm inline before applying).
+ *
+ * With `creating` the identical layout authors a new card instead: edits land
+ * on a local draft, and Cancel / Create Jobcard buttons sit at the bottom
+ * (creation is blocked until the required fields are filled).
  */
 export function JobcardQuickView({
   jobcardId,
+  creating = false,
   jobs,
+  variant = 'popup',
   onClose,
   onDelete,
+  onCreate,
 }: Props) {
   // Read the live card from the store so autosaved edits render back instantly.
-  const jobcard = useAppStore((s) => s.jobcards.find((c) => c.id === jobcardId));
+  const storeJobcard = useAppStore((s) =>
+    s.jobcards.find((c) => c.id === jobcardId)
+  );
   const jobIssues = useAppStore((s) => s.jobIssues);
   const updateJobcard = useAppStore((s) => s.updateJobcard);
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
@@ -97,6 +156,12 @@ export function JobcardQuickView({
   const assignments = useAppStore((s) => s.assignments);
   const assignJobcard = useAppStore((s) => s.assignJobcard);
   const unassignJobcard = useAppStore((s) => s.unassignJobcard);
+  const role = useCurrentRole();
+
+  // Create mode edits this local draft; view mode edits the stored card.
+  const [draftCard, setDraftCard] = useState<Jobcard>(emptyDraft);
+  const jobcard = creating ? draftCard : storeJobcard;
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<EditField | null>(null);
   /** Text draft for whichever text field is being edited; committed on blur. */
@@ -142,14 +207,17 @@ export function JobcardQuickView({
     return dates.find((d) => d >= today) ?? dates[dates.length - 1];
   }, [assignments, jobcardId]);
 
-  const photos = useJobcardPhotos(jobcard?.id);
+  const photos = useJobcardPhotos(creating ? undefined : jobcard?.id);
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
     index: number;
   } | null>(null);
 
-  // Reset every transient state when a different card is opened.
+  // Reset every transient state (and the create draft) when a different card
+  // is opened or create mode is entered/left.
   useEffect(() => {
+    setDraftCard(emptyDraft());
+    setCreateError(null);
     setEditing(null);
     setDraft('');
     setPriorityDraft(null);
@@ -159,7 +227,7 @@ export function JobcardQuickView({
     setConfirmDelete(false);
     setCrewMenuOpen(false);
     setCrewSquareHovered(false);
-  }, [jobcardId]);
+  }, [jobcardId, creating]);
 
   // An armed delete disarms itself after 4s if the second click never comes.
   useEffect(() => {
@@ -170,19 +238,32 @@ export function JobcardQuickView({
 
   if (!jobcard) return null;
 
+  /** Route an edit to the create draft or the stored card (autosave). */
+  const applyChange = (patch: Partial<Jobcard>) => {
+    if (creating) setDraftCard((prev) => ({ ...prev, ...patch }));
+    else updateJobcard(jobcard.id, patch);
+  };
+
   const palette =
     jobcardStatusColors[jobcard.status] ?? jobcardStatusColors.Untouched;
   const parentJob = jobs.find((j) => j.id === jobcard.jobId);
   const activeJobs = jobs.filter((j) => j.status === 'Active');
-  // Offer active jobs plus the card's own parent (which may be archived) so a
-  // reparent never silently drops an archived-job parent.
-  // Sub-jobs are listed with their parent's name conjoined ("Vista Homes
-  // Lot 2") so they're identifiable in the picker.
-  const jobOptions = (
-    parentJob && !activeJobs.some((j) => j.id === parentJob.id)
-      ? [parentJob, ...activeJobs]
-      : activeJobs
-  ).map((j) => ({ value: j.id, label: jobDisplayName(j, jobs) }));
+  // Parent-job options for the create draft (the parent is fixed once a card
+  // exists). Sub-jobs are listed with their parent's name conjoined ("Vista
+  // Homes Lot 2") so they're identifiable in the picker.
+  const jobOptions = activeJobs.map((j) => ({
+    value: j.id,
+    label: jobDisplayName(j, jobs),
+  }));
+  // A card can't be created until the parent job has a jobsite address — and
+  // flashing material, when the job covers windows (mirrors the DB guard).
+  const missingAddress =
+    creating && parentJob != null && !parentJob.location.trim();
+  const missingFlashing =
+    creating &&
+    parentJob != null &&
+    jobAllowsWindows(parentJob) &&
+    !parentJob.flashingMaterial?.trim();
   const tasks = jobcard.tasks ?? [];
   const scopes = jobcard.scopes ?? [];
   // Installer-raised issues on this card, newest first — nested under the task
@@ -236,22 +317,23 @@ export function JobcardQuickView({
     const t = draft.trim();
     setEditing(null);
     if (!t) {
-      flash('Title is required — change discarded.', 'warning');
+      // An untitled draft is fine until Create is pressed.
+      if (!creating) flash('Title is required — change discarded.', 'warning');
       return;
     }
-    if (t !== jobcard.title) updateJobcard(jobcard.id, { title: t });
+    if (t !== jobcard.title) applyChange({ title: t });
   };
 
+  // Create mode only — the parent job is fixed once a card exists.
   const changeJob = (nextId: string) => {
-    setEditing(null);
     const next = jobs.find((j) => j.id === nextId);
     if (!next || next.id === jobcard.jobId) return;
-    // Moving to a job without the Windows scope drops the card's Windows scope
-    // (and its flashing material) — those never show for such jobs.
+    // A job without the Windows scope drops the draft's Windows scope (and
+    // its flashing material) — those never show for such jobs.
     const dropWindows =
       !jobAllowsWindows(next) && scopes.includes('Windows');
-    // The address follows the parent job, exactly like the create flow.
-    updateJobcard(jobcard.id, {
+    // The address follows the parent job.
+    applyChange({
       jobId: next.id,
       address: next.location ?? jobcard.address,
       ...(dropWindows
@@ -269,7 +351,7 @@ export function JobcardQuickView({
       return;
     }
     const next = vals as JobScope[];
-    updateJobcard(jobcard.id, {
+    applyChange({
       scopes: next,
       // Flashing material only means anything with the Windows scope.
       ...(next.includes('Windows') ? {} : { flashingMaterial: undefined }),
@@ -280,17 +362,17 @@ export function JobcardQuickView({
     const t = draft.trim();
     setEditing(null);
     if (!t) {
-      if (tasks.length <= 1) {
+      if (!creating && tasks.length <= 1) {
         flash('A jobcard needs at least one task.', 'warning');
         return;
       }
-      updateJobcard(jobcard.id, { tasks: tasks.filter((_, i) => i !== index) });
+      applyChange({ tasks: tasks.filter((_, i) => i !== index) });
       return;
     }
     if (t !== tasks[index].text) {
       // Text edits keep the task's id (and check-off state) intact so
       // installer check-offs and per-task issues stay linked.
-      updateJobcard(jobcard.id, {
+      applyChange({
         tasks: tasks.map((task, i) => (i === index ? { ...task, text: t } : task)),
       });
     }
@@ -300,7 +382,7 @@ export function JobcardQuickView({
     const t = draft.trim();
     setEditing(null);
     if (!t) return;
-    updateJobcard(jobcard.id, {
+    applyChange({
       tasks: [...tasks, { id: uuid(), text: t, done: false }],
     });
   };
@@ -314,7 +396,7 @@ export function JobcardQuickView({
       setPendingReadinessNow(true);
       return;
     }
-    updateJobcard(jobcard.id, { readiness: v });
+    applyChange({ readiness: v });
   };
 
   // Every complete change autosaves (quick-view style); the editor stays open
@@ -329,7 +411,7 @@ export function JobcardQuickView({
     ) {
       return;
     }
-    updateJobcard(jobcard.id, {
+    applyChange({
       priority: value.priority,
       priorityStartDate: value.startDate,
       priorityEndDate: value.endDate,
@@ -351,19 +433,19 @@ export function JobcardQuickView({
     setEditing(null);
     const v = draft.trim() || undefined;
     if (v !== jobcard.flashingMaterial) {
-      updateJobcard(jobcard.id, { flashingMaterial: v });
+      applyChange({ flashingMaterial: v });
     }
   };
 
   const commitMaterials = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.materials) updateJobcard(jobcard.id, { materials: v });
+    if (v !== jobcard.materials) applyChange({ materials: v });
   };
 
   const changePickupRequired = (required: boolean) => {
     if (required === jobcard.pickupRequired) return;
-    updateJobcard(jobcard.id, {
+    applyChange({
       pickupRequired: required,
       // "No" clears any stale location so it can't silently reappear.
       ...(required ? {} : { pickupLocation: undefined }),
@@ -374,14 +456,14 @@ export function JobcardQuickView({
     setEditing(null);
     const v = draft.trim() || undefined;
     if (v !== jobcard.pickupLocation) {
-      updateJobcard(jobcard.id, { pickupLocation: v });
+      applyChange({ pickupLocation: v });
     }
   };
 
   const commitNotes = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.notes) updateJobcard(jobcard.id, { notes: v });
+    if (v !== jobcard.notes) applyChange({ notes: v });
   };
 
   // --- Guarded actions -------------------------------------------------------
@@ -401,7 +483,7 @@ export function JobcardQuickView({
   };
 
   const confirmReadinessNow = () => {
-    updateJobcard(jobcard.id, { readiness: 'Now' });
+    applyChange({ readiness: 'Now' });
     setPendingReadinessNow(false);
   };
 
@@ -416,6 +498,10 @@ export function JobcardQuickView({
   };
 
   const toggleCrewMenu = () => {
+    if (creating) return;
+    // Field Supers may see the assigned crew (hover) but never change it —
+    // moving work between crews is the Scheduler's call.
+    if (role === 'field_super') return;
     if (cardAssignments.length === 0) {
       flash(
         'Not on the calendar yet — schedule this card to assign a crew.',
@@ -436,649 +522,825 @@ export function JobcardQuickView({
     flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
   };
 
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.card}>
-          {/* Header action icons, Google-Calendar style. */}
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={remove}
-              style={({ pressed, hovered }: PressState) => [
-                styles.iconButton,
-                confirmDelete && styles.deleteArmed,
-                (hovered || pressed) && !confirmDelete && styles.iconButtonHover,
-              ]}
-            >
-              <Feather
-                name="trash-2"
-                size={16}
-                color={confirmDelete ? colors.textPrimary : colors.textSecondary}
-              />
-              {confirmDelete && (
-                <Text style={styles.deleteArmedText}>Click again to delete</Text>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed, hovered }: PressState) => [
-                styles.iconButton,
-                (hovered || pressed) && styles.iconButtonHover,
-              ]}
-            >
-              <Feather name="x" size={18} color={colors.textSecondary} />
-            </Pressable>
-          </View>
+  /** Validate the create draft; hand it up only when every requirement holds. */
+  const submitCreate = () => {
+    if (!onCreate) return;
+    if (!parentJob) {
+      setCreateError('Pick a parent job for this jobcard.');
+      return;
+    }
+    if (missingAddress) {
+      setCreateError(
+        'This job has no jobsite address yet — set it on the Jobs tab first.'
+      );
+      return;
+    }
+    if (missingFlashing) {
+      setCreateError(
+        'This job has no Window Opening Flashing Material yet — set it on the Jobs tab first.'
+      );
+      return;
+    }
+    if (!jobcard.title.trim()) {
+      setCreateError('Add a title.');
+      return;
+    }
+    if (scopes.length === 0) {
+      setCreateError('Select at least one scope.');
+      return;
+    }
+    const cleanTasks = tasks
+      .map((t) => t.text.trim())
+      .filter((t) => t.length > 0);
+    if (cleanTasks.length === 0) {
+      setCreateError('Add at least one task.');
+      return;
+    }
+    // Readiness "Now" was already double-confirmed via the inline ConfirmBar.
+    if (!jobcard.readiness?.trim()) {
+      setCreateError('Choose when this jobcard is ready for installers.');
+      return;
+    }
+    if (!jobcard.priority) {
+      setCreateError('Choose a priority.');
+      return;
+    }
+    if (
+      !priorityValueComplete({
+        priority: jobcard.priority,
+        startDate: jobcard.priorityStartDate ?? '',
+        endDate: jobcard.priorityEndDate ?? '',
+      })
+    ) {
+      setCreateError('Set the priority start and end dates.');
+      return;
+    }
+    if (jobcard.pickupRequired == null) {
+      setCreateError('Answer whether a pickup is required.');
+      return;
+    }
+    if (jobcard.pickupRequired && !jobcard.pickupLocation?.trim()) {
+      setCreateError('Specify where the pickup is.');
+      return;
+    }
+    onCreate({
+      jobId: parentJob.id,
+      title: jobcard.title.trim(),
+      scopes,
+      tasks: cleanTasks,
+      readiness: jobcard.readiness.trim(),
+      priority: jobcard.priority,
+      priorityStartDate: jobcard.priorityStartDate ?? '',
+      priorityEndDate: jobcard.priorityEndDate ?? '',
+      materials: jobcard.materials?.trim() || undefined,
+      // An untouched flashing field falls back to the parent job's material,
+      // exactly what the read view displays as the default.
+      flashingMaterial: includesWindows
+        ? (jobcard.flashingMaterial ?? parentJob.flashingMaterial)?.trim() ||
+          undefined
+        : undefined,
+      pickupRequired: jobcard.pickupRequired,
+      pickupLocation: jobcard.pickupRequired
+        ? jobcard.pickupLocation?.trim()
+        : undefined,
+      notes: jobcard.notes?.trim() || undefined,
+    });
+    onClose();
+  };
 
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.body}
-            keyboardShouldPersistTaps="handled"
-            // Any click in the body disarms a pending delete (returning false
-            // leaves the click itself untouched).
-            onStartShouldSetResponderCapture={() => {
-              if (confirmDelete) setConfirmDelete(false);
-              return false;
-            }}
+  // The same panel renders either centered in a popup Modal (calendar and job
+  // dashboard) or as a fixed right-hand sidebar (the jobcards pages).
+  const panel = (
+    <View style={variant === 'sidebar' ? styles.sidebarPanel : styles.card}>
+      {/* Header action icons, Google-Calendar style. A draft has nothing to
+          delete — create mode shows only the X. */}
+      <View style={styles.headerActions}>
+        {!creating && (
+          <Pressable
+            onPress={remove}
+            style={({ pressed, hovered }: PressState) => [
+              styles.iconButton,
+              confirmDelete && styles.deleteArmed,
+              (hovered || pressed) && !confirmDelete && styles.iconButtonHover,
+            ]}
           >
-            {/* Title, led by the crew square (the GCal event square): colored
-                by the assigned crew, gray + slash when unassigned. Hover shows
-                the crew name(s); click swaps the assigned crew. */}
-            <View style={styles.titleRow}>
-              <View ref={crewWrapRef} style={styles.crewSquareWrap}>
-                <Pressable
-                  onPress={toggleCrewMenu}
-                  onHoverIn={() => setCrewSquareHovered(true)}
-                  onHoverOut={() => setCrewSquareHovered(false)}
-                  style={[
-                    styles.titleDot,
-                    crewSquareColor
-                      ? { backgroundColor: crewSquareColor }
-                      : styles.titleDotEmpty,
-                  ]}
-                >
-                  {!crewSquareColor && <View style={styles.titleDotSlash} />}
-                </Pressable>
-                {/* Hover pill ABOVE the square (the click menu still opens
-                    below). Portaled so the modal's ScrollView can't clip it. */}
-                <DropdownPortal
-                  anchorRef={crewWrapRef}
-                  open={crewSquareHovered && !crewMenuOpen}
-                  onClose={() => setCrewSquareHovered(false)}
-                  align="left"
-                  placement="above"
-                  minWidth={160}
-                >
-                  <View style={styles.crewTooltip}>
-                    <Text style={styles.crewTooltipText}>{crewTooltip}</Text>
-                  </View>
-                </DropdownPortal>
-                {crewMenuOpen && (
-                  <View style={styles.crewMenu}>
-                    {allCrews.map((crew) => {
-                      const active = assignedCrewIds.includes(crew.id);
-                      return (
-                        <Pressable
-                          key={crew.id}
-                          style={({ pressed, hovered }: PressState) => [
-                            styles.menuItem,
-                            (hovered || pressed) && styles.menuItemHover,
-                          ]}
-                          onPress={() => changeCrew(crew.id)}
-                        >
-                          <View
-                            style={[
-                              styles.menuDot,
-                              {
-                                backgroundColor: crewColorFrom(
-                                  crewColorMap,
-                                  crew.id
-                                ),
-                              },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.menuText,
-                              active && styles.menuTextActive,
-                            ]}
-                          >
-                            {crew.name}
-                          </Text>
-                          {active && (
-                            <Feather
-                              name="check"
-                              size={14}
-                              color={colors.primary}
-                            />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-              {editing === 'title' ? (
-                <TextInput
-                  style={styles.titleInput}
-                  value={draft}
-                  onChangeText={setDraft}
-                  onBlur={commitTitle}
-                  autoFocus
+            <Feather
+              name="trash-2"
+              size={16}
+              color={confirmDelete ? colors.textPrimary : colors.textSecondary}
+            />
+            {confirmDelete && (
+              <Text style={styles.deleteArmedText}>Click again to delete</Text>
+            )}
+          </Pressable>
+        )}
+        <Pressable
+          onPress={onClose}
+          style={({ pressed, hovered }: PressState) => [
+            styles.iconButton,
+            (hovered || pressed) && styles.iconButtonHover,
+          ]}
+        >
+          <Feather name="x" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        // Any click in the body disarms a pending delete (returning false
+        // leaves the click itself untouched).
+        onStartShouldSetResponderCapture={() => {
+          if (confirmDelete) setConfirmDelete(false);
+          return false;
+        }}
+      >
+        {/* Parent job — always shown directly above the jobcard name (like
+            the mobile installer view). Fixed once the card exists; only the
+            create draft still picks it. */}
+        <View style={styles.header}>
+          {creating ? (
+            <View style={styles.parentJobPicker}>
+              {jobOptions.length > 0 ? (
+                <Combobox
+                  value={jobcard.jobId ?? ''}
+                  options={jobOptions}
+                  onChange={changeJob}
+                  placeholder="Search jobs…"
                 />
               ) : (
-                <Editable
-                  onPress={() => startEdit('title', jobcard.title)}
-                  style={styles.titleEditable}
-                >
-                  <Text style={styles.titleText}>{jobcard.title}</Text>
-                </Editable>
+                <Text style={styles.mutedText}>
+                  No active jobs available. The Operator must create one first.
+                </Text>
+              )}
+              {(missingAddress || missingFlashing) && (
+                <View style={styles.prereqWarning}>
+                  <Feather
+                    name="alert-triangle"
+                    size={14}
+                    color={colors.warning}
+                  />
+                  <Text style={styles.prereqText}>
+                    Jobcards can&apos;t be created for this job until{' '}
+                    {missingAddress && missingFlashing
+                      ? 'its jobsite address and Window Opening Flashing Material are'
+                      : missingAddress
+                        ? 'its jobsite address is'
+                        : 'its Window Opening Flashing Material is'}{' '}
+                    set — do that on the Jobs tab.
+                  </Text>
+                </View>
               )}
             </View>
+          ) : (
+            <Text style={styles.parentJobText}>
+              {parentJob ? jobDisplayName(parentJob, jobs) : 'Unlinked job'}
+            </Text>
+          )}
 
-            {/* Parent job */}
-            <Row icon="briefcase">
-              {editing === 'job' ? (
-                jobOptions.length > 0 ? (
-                  <Combobox
-                    value={jobcard.jobId ?? ''}
-                    options={jobOptions}
-                    onChange={changeJob}
-                    placeholder="Search jobs…"
-                    autoFocus
-                    onDismiss={() => setEditing(null)}
-                  />
-                ) : (
-                  <Text style={styles.mutedText}>No active jobs available.</Text>
-                )
-              ) : (
-                <Editable onPress={() => setEditing('job')}>
-                  <Text style={styles.valueText}>
-                    {parentJob
-                      ? jobDisplayName(parentJob, jobs)
-                      : 'Unlinked job'}
-                  </Text>
-                </Editable>
-              )}
-            </Row>
-
-            {/* Address + date + optional time window (read-only). */}
-            <Row icon="map-pin">
-              <Text style={styles.mutedText}>
-                {jobcard.address || 'No address'}
-              </Text>
-            </Row>
-            <Row icon="calendar">
-              <Text style={styles.mutedText}>
-                {scheduledDate
-                  ? format(
-                      parse(scheduledDate, 'yyyy-MM-dd', new Date()),
-                      'EEEE, MMMM d'
-                    )
-                  : 'Not Scheduled'}
-              </Text>
-            </Row>
-            {timeWindow ? (
-              <Row icon="clock">
-                <Text style={styles.mutedText}>{timeWindow}</Text>
-              </Row>
-            ) : null}
-
-            {/* Status — changeable, but always behind an inline confirm. */}
-            <Row icon="activity" label="Status">
-              <View ref={statusWrapRef}>
-                <Editable
-                  onPress={() => {
-                    setStatusMenuOpen((open) => !open);
-                    setPendingStatus(null);
-                  }}
-                  style={styles.statusEditable}
-                >
-                  <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
-                    <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                      {jobcard.status}
-                    </Text>
-                    <Feather
-                      name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
-                      size={13}
-                      color={palette.fg}
-                    />
-                  </View>
-                </Editable>
-                {statusMenuOpen && (
-                  <View style={styles.menu}>
-                    {JOBCARD_STATUSES.map((status) => {
-                      const active = jobcard.status === status;
-                      return (
-                        <Pressable
-                          key={status}
-                          style={({ pressed, hovered }: PressState) => [
-                            styles.menuItem,
-                            (hovered || pressed) && styles.menuItemHover,
-                          ]}
-                          onPress={() => pickStatus(status)}
-                        >
-                          <View
-                            style={[
-                              styles.menuDot,
-                              { backgroundColor: jobcardStatusColors[status].fg },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.menuText,
-                              active && styles.menuTextActive,
-                            ]}
-                          >
-                            {status}
-                          </Text>
-                          {active && (
-                            <Feather name="check" size={14} color={colors.primary} />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-              {pendingStatus && (
-                <ConfirmBar
-                  message={`Change status to “${pendingStatus}”?`}
-                  confirmLabel="Change status"
-                  onConfirm={confirmStatusChange}
-                  onCancel={() => setPendingStatus(null)}
-                />
-              )}
-            </Row>
-
-            {/* Scope chips */}
-            <Row icon="tag" label="Scope">
-              {editing === 'scopes' ? (
-                <View style={styles.scopeEdit}>
-                  <MultiCombobox
-                    values={scopes}
-                    options={scopeOptions}
-                    onChange={changeScopes}
-                    placeholder="Search scopes…"
-                  />
-                  <Pressable onPress={() => setEditing(null)} hitSlop={6}>
-                    <Text style={styles.doneLink}>Done</Text>
-                  </Pressable>
+          {/* Title, led by the crew square (the GCal event square): colored
+              by the assigned crew, gray + slash when unassigned. Hover shows
+              the crew name(s); click swaps the assigned crew. */}
+          <View style={styles.titleRow}>
+            <View ref={crewWrapRef} style={styles.crewSquareWrap}>
+              <Pressable
+                onPress={toggleCrewMenu}
+                onHoverIn={() => setCrewSquareHovered(true)}
+                onHoverOut={() => setCrewSquareHovered(false)}
+                style={[
+                  styles.titleDot,
+                  crewSquareColor
+                    ? { backgroundColor: crewSquareColor }
+                    : styles.titleDotEmpty,
+                ]}
+              >
+                {!crewSquareColor && <View style={styles.titleDotSlash} />}
+              </Pressable>
+              {/* Hover pill ABOVE the square (the click menu still opens
+                  below). Portaled so the modal's ScrollView can't clip it. */}
+              <DropdownPortal
+                anchorRef={crewWrapRef}
+                open={crewSquareHovered && !crewMenuOpen}
+                onClose={() => setCrewSquareHovered(false)}
+                align="left"
+                placement="above"
+                minWidth={160}
+              >
+                <View style={styles.crewTooltip}>
+                  <Text style={styles.crewTooltipText}>{crewTooltip}</Text>
                 </View>
-              ) : (
-                <Editable onPress={() => setEditing('scopes')}>
-                  <View style={styles.chipWrap}>
-                    {scopes.length === 0 ? (
-                      <Text style={styles.placeholderText}>Add scopes…</Text>
-                    ) : (
-                      scopes.map((scope) => (
-                        <View key={scope} style={styles.chip}>
-                          <Text style={styles.chipText}>{scope}</Text>
-                        </View>
-                      ))
-                    )}
-                  </View>
-                </Editable>
-              )}
-            </Row>
-
-            {/* Tasks */}
-            <Row icon="check-square" label="Tasks">
-              <View style={styles.taskStack}>
-                {tasks.map((task, index) => {
-                  const taskIssues = cardIssues.filter(
-                    (issue) => issue.taskId === task.id
-                  );
-                  return (
-                    <View key={task.id} style={styles.taskBlock}>
-                      {editing === `task-${index}` ? (
-                        <TextInput
-                          style={styles.textEditor}
-                          value={draft}
-                          onChangeText={setDraft}
-                          onBlur={() => commitTask(index)}
-                          autoFocus
-                          multiline
-                        />
-                      ) : (
-                        <Editable
-                          onPress={() => startEdit(`task-${index}`, task.text)}
-                        >
-                          <Text
-                            style={[
-                              styles.valueText,
-                              task.done && styles.taskDoneText,
-                            ]}
-                          >
-                            {task.done ? '✓  ' : '•  '}
-                            {task.text}
-                          </Text>
-                        </Editable>
-                      )}
-                      {taskIssues.length > 0 && (
-                        <View style={styles.taskIssues}>
-                          {taskIssues.map((issue) => (
-                            <IssueCard
-                              key={issue.id}
-                              issue={issue}
-                              onPhotoPress={openPhoto}
-                            />
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-                {editing === 'new-task' ? (
-                  <TextInput
-                    style={styles.textEditor}
-                    value={draft}
-                    onChangeText={setDraft}
-                    onBlur={commitNewTask}
-                    placeholder="Describe a task for the installers…"
-                    placeholderTextColor={colors.textTertiary}
-                    autoFocus
-                    multiline
-                  />
-                ) : (
-                  <Pressable
-                    style={styles.addTask}
-                    onPress={() => startEdit('new-task', '')}
-                  >
-                    <Feather name="plus" size={14} color={colors.primary} />
-                    <Text style={styles.addTaskText}>Add task</Text>
-                  </Pressable>
-                )}
-              </View>
-            </Row>
-
-            {/* Issues that no longer belong to a task (task deleted, or raised
-                before per-task issues) — kept visible instead of vanishing. */}
-            {orphanIssues.length > 0 && (
-              <Row icon="alert-triangle" label="Issues">
-                <View style={styles.issueStack}>
-                  <CollapsibleIssueList
-                    issues={orphanIssues}
-                    renderIssue={(issue) => (
-                      <IssueCard
-                        key={issue.id}
-                        issue={issue}
-                        onPhotoPress={openPhoto}
-                      />
-                    )}
-                  />
-                </View>
-              </Row>
-            )}
-
-            {/* Readiness + priority side by side. */}
-            <Row icon="flag">
-              <View style={styles.pairRow}>
-                <View style={styles.pairCol}>
-                  <Text style={styles.rowLabel}>Ready for installers</Text>
-                  {editing === 'readiness' ? (
-                    <Combobox
-                      value={jobcard.readiness ?? ''}
-                      options={READINESS_OPTIONS}
-                      onChange={changeReadiness}
-                      placeholder="Now, Soon… or type + Enter"
-                      allowCustom
-                      autoFocus
-                      onDismiss={() => setEditing(null)}
-                    />
-                  ) : (
-                    <Editable onPress={() => setEditing('readiness')}>
-                      <Text
-                        style={
-                          jobcard.readiness
-                            ? styles.valueText
-                            : styles.placeholderText
-                        }
+              </DropdownPortal>
+              {crewMenuOpen && (
+                <View style={styles.crewMenu}>
+                  {allCrews.map((crew) => {
+                    const active = assignedCrewIds.includes(crew.id);
+                    return (
+                      <Pressable
+                        key={crew.id}
+                        style={({ pressed, hovered }: PressState) => [
+                          styles.menuItem,
+                          (hovered || pressed) && styles.menuItemHover,
+                        ]}
+                        onPress={() => changeCrew(crew.id)}
                       >
-                        {jobcard.readiness || 'Set readiness…'}
-                      </Text>
-                    </Editable>
-                  )}
+                        <View
+                          style={[
+                            styles.menuDot,
+                            {
+                              backgroundColor: crewColorFrom(
+                                crewColorMap,
+                                crew.id
+                              ),
+                            },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.menuText,
+                            active && styles.menuTextActive,
+                          ]}
+                        >
+                          {crew.name}
+                        </Text>
+                        {active && (
+                          <Feather
+                            name="check"
+                            size={14}
+                            color={colors.primary}
+                          />
+                        )}
+                      </Pressable>
+                    );
+                  })}
                 </View>
-                <View ref={priorityWrapRef} style={styles.pairCol}>
-                  <Text style={styles.rowLabel}>Priority</Text>
-                  {editing === 'priority' ? (
-                    <PrioritySelect
-                      value={
-                        priorityDraft ?? {
-                          priority: jobcard.priority ?? '',
-                          startDate: jobcard.priorityStartDate ?? '',
-                          endDate: jobcard.priorityEndDate ?? '',
-                        }
-                      }
-                      onChange={changePriority}
+              )}
+            </View>
+            {editing === 'title' ? (
+              <TextInput
+                style={styles.titleInput}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitTitle}
+                placeholder="Install windows"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            ) : (
+              <Editable
+                onPress={() => startEdit('title', jobcard.title)}
+                style={styles.titleEditable}
+              >
+                <Text
+                  style={[
+                    styles.titleText,
+                    !jobcard.title && styles.titlePlaceholder,
+                  ]}
+                >
+                  {jobcard.title || 'Add a title…'}
+                </Text>
+              </Editable>
+            )}
+          </View>
+        </View>
+
+        {/* Address + date + optional time window (read-only). */}
+        <Row icon="map-pin">
+          <Text style={styles.mutedText}>
+            {jobcard.address || 'No address'}
+          </Text>
+        </Row>
+        <Row icon="calendar">
+          <Text style={styles.mutedText}>
+            {scheduledDate
+              ? format(
+                  parse(scheduledDate, 'yyyy-MM-dd', new Date()),
+                  'EEEE, MMMM d'
+                )
+              : 'Not Scheduled'}
+          </Text>
+        </Row>
+        {timeWindow ? (
+          <Row icon="clock">
+            <Text style={styles.mutedText}>{timeWindow}</Text>
+          </Row>
+        ) : null}
+
+        {/* Status — changeable, but always behind an inline confirm. A draft
+            is always "Untouched", so create mode shows a static pill. */}
+        <Row icon="activity" label="Status">
+          {creating ? (
+            <View style={styles.statusStatic}>
+              <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
+                <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                  {jobcard.status}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View ref={statusWrapRef}>
+              <Editable
+                onPress={() => {
+                  setStatusMenuOpen((open) => !open);
+                  setPendingStatus(null);
+                }}
+                style={styles.statusEditable}
+              >
+                <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
+                  <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                    {jobcard.status}
+                  </Text>
+                  <Feather
+                    name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
+                    size={13}
+                    color={palette.fg}
+                  />
+                </View>
+              </Editable>
+              {statusMenuOpen && (
+                <View style={styles.menu}>
+                  {JOBCARD_STATUSES.map((status) => {
+                    const active = jobcard.status === status;
+                    return (
+                      <Pressable
+                        key={status}
+                        style={({ pressed, hovered }: PressState) => [
+                          styles.menuItem,
+                          (hovered || pressed) && styles.menuItemHover,
+                        ]}
+                        onPress={() => pickStatus(status)}
+                      >
+                        <View
+                          style={[
+                            styles.menuDot,
+                            { backgroundColor: jobcardStatusColors[status].fg },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.menuText,
+                            active && styles.menuTextActive,
+                          ]}
+                        >
+                          {status}
+                        </Text>
+                        {active && (
+                          <Feather name="check" size={14} color={colors.primary} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+          {pendingStatus && (
+            <ConfirmBar
+              message={`Change status to “${pendingStatus}”?`}
+              confirmLabel="Change status"
+              onConfirm={confirmStatusChange}
+              onCancel={() => setPendingStatus(null)}
+            />
+          )}
+        </Row>
+
+        {/* Scope chips */}
+        <Row icon="tag" label="Scope">
+          {editing === 'scopes' ? (
+            <View style={styles.scopeEdit}>
+              <MultiCombobox
+                values={scopes}
+                options={scopeOptions}
+                onChange={changeScopes}
+                placeholder="Search scopes…"
+              />
+              <Pressable onPress={() => setEditing(null)} hitSlop={6}>
+                <Text style={styles.doneLink}>Done</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Editable onPress={() => setEditing('scopes')}>
+              <View style={styles.chipWrap}>
+                {scopes.length === 0 ? (
+                  <Text style={styles.placeholderText}>Add scopes…</Text>
+                ) : (
+                  scopes.map((scope) => (
+                    <View key={scope} style={styles.chip}>
+                      <Text style={styles.chipText}>{scope}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            </Editable>
+          )}
+        </Row>
+
+        {/* Tasks */}
+        <Row icon="check-square" label="Tasks">
+          <View style={styles.taskStack}>
+            {tasks.map((task, index) => {
+              const taskIssues = cardIssues.filter(
+                (issue) => issue.taskId === task.id
+              );
+              return (
+                <View key={task.id} style={styles.taskBlock}>
+                  {editing === `task-${index}` ? (
+                    <TextInput
+                      style={styles.textEditor}
+                      value={draft}
+                      onChangeText={setDraft}
+                      onBlur={() => commitTask(index)}
+                      autoFocus
+                      multiline
                     />
                   ) : (
                     <Editable
-                      onPress={() => {
-                        setPriorityDraft(null);
-                        setEditing('priority');
-                      }}
+                      onPress={() => startEdit(`task-${index}`, task.text)}
                     >
                       <Text
                         style={[
-                          jobcard.priority
-                            ? styles.valueText
-                            : styles.placeholderText,
-                          cardPriority.label === 'Now' && styles.priorityNow,
+                          styles.valueText,
+                          task.done && styles.taskDoneText,
                         ]}
                       >
-                        {priorityDisplay}
+                        {task.done ? '✓  ' : '•  '}
+                        {task.text}
                       </Text>
                     </Editable>
                   )}
+                  {taskIssues.length > 0 && (
+                    <View style={styles.taskIssues}>
+                      {taskIssues.map((issue) => (
+                        <IssueCard
+                          key={issue.id}
+                          issue={issue}
+                          onPhotoPress={openPhoto}
+                        />
+                      ))}
+                    </View>
+                  )}
                 </View>
-              </View>
-              {pendingReadinessNow && (
-                <ConfirmBar
-                  message="You confirm the job and tasks are ready?"
-                  confirmLabel="It's ready"
-                  onConfirm={confirmReadinessNow}
-                  onCancel={() => setPendingReadinessNow(false)}
-                />
-              )}
-            </Row>
-
-            {/* Window Opening Flashing Material (Windows scope only). */}
-            {includesWindows && (
-              <Row icon="layers" label="Window Opening Flashing Material">
-                <View style={styles.flashingRow}>
-                  <View style={styles.flashingValue}>
-                    {editing === 'flashing' ? (
-                      <TextInput
-                        style={styles.textEditor}
-                        value={draft}
-                        onChangeText={setDraft}
-                        onBlur={commitFlashing}
-                        placeholder={
-                          parentJob?.flashingMaterial
-                            ? `Defaults to ${parentJob.flashingMaterial}`
-                            : 'e.g. Clear Anodized Aluminum'
-                        }
-                        placeholderTextColor={colors.textTertiary}
-                        autoFocus
-                      />
-                    ) : (
-                      <Editable
-                        onPress={() =>
-                          startEdit('flashing', jobcard.flashingMaterial ?? '')
-                        }
-                      >
-                        <Text
-                          style={
-                            jobcard.flashingMaterial
-                              ? styles.valueText
-                              : styles.placeholderText
-                          }
-                        >
-                          {jobcard.flashingMaterial ??
-                            parentJob?.flashingMaterial ??
-                            'Not specified'}
-                        </Text>
-                      </Editable>
-                    )}
-                  </View>
-                  <FlashingPhotoField job={parentJob} editable />
-                </View>
-              </Row>
+              );
+            })}
+            {editing === 'new-task' ? (
+              <TextInput
+                style={styles.textEditor}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitNewTask}
+                placeholder="Describe a task for the installers…"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+                multiline
+              />
+            ) : (
+              <Pressable
+                style={styles.addTask}
+                onPress={() => startEdit('new-task', '')}
+              >
+                <Feather name="plus" size={14} color={colors.primary} />
+                <Text style={styles.addTaskText}>Add task</Text>
+              </Pressable>
             )}
+          </View>
+        </Row>
 
-            {/* Materials needed */}
-            <Row icon="package" label="Materials needed">
-              {editing === 'materials' ? (
-                <TextInput
-                  style={[styles.textEditor, styles.multiline]}
-                  value={draft}
-                  onChangeText={setDraft}
-                  onBlur={commitMaterials}
-                  placeholder="Gaskets, setting blocks, structural silicone…"
-                  placeholderTextColor={colors.textTertiary}
+        {/* Issues that no longer belong to a task (task deleted, or raised
+            before per-task issues) — kept visible instead of vanishing. */}
+        {orphanIssues.length > 0 && (
+          <Row icon="alert-triangle" label="Issues">
+            <View style={styles.issueStack}>
+              <CollapsibleIssueList
+                issues={orphanIssues}
+                renderIssue={(issue) => (
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    onPhotoPress={openPhoto}
+                  />
+                )}
+              />
+            </View>
+          </Row>
+        )}
+
+        {/* Readiness + priority side by side. */}
+        <Row icon="flag">
+          <View style={styles.pairRow}>
+            <View style={styles.pairCol}>
+              <Text style={styles.rowLabel}>Ready for installers</Text>
+              {editing === 'readiness' ? (
+                <Combobox
+                  value={jobcard.readiness ?? ''}
+                  options={READINESS_OPTIONS}
+                  onChange={changeReadiness}
+                  placeholder="Now, Soon… or type + Enter"
+                  allowCustom
                   autoFocus
-                  multiline
+                  onDismiss={() => setEditing(null)}
                 />
               ) : (
-                <Editable
-                  onPress={() => startEdit('materials', jobcard.materials ?? '')}
-                >
+                <Editable onPress={() => setEditing('readiness')}>
                   <Text
                     style={
-                      jobcard.materials ? styles.valueText : styles.placeholderText
+                      jobcard.readiness
+                        ? styles.valueText
+                        : styles.placeholderText
                     }
                   >
-                    {jobcard.materials || 'Add materials…'}
+                    {jobcard.readiness || 'Set readiness…'}
                   </Text>
                 </Editable>
               )}
-            </Row>
+            </View>
+            <View ref={priorityWrapRef} style={styles.pairCol}>
+              <Text style={styles.rowLabel}>Priority</Text>
+              {editing === 'priority' ? (
+                <PrioritySelect
+                  value={
+                    priorityDraft ?? {
+                      priority: jobcard.priority ?? '',
+                      startDate: jobcard.priorityStartDate ?? '',
+                      endDate: jobcard.priorityEndDate ?? '',
+                    }
+                  }
+                  onChange={changePriority}
+                />
+              ) : (
+                <Editable
+                  onPress={() => {
+                    setPriorityDraft(null);
+                    setEditing('priority');
+                  }}
+                >
+                  <Text
+                    style={[
+                      jobcard.priority
+                        ? styles.valueText
+                        : styles.placeholderText,
+                      cardPriority.label === 'Now' && styles.priorityNow,
+                    ]}
+                  >
+                    {priorityDisplay}
+                  </Text>
+                </Editable>
+              )}
+            </View>
+          </View>
+          {pendingReadinessNow && (
+            <ConfirmBar
+              message="You confirm the job and tasks are ready?"
+              confirmLabel="It's ready"
+              onConfirm={confirmReadinessNow}
+              onCancel={() => setPendingReadinessNow(false)}
+            />
+          )}
+        </Row>
 
-            {/* Pickup Required — Yes/No pills; Yes reveals the location. */}
-            <Row icon="truck" label="Pickup Required">
-              <View style={styles.pickupRow}>
-                {([true, false] as const).map((choice) => {
-                  const active = jobcard.pickupRequired === choice;
-                  return (
-                    <Pressable
-                      key={String(choice)}
-                      style={[styles.pickupChoice, active && styles.pickupChoiceOn]}
-                      onPress={() => changePickupRequired(choice)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickupChoiceText,
-                          active && styles.pickupChoiceTextOn,
-                        ]}
-                      >
-                        {choice ? 'Yes' : 'No'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {jobcard.pickupRequired === true &&
-                (editing === 'pickup-location' ? (
+        {/* Window Opening Flashing Material (Windows scope only). */}
+        {includesWindows && (
+          <Row icon="layers" label="Window Opening Flashing Material">
+            <View style={styles.flashingRow}>
+              <View style={styles.flashingValue}>
+                {editing === 'flashing' ? (
                   <TextInput
                     style={styles.textEditor}
                     value={draft}
                     onChangeText={setDraft}
-                    onBlur={commitPickupLocation}
-                    placeholder="Where does the crew pick up?"
+                    onBlur={commitFlashing}
+                    placeholder={
+                      parentJob?.flashingMaterial
+                        ? `Defaults to ${parentJob.flashingMaterial}`
+                        : 'e.g. Clear Anodized Aluminum'
+                    }
                     placeholderTextColor={colors.textTertiary}
                     autoFocus
                   />
                 ) : (
                   <Editable
                     onPress={() =>
-                      startEdit('pickup-location', jobcard.pickupLocation ?? '')
+                      startEdit('flashing', jobcard.flashingMaterial ?? '')
                     }
                   >
                     <Text
                       style={
-                        jobcard.pickupLocation
+                        jobcard.flashingMaterial
                           ? styles.valueText
                           : styles.placeholderText
                       }
                     >
-                      {jobcard.pickupLocation || 'Add the pickup location…'}
+                      {jobcard.flashingMaterial ??
+                        parentJob?.flashingMaterial ??
+                        'Not specified'}
                     </Text>
                   </Editable>
-                ))}
-            </Row>
+                )}
+              </View>
+              <FlashingPhotoField job={parentJob} editable />
+            </View>
+          </Row>
+        )}
 
-            {/* Notes */}
-            <Row icon="edit-3" label="Notes">
-              {editing === 'notes' ? (
-                <TextInput
-                  style={[styles.textEditor, styles.multiline]}
-                  value={draft}
-                  onChangeText={setDraft}
-                  onBlur={commitNotes}
-                  placeholder="Anything else the crew or scheduler should know…"
-                  placeholderTextColor={colors.textTertiary}
-                  autoFocus
-                  multiline
-                />
-              ) : (
-                <Editable onPress={() => startEdit('notes', jobcard.notes ?? '')}>
-                  <Text
-                    style={
-                      jobcard.notes ? styles.valueText : styles.placeholderText
-                    }
-                  >
-                    {jobcard.notes || 'Add notes…'}
-                  </Text>
-                </Editable>
-              )}
-            </Row>
-
-            {/* Installer-authored field notes (read-only here). */}
-            {jobcard.fieldNotes ? (
-              <Row icon="message-square" label="Field notes (installers)">
-                <Text style={styles.valueText}>{jobcard.fieldNotes}</Text>
-              </Row>
-            ) : null}
-
-            {/* Installer photos */}
-            <Row
-              icon="image"
-              label={`Installer photos${photos.length > 0 ? ` (${photos.length})` : ''}`}
+        {/* Materials needed */}
+        <Row icon="package" label="Materials needed">
+          {editing === 'materials' ? (
+            <TextInput
+              style={[styles.textEditor, styles.multiline]}
+              value={draft}
+              onChangeText={setDraft}
+              onBlur={commitMaterials}
+              placeholder="Gaskets, setting blocks, structural silicone…"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              multiline
+            />
+          ) : (
+            <Editable
+              onPress={() => startEdit('materials', jobcard.materials ?? '')}
             >
-              {photos.length === 0 ? (
-                <Text style={styles.mutedText}>
-                  No photos taken for this jobcard yet.
-                </Text>
-              ) : (
-                <JobPhotoGrid
-                  photos={photos}
-                  onPhotoPress={(photo, sorted) =>
-                    setViewer({
-                      photos: sorted,
-                      index: sorted.findIndex((p) => p.id === photo.id),
-                    })
-                  }
-                />
-              )}
-            </Row>
-
-            {jobcard.createdAt ? (
-              <Text style={styles.createdOn}>
-                Created on {format(new Date(jobcard.createdAt), 'MMMM d, yyyy')}
+              <Text
+                style={
+                  jobcard.materials ? styles.valueText : styles.placeholderText
+                }
+              >
+                {jobcard.materials || 'Add materials…'}
               </Text>
-            ) : null}
-          </ScrollView>
-        </View>
-      </View>
+            </Editable>
+          )}
+        </Row>
 
-      <PhotoViewerModal
-        photos={viewer?.photos ?? []}
-        initialIndex={viewer?.index ?? null}
-        onClose={() => setViewer(null)}
-      />
+        {/* Pickup Required — Yes/No pills; Yes reveals the location. */}
+        <Row icon="truck" label="Pickup Required">
+          <View style={styles.pickupRow}>
+            {([true, false] as const).map((choice) => {
+              const active = jobcard.pickupRequired === choice;
+              return (
+                <Pressable
+                  key={String(choice)}
+                  style={[styles.pickupChoice, active && styles.pickupChoiceOn]}
+                  onPress={() => changePickupRequired(choice)}
+                >
+                  <Text
+                    style={[
+                      styles.pickupChoiceText,
+                      active && styles.pickupChoiceTextOn,
+                    ]}
+                  >
+                    {choice ? 'Yes' : 'No'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {jobcard.pickupRequired === true &&
+            (editing === 'pickup-location' ? (
+              <TextInput
+                style={styles.textEditor}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitPickupLocation}
+                placeholder="Where does the crew pick up?"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            ) : (
+              <Editable
+                onPress={() =>
+                  startEdit('pickup-location', jobcard.pickupLocation ?? '')
+                }
+              >
+                <Text
+                  style={
+                    jobcard.pickupLocation
+                      ? styles.valueText
+                      : styles.placeholderText
+                  }
+                >
+                  {jobcard.pickupLocation || 'Add the pickup location…'}
+                </Text>
+              </Editable>
+            ))}
+        </Row>
+
+        {/* Notes */}
+        <Row icon="edit-3" label="Notes">
+          {editing === 'notes' ? (
+            <TextInput
+              style={[styles.textEditor, styles.multiline]}
+              value={draft}
+              onChangeText={setDraft}
+              onBlur={commitNotes}
+              placeholder="Anything else the crew or scheduler should know…"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              multiline
+            />
+          ) : (
+            <Editable onPress={() => startEdit('notes', jobcard.notes ?? '')}>
+              <Text
+                style={
+                  jobcard.notes ? styles.valueText : styles.placeholderText
+                }
+              >
+                {jobcard.notes || 'Add notes…'}
+              </Text>
+            </Editable>
+          )}
+        </Row>
+
+        {/* Installer-authored field notes (read-only here). */}
+        {jobcard.fieldNotes ? (
+          <Row icon="message-square" label="Field notes (installers)">
+            <Text style={styles.valueText}>{jobcard.fieldNotes}</Text>
+          </Row>
+        ) : null}
+
+        {/* Photos — from every role with access to the card, not just
+            installers. */}
+        <Row
+          icon="image"
+          label={`Photos${photos.length > 0 ? ` (${photos.length})` : ''}`}
+        >
+          {photos.length === 0 ? (
+            <Text style={styles.mutedText}>
+              No photos for this jobcard yet.
+            </Text>
+          ) : (
+            <JobPhotoGrid
+              photos={photos}
+              onPhotoPress={(photo, sorted) =>
+                setViewer({
+                  photos: sorted,
+                  index: sorted.findIndex((p) => p.id === photo.id),
+                })
+              }
+            />
+          )}
+        </Row>
+
+        {jobcard.createdAt ? (
+          <Text style={styles.createdOn}>
+            Created on {format(new Date(jobcard.createdAt), 'MMMM d, yyyy')}
+          </Text>
+        ) : null}
+      </ScrollView>
+
+      {/* Create mode: the ONLY difference from viewing a card — Cancel /
+          Create Jobcard at the bottom (plus the validation error). */}
+      {creating && (
+        <View style={styles.createFooter}>
+          {createError ? (
+            <Text style={styles.createError}>{createError}</Text>
+          ) : null}
+          <View style={styles.createActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.submitButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={submitCreate}
+            >
+              <Text style={styles.submitText}>Create Jobcard</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
+  const photoViewer = (
+    <PhotoViewerModal
+      photos={viewer?.photos ?? []}
+      initialIndex={viewer?.index ?? null}
+      onClose={() => setViewer(null)}
+    />
+  );
+
+  if (variant === 'sidebar') {
+    return (
+      <>
+        {panel}
+        {photoViewer}
+      </>
+    );
+  }
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        {panel}
+      </View>
+      {photoViewer}
     </Modal>
   );
 }
@@ -1182,13 +1444,30 @@ const styles = themed(() => StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 620,
     maxHeight: '90%',
     backgroundColor: colors.surface,
     ...modalShadow,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  // The jobcards pages open the same panel as a right-hand sidebar, sized
+  // like the job dashboard sidebar.
+  sidebarPanel: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 640,
+    maxWidth: '88%',
+    backgroundColor: colors.surface,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    ...modalShadow,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     gap: spacing.sm,
@@ -1228,13 +1507,48 @@ const styles = themed(() => StyleSheet.create({
     gap: spacing.lg,
     paddingBottom: spacing.sm,
   },
+  // Parent job + title as one block (parent directly above the name, like
+  // the mobile installer view).
+  header: {
+    gap: 2,
+    // Keep the crew tooltip/menu above the rows that follow.
+    zIndex: 30,
+  },
+  parentJobText: {
+    color: colors.primary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    // Line up with the title text: crew-square margin + square + row gap +
+    // the title Editable's own inset.
+    paddingLeft: 5 + 14 + spacing.md + spacing.sm,
+  },
+  parentJobPicker: {
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  prereqWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.warningDim,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  prereqText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingRight: spacing.md,
-    // Keep the crew tooltip/menu above the rows that follow.
-    zIndex: 30,
   },
   crewSquareWrap: {
     marginLeft: 5,
@@ -1290,6 +1604,9 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 20,
+  },
+  titlePlaceholder: {
+    color: colors.textTertiary,
   },
   titleInput: {
     flex: 1,
@@ -1359,6 +1676,12 @@ const styles = themed(() => StyleSheet.create({
   statusEditable: {
     paddingHorizontal: 3,
     paddingVertical: 3,
+  },
+  // Matches the Editable's inset so the static create-mode pill sits where
+  // the interactive one does.
+  statusStatic: {
+    alignSelf: 'flex-start',
+    padding: 3,
   },
   statusPill: {
     flexDirection: 'row',
@@ -1583,5 +1906,46 @@ const styles = themed(() => StyleSheet.create({
   },
   flashingValue: {
     flex: 1,
+  },
+  // Create-mode footer: validation error + Cancel / Create Jobcard.
+  createFooter: {
+    gap: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  createError: {
+    color: colors.danger,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  createActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  cancelButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md + 2,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+  },
+  submitButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md + 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+  },
+  submitText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 15,
   },
 }));

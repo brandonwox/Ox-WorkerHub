@@ -4,6 +4,12 @@ This file is used by the developer of Ox WorkerHub. It should not be used in any
 
 # Awaiting
 
+job details page:
+- put the subjobs section into a button next to the three buttons for "Issues", "Jobcards", and "Documents". the subjobs section should be open by default.
+- the subjobs section should collapse to 3 by default unless expanded.
+
+make it easier to navigate from and to sub-jobs for field supers and schedulers
+
 job details right sidebar on web: add an edit button to the top right of the sidebar (now that we have an edit button we can remove the second jobsite address, and just allow the original to be edited when the edit button is active.
 
 make the jobcard creation form have the same layout, style, sizes, placements, etc as the normal jobcard popup view. (remember jobcards are created on the jobcards page, so it should show up in the right sidebar rather than a popup.) (the only difference on the creation form and simply viewing a jobcard is that there should be a "Cancel" and a "Create Jobcard" Button at the bottom. (and if they don't meet the requirments it wont create the jobcard)). 
