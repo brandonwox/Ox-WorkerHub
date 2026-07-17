@@ -1,4 +1,14 @@
 import { Feather } from '@expo/vector-icons';
+import {
+  Briefcase,
+  CalendarDays,
+  FileText,
+  LayoutDashboard,
+  type LucideIcon,
+  NotepadText,
+  Settings,
+  Users,
+} from 'lucide-react-native';
 import { Platform } from 'react-native';
 
 import { AppRole } from '@/types';
@@ -26,6 +36,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
  * Universal routes (/sign-in, /set-password, the /job/[id] modal) are not listed.
  */
 export type DesktopHref =
+  | '/scheduler-overview'
   | '/scheduler-calendar'
   | '/scheduler-jobs'
   | '/scheduler-jobcards'
@@ -33,6 +44,7 @@ export type DesktopHref =
   | '/operator-people'
   | '/finance-manager-jobs'
   | '/finance-manager-timesheets'
+  | '/field-super-overview'
   | '/field-super-jobcards'
   | '/field-super-jobs'
   | '/field-super-calendar'
@@ -47,56 +59,62 @@ export type DesktopHref =
 export interface DesktopNavItem {
   href: DesktopHref;
   label: string;
-  icon: keyof typeof Feather.glyphMap;
+  /** Lucide icon component (the sidebar renders lucide, not Feather). */
+  icon: LucideIcon;
 }
 
 /** Sidebar sections each role sees on the desktop (web) console. */
 export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   installer: [
-    { href: '/installer-schedule', label: 'Schedule', icon: 'calendar' },
-    { href: '/installer-timesheets', label: 'Timesheets', icon: 'file-text' },
+    { href: '/installer-schedule', label: 'Schedule', icon: CalendarDays },
+    { href: '/installer-timesheets', label: 'Timesheets', icon: FileText },
     // No live camera on web — the page offers file upload instead.
-    { href: '/installer-pics', label: 'Jobs', icon: 'briefcase' },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/installer-pics', label: 'Jobs', icon: Briefcase },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   operator: [
-    { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/operator-people', label: 'People', icon: 'users' },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/operator-jobs', label: 'Jobs', icon: Briefcase },
+    { href: '/operator-people', label: 'People', icon: Users },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   // Money-facing console: labor budgets + QBT mapping on jobs, and the
   // timesheet review the Operator used to own.
   finance_manager: [
-    { href: '/finance-manager-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/finance-manager-jobs', label: 'Jobs', icon: Briefcase },
     {
       href: '/finance-manager-timesheets',
       label: 'Timesheets',
-      icon: 'file-text',
+      icon: FileText,
     },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   scheduler: [
-    { href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' },
+    // The landing page: what needs attention (new Now cards, work requests,
+    // freshly finished cards).
+    { href: '/scheduler-overview', label: 'Overview', icon: LayoutDashboard },
+    { href: '/scheduler-calendar', label: 'Calendar', icon: CalendarDays },
     // Every job (schedulers aren't scoped) — job dashboards + job creation.
-    { href: '/scheduler-jobs', label: 'Jobs', icon: 'briefcase' },
+    { href: '/scheduler-jobs', label: 'Jobs', icon: Briefcase },
     // Distinct route from the Field Super's '/field-super-jobcards' — the
     // Scheduler creates jobcards across every job, not just their own.
-    { href: '/scheduler-jobcards', label: 'Jobcards', icon: 'clipboard' },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/scheduler-jobcards', label: 'Jobcards', icon: NotepadText },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   field_super: [
+    // The landing page: what needs attention (new issues, false starts).
+    { href: '/field-super-overview', label: 'Overview', icon: LayoutDashboard },
     // Distinct route from the Operator's '/operator-jobs', shown to the Field
     // Super as "Jobs".
-    { href: '/field-super-jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/field-super-jobcards', label: 'Jobcards', icon: 'clipboard' },
-    { href: '/field-super-calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/field-super-jobs', label: 'Jobs', icon: Briefcase },
+    { href: '/field-super-jobcards', label: 'Jobcards', icon: NotepadText },
+    { href: '/field-super-calendar', label: 'Calendar', icon: CalendarDays },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
   developer: [
-    { href: '/operator-jobs', label: 'Jobs', icon: 'briefcase' },
-    { href: '/console-settings', label: 'Settings', icon: 'settings' },
+    { href: '/operator-jobs', label: 'Jobs', icon: Briefcase },
+    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
 };
 
@@ -107,6 +125,7 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
  */
 export type MobileTabName =
   | 'index'
+  | 'overview'
   | 'timesheets'
   | 'people'
   | 'backlog'
@@ -118,6 +137,7 @@ export type MobileTabName =
 /** Every tab file in the `(mobile)` group — used to declare and gate them. */
 export const MOBILE_TAB_NAMES: MobileTabName[] = [
   'index',
+  'overview',
   'timesheets',
   'people',
   'backlog',
@@ -144,6 +164,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [
+    { name: 'overview', label: 'Overview', icon: 'grid' },
     { name: 'index', label: 'Calendar', icon: 'calendar' },
     { name: 'backlog', label: 'Backlog', icon: 'inbox' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
@@ -159,6 +180,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   field_super: [
+    { name: 'overview', label: 'Overview', icon: 'grid' },
     { name: 'index', label: 'Jobcards', icon: 'clipboard' },
     { name: 'jobs', label: 'Jobs', icon: 'briefcase' },
     { name: 'calendar', label: 'Calendar', icon: 'calendar' },
@@ -184,10 +206,12 @@ export function desktopHomeHref(role: AppRole): DesktopHref {
       return '/installer-schedule';
     case 'operator':
       return '/operator-jobs';
+    // Schedulers and Field Supers land on their Overview — the "what needs
+    // attention" dashboard — and hop to their working pages from there.
     case 'scheduler':
-      return '/scheduler-calendar';
+      return '/scheduler-overview';
     case 'field_super':
-      return '/field-super-jobcards';
+      return '/field-super-overview';
     case 'finance_manager':
       return '/finance-manager-jobs';
     case 'developer':

@@ -4,20 +4,6 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-update the left sidebar:
-- remove the blue highlight behind the active page. instead the background behind the active page should be a different color (with rounded corners). 
-- move icons to the left of the title of the page so everything is on one line.
-- for calendar icons, use lucide CalendarDays
-- for jobs icons use lucide Briefcase
-- for jobcard icons use lucide NotepadText
-- for settings icons use lucide Settings
-
-add an "Overview" page for schedulers and field supers. the overview page keeps the workers up to date on important information. For schedulers this would be any new "Now" priority jobcards, how many jobcards are in work requests, any jobcards with new "finished" status, etc. For field supers this would be: any jobcards with new "issues", any jobcards with "false start"s, etc.
-
-jobs (and subjobs, since they operate the same) -> if the job has the scope "Windows": needs to have a detail "Window Count" which can be a number. also needs another detail "SGD Count". if job has scope "Mirrors": needs to have a detail "Mirror Count". (this detail should be displayed on the job details page, and also on any jobcard for that job)
-- the count is both an amount done and a total amount, so it should always be displayed like: 0/100 (amount done / total amount)
-- now that the window, or sgd, or mirror counts show on the jobcards -> allow the installers to click on the count to open a popup that allows them to change the amount done. (it should display the current amount done number as pre-filled grayed out text, and show the total amount on the right.)
-
 make the speech to text work for mobile users. (add mic button in text sections, especially for image notes.) use lucide Mic icon.
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
@@ -47,6 +33,22 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+left sidebar restyle (web console):
+- the active page's blue highlight is gone — it's now a neutral gray rounded background, with the label/icon in the primary text color instead of blue.
+- nav icons switched from Feather to lucide: CalendarDays (calendar pages), Briefcase (jobs), NotepadText (jobcards), Settings, plus FileText (timesheets), Users (people), and LayoutDashboard (the new Overview). Icons were already inline to the left of each label. The mobile tab bar keeps its existing icons.
+
+"Overview" page for schedulers and field supers (web console page + mobile tab, shared content):
+- it is now BOTH roles' landing page on web (sign-in lands on Overview instead of calendar/jobcards); on mobile it's the first tab but the app still opens on the existing home tab.
+- scheduler overview: stat tiles ("Now" priority count, work requests ready — tappable, jumps to the calendar/backlog — and finished this week), then a list of every jobcard at "Now" priority (escalated cards flagged), a work-request summary line (ready vs not ready yet), and the jobcards marked Finished this week.
+- field super overview (scoped to their jobs): stat tiles (jobcards with open issues, false starts this week), then their jobcards with open issues (open-issue count badge, newest issue snippet + date) and this week's false-start jobcards.
+- "this week" uses the card's scheduled day in the current Mon–Sun week — the same proxy as the false-starts counter (there's no status-change timestamp).
+- clicking a jobcard opens the quick-view sidebar on web / the jobcard page on mobile.
+
+scope-driven job counts (REQUIRES: apply the new job-scope-counts Supabase migration):
+- Windows-scoped jobs (and sub-jobs) carry "Window Count" and "SGD Count" details; Mirrors-scoped jobs carry "Mirror Count". Each is a done/total pair always displayed as "0/100".
+- shown on the job details page (mobile + web sidebar) and on every jobcard of the job; totals are office-edited (Operator / Field Supers, in the sidebar's Edit mode and the mobile editor).
+- installers tap the count on a jobcard to open a popup that updates the amount done (current done pre-filled grayed out, total shown on the right); RLS lets installers write only the done numbers.
 
 Window/Mirror Layout Plans documents (REQUIRES: apply the new layout-plan-documents Supabase migration — it also fixes a regression in the uncommitted job-scope-counts migration that accidentally re-blocked flashing-material edits for installers/schedulers/finance):
 - Field supers on a Windows-scoped job with no assigned "Window Layout Plans" see a plain-text warning below the field super names ("The installers need an image of the window layout.", no background/border) on both the mobile job details page and the web job dashboard sidebar, with a clearly-a-button + button.

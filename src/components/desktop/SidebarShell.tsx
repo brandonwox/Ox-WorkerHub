@@ -1,4 +1,3 @@
-import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Link, usePathname } from 'expo-router';
 import { ReactNode } from 'react';
@@ -40,6 +39,7 @@ export function SidebarShell({ navItems, children }: Props) {
           <View style={styles.nav}>
             {navItems.map((item) => {
               const isActive = item.href === active?.href;
+              const Icon = item.icon;
               return (
                 <Link key={item.href} href={item.href} asChild>
                   <Pressable
@@ -49,10 +49,12 @@ export function SidebarShell({ navItems, children }: Props) {
                       pressed && styles.navItemPressed,
                     ]}
                   >
-                    <Feather
-                      name={item.icon}
+                    <Icon
                       size={17}
-                      color={isActive ? colors.primary : colors.textSecondary}
+                      color={
+                        isActive ? colors.textPrimary : colors.textSecondary
+                      }
+                      strokeWidth={2}
                     />
                     <Text
                       style={[styles.navLabel, isActive && styles.navLabelActive]}
@@ -159,11 +161,12 @@ const styles = themed(() => StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     borderRadius: radii.md,
   },
+  // Neutral (not blue) rounded highlight behind the active page.
   navItemActive: {
-    backgroundColor: colors.primaryDim,
+    backgroundColor: colors.surfaceLight,
   },
   navItemPressed: {
-    backgroundColor: colors.surfaceLight,
+    opacity: 0.75,
   },
   navLabel: {
     color: colors.textSecondary,
@@ -171,7 +174,7 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 14,
   },
   navLabelActive: {
-    color: colors.primary,
+    color: colors.textPrimary,
     fontFamily: fonts.semiBold,
   },
   main: {
