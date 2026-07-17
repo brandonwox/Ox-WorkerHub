@@ -253,6 +253,15 @@ function CreateJobSheet({
   );
 }
 
+const numToText = (n: number | undefined) => (n != null ? String(n) : '');
+/** "12" → 12; blank/garbage → undefined (clears the value). */
+const parseCount = (text: string): number | undefined => {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+};
+
 function JobRow({
   job,
   counts,
@@ -264,19 +273,58 @@ function JobRow({
   counts: { total: number; scheduled: number };
   expanded: boolean;
   onToggle: () => void;
-  onSave: (changes: { location?: string; flashingMaterial?: string }) => void;
+  onSave: (changes: Partial<Job>) => void;
 }) {
   const router = useRouter();
   const [location, setLocation] = useState(job.location);
   const [flashing, setFlashing] = useState(job.flashingMaterial ?? '');
+  // Scope counts, done/total as text (blank = unset).
+  const [windowDone, setWindowDone] = useState(numToText(job.windowCountDone));
+  const [windowTotal, setWindowTotal] = useState(
+    numToText(job.windowCountTotal)
+  );
+  const [sgdDone, setSgdDone] = useState(numToText(job.sgdCountDone));
+  const [sgdTotal, setSgdTotal] = useState(numToText(job.sgdCountTotal));
+  const [mirrorDone, setMirrorDone] = useState(numToText(job.mirrorCountDone));
+  const [mirrorTotal, setMirrorTotal] = useState(
+    numToText(job.mirrorCountTotal)
+  );
   const [saved, setSaved] = useState(false);
+
+  const windowsAllowed = jobAllowsWindows(job);
+  const mirrorsAllowed = !!job.scopes?.includes('Mirrors');
 
   const dirty =
     location.trim() !== job.location ||
-    flashing.trim() !== (job.flashingMaterial ?? '');
+    flashing.trim() !== (job.flashingMaterial ?? '') ||
+    (windowsAllowed &&
+      (parseCount(windowDone) !== job.windowCountDone ||
+        parseCount(windowTotal) !== job.windowCountTotal ||
+        parseCount(sgdDone) !== job.sgdCountDone ||
+        parseCount(sgdTotal) !== job.sgdCountTotal)) ||
+    (mirrorsAllowed &&
+      (parseCount(mirrorDone) !== job.mirrorCountDone ||
+        parseCount(mirrorTotal) !== job.mirrorCountTotal));
 
   const save = () => {
-    onSave({ location: location.trim(), flashingMaterial: flashing.trim() });
+    onSave({
+      location: location.trim(),
+      flashingMaterial: flashing.trim(),
+      ...(windowsAllowed
+        ? {
+            windowCountDone: parseCount(windowDone),
+            windowCountTotal: parseCount(windowTotal),
+            sgdCountDone: parseCount(sgdDone),
+            sgdCountTotal: parseCount(sgdTotal),
+          }
+        : {}),
+      ...(mirrorsAllowed
+        ? {
+            mirrorCountDone: parseCount(mirrorDone),
+            mirrorCountTotal: parseCount(mirrorTotal),
+          }
+        : {}),
+    });
     setSaved(true);
   };
 
@@ -330,7 +378,7 @@ function JobRow({
             placeholder="Street, city"
           />
           {/* Hidden entirely for jobs whose scopes exclude window work. */}
-          {jobAllowsWindows(job) && (
+          {windowsAllowed && (
             <>
               <FormInput
                 label="Flashing material"
@@ -339,10 +387,90 @@ function JobRow({
                   setFlashing(text);
                   setSaved(false);
                 }}
-                placeholder="e.g. Dark bronze aluminum"
+                placeholder="e.g. regular rainbuster"
               />
               <FlashingPhotoField job={job} editable />
+              <View style={styles.countRow}>
+                <View style={styles.countCol}>
+                  <FormInput
+                    label="Window Count (done)"
+                    value={windowDone}
+                    onChangeText={(t) => {
+                      setWindowDone(t);
+                      setSaved(false);
+                    }}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={styles.countCol}>
+                  <FormInput
+                    label="(total)"
+                    value={windowTotal}
+                    onChangeText={(t) => {
+                      setWindowTotal(t);
+                      setSaved(false);
+                    }}
+                    placeholder="total"
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+              <View style={styles.countRow}>
+                <View style={styles.countCol}>
+                  <FormInput
+                    label="SGD Count (done)"
+                    value={sgdDone}
+                    onChangeText={(t) => {
+                      setSgdDone(t);
+                      setSaved(false);
+                    }}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={styles.countCol}>
+                  <FormInput
+                    label="(total)"
+                    value={sgdTotal}
+                    onChangeText={(t) => {
+                      setSgdTotal(t);
+                      setSaved(false);
+                    }}
+                    placeholder="total"
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
             </>
+          )}
+          {mirrorsAllowed && (
+            <View style={styles.countRow}>
+              <View style={styles.countCol}>
+                <FormInput
+                  label="Mirror Count (done)"
+                  value={mirrorDone}
+                  onChangeText={(t) => {
+                    setMirrorDone(t);
+                    setSaved(false);
+                  }}
+                  placeholder="0"
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={styles.countCol}>
+                <FormInput
+                  label="(total)"
+                  value={mirrorTotal}
+                  onChangeText={(t) => {
+                    setMirrorTotal(t);
+                    setSaved(false);
+                  }}
+                  placeholder="total"
+                  keyboardType="number-pad"
+                />
+              </View>
+            </View>
           )}
           <Pressable
             style={({ pressed }) => [
@@ -443,6 +571,13 @@ const styles = themed(() => StyleSheet.create({
     borderTopColor: colors.border,
     padding: spacing.lg,
     gap: spacing.lg,
+  },
+  countRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  countCol: {
+    flex: 1,
   },
   saveButton: {
     backgroundColor: colors.primary,

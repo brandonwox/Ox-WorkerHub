@@ -121,6 +121,28 @@ export interface Job {
    */
   laborBudget?: number;
   /**
+   * Scope-driven done/total counts, displayed as "0/100" on the job details
+   * page and every jobcard of the job. Window + SGD pairs belong to the
+   * Windows scope, Mirror to the Mirrors scope. Totals are office-set (the
+   * Operator / Field Supers); installers update only the done numbers (from
+   * the jobcard count popup; RLS matches). A count shows once its total is
+   * set.
+   */
+  windowCountDone?: number;
+  windowCountTotal?: number;
+  sgdCountDone?: number;
+  sgdCountTotal?: number;
+  mirrorCountDone?: number;
+  mirrorCountTotal?: number;
+  /**
+   * The Field Super marked layout plans as not needed for this job ("Window
+   * layout plans not necessary"). Suppresses the layout-plan warning on the
+   * job details page; a Windows-scoped job with neither this flag nor a
+   * 'window_layout' document warns the Field Super. Mirror twin below.
+   */
+  windowLayoutNotNeeded?: boolean;
+  mirrorLayoutNotNeeded?: boolean;
+  /**
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field
    * Super sees ONLY the jobs they're in here — and, transitively, only those
@@ -494,6 +516,26 @@ export interface JobIssue {
 export type JobDocumentKind = 'photo' | 'pdf' | 'text';
 
 /**
+ * Optional installer-facing document type. A typed document displays its type
+ * label alongside the title ("Window Layout Plans · West face") so installers
+ * can find the right plan fast. Having a 'window_layout' document (or the
+ * job's {@link Job.windowLayoutNotNeeded} flag) clears the Field Super's
+ * layout-plan warning on Windows-scoped jobs; 'mirror_layout' mirrors that
+ * for Mirrors-scoped jobs.
+ */
+export type JobDocumentType =
+  | 'window_layout'
+  | 'mirror_layout'
+  | 'flashing_example';
+
+/** Display labels for {@link JobDocumentType}, in selector order. */
+export const JOB_DOCUMENT_TYPE_LABELS: Record<JobDocumentType, string> = {
+  window_layout: 'Window Layout Plans',
+  mirror_layout: 'Mirror Layout Plans',
+  flashing_example: 'Window Flashing Example',
+};
+
+/**
  * A document attached to a {@link Job}: a photo, a PDF, or a text note, each
  * with a required title. Created by any non-installer role (installers can
  * view them); listed in the Documents section of the job details page. File
@@ -506,6 +548,8 @@ export interface JobDocument {
   /** Worker who created the document. */
   workerId: string;
   kind: JobDocumentKind;
+  /** Optional type tag ({@link JobDocumentType}); shown next to the title. */
+  docType?: JobDocumentType;
   /** Display title, typed at creation (required). */
   title: string;
   /** The content of a 'text' document. */

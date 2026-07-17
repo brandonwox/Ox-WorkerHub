@@ -16,6 +16,7 @@ import {
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import {
   CreateSubJobModal,
   NewSubJobInput,
@@ -30,6 +31,7 @@ import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
 type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
@@ -229,6 +231,12 @@ export function JobDashboardSidebar({
   const openPhoto = (photo: DisplayPhoto, all: DisplayPhoto[]) =>
     setViewer({ photos: all, index: all.findIndex((p) => p.id === photo.id) });
 
+  // Scope counts: display any pair with a total; edit-mode inputs are gated
+  // by the job's scopes.
+  const counts = jobCounts(job);
+  const windowsAllowed = jobAllowsWindows(job);
+  const mirrorsAllowed = !!job.scopes?.includes('Mirrors');
+
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
   // Sub-Jobs list: name-only search, then collapse to 3 unless expanded.
@@ -425,25 +433,86 @@ export function JobDashboardSidebar({
                 : 'No Field Super assigned'}
             </Text>
           </View>
+          {/* Scope counts, "done/total" — shown once a total is set. */}
+          {counts.length > 0 && (
+            <View style={styles.infoRow}>
+              <Feather name="hash" size={14} color={colors.textSecondary} />
+              <Text style={styles.infoValue} numberOfLines={2}>
+                {counts
+                  .map((c) => `${c.label} ${formatCount(c)}`)
+                  .join('  ·  ')}
+              </Text>
+            </View>
+          )}
+          {/* Field-Super-only layout-plan warnings (component gates itself). */}
+          <LayoutPlanBanner job={job} kind="window" />
+          <LayoutPlanBanner job={job} kind="mirror" />
         </View>
 
-        {/* Window Opening Flashing Material — editable inline while Edit mode
-            is on (window jobs only). The address is edited up in the header. */}
-        {editable && editMode && jobAllowsWindows(job) && (
+        {/* Edit mode extras: flashing material (window jobs) and the scope
+            counts' done/total numbers. The address is edited up in the
+            header. */}
+        {editable && editMode && (windowsAllowed || mirrorsAllowed) && (
           <View style={styles.editBlock}>
-            <Text style={styles.fieldLabel}>
-              Window Opening Flashing Material
-            </Text>
-            <View style={styles.flashRow}>
-              <FlashingInput
-                key={`flash-${job.id}`}
-                value={job.flashingMaterial ?? ''}
-                onCommit={(flashingMaterial) =>
-                  updateJob(job.id, { flashingMaterial })
-                }
-              />
-              <FlashingPhotoField job={job} editable />
-            </View>
+            {windowsAllowed && (
+              <>
+                <Text style={styles.fieldLabel}>
+                  Window Opening Flashing Material
+                </Text>
+                <View style={styles.flashRow}>
+                  <FlashingInput
+                    key={`flash-${job.id}`}
+                    value={job.flashingMaterial ?? ''}
+                    onCommit={(flashingMaterial) =>
+                      updateJob(job.id, { flashingMaterial })
+                    }
+                  />
+                  <FlashingPhotoField job={job} editable />
+                </View>
+                <Text style={styles.fieldLabel}>Window Count (done / total)</Text>
+                <CountPairEditor
+                  key={`wc-${job.id}`}
+                  done={job.windowCountDone}
+                  total={job.windowCountTotal}
+                  onCommit={(done, total) =>
+                    updateJob(job.id, {
+                      windowCountDone: done,
+                      windowCountTotal: total,
+                    })
+                  }
+                />
+                <Text style={styles.fieldLabel}>SGD Count (done / total)</Text>
+                <CountPairEditor
+                  key={`sc-${job.id}`}
+                  done={job.sgdCountDone}
+                  total={job.sgdCountTotal}
+                  onCommit={(done, total) =>
+                    updateJob(job.id, {
+                      sgdCountDone: done,
+                      sgdCountTotal: total,
+                    })
+                  }
+                />
+              </>
+            )}
+            {mirrorsAllowed && (
+              <>
+                <Text style={styles.fieldLabel}>
+                  Mirror Count (done / total)
+                </Text>
+                <CountPairEditor
+                  key={`mc-${job.id}`}
+                  done={job.mirrorCountDone}
+                  total={job.mirrorCountTotal}
+                  onCommit={(done, total) =>
+                    updateJob(job.id, {
+                      mirrorCountDone: done,
+                      mirrorCountTotal: total,
+                    })
+                  }
+                />
+              </>
+            )}
           </View>
         )}
 
@@ -962,6 +1031,57 @@ function AddressInput({
   );
 }
 
+/**
+ * Done / total inputs for one scope count; commits on blur. Empty total
+ * clears the pair from display (a count shows once its total is set).
+ */
+function CountPairEditor({
+  done,
+  total,
+  onCommit,
+}: {
+  done: number | undefined;
+  total: number | undefined;
+  onCommit: (done: number | undefined, total: number | undefined) => void;
+}) {
+  const [doneText, setDoneText] = useState(done != null ? String(done) : '');
+  const [totalText, setTotalText] = useState(
+    total != null ? String(total) : ''
+  );
+  const parse = (text: string): number | undefined => {
+    const trimmed = text.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  };
+  const commit = () => onCommit(parse(doneText), parse(totalText));
+  return (
+    <View style={styles.countRow}>
+      <TextInput
+        style={[styles.addressInput, styles.countInput]}
+        value={doneText}
+        onChangeText={setDoneText}
+        onBlur={commit}
+        onEndEditing={commit}
+        placeholder="0"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="number-pad"
+      />
+      <Text style={styles.countSlash}>/</Text>
+      <TextInput
+        style={[styles.addressInput, styles.countInput]}
+        value={totalText}
+        onChangeText={setTotalText}
+        onBlur={commit}
+        onEndEditing={commit}
+        placeholder="total"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="number-pad"
+      />
+    </View>
+  );
+}
+
 /** Inline editable flashing material; commits on blur (empty clears). */
 function FlashingInput({
   value,
@@ -982,7 +1102,7 @@ function FlashingInput({
       onChangeText={setText}
       onBlur={commit}
       onEndEditing={commit}
-      placeholder="not set"
+      placeholder="e.g. regular rainbuster"
       placeholderTextColor={colors.textTertiary}
     />
   );
@@ -1179,6 +1299,20 @@ const styles = themed(() =>
     },
     flashInput: {
       flex: 1,
+    },
+    countRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    countInput: {
+      flex: 0,
+      width: 110,
+    },
+    countSlash: {
+      color: colors.textSecondary,
+      fontFamily: fonts.semiBold,
+      fontSize: 15,
     },
     cardsRow: {
       flexDirection: 'row',

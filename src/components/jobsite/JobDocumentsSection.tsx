@@ -31,7 +31,12 @@ import {
   spacing,
   themed,
 } from '@/theme';
-import { JobDocument, JobDocumentKind } from '@/types';
+import {
+  JOB_DOCUMENT_TYPE_LABELS,
+  JobDocument,
+  JobDocumentKind,
+  JobDocumentType,
+} from '@/types';
 
 interface Props {
   jobId: string;
@@ -77,6 +82,7 @@ export function JobDocumentsSection({ jobId }: Props) {
   // Creation flow: the + menu, then the draft form for the picked kind.
   const [kindMenuOpen, setKindMenuOpen] = useState(false);
   const [draftKind, setDraftKind] = useState<JobDocumentKind | null>(null);
+  const [draftType, setDraftType] = useState<JobDocumentType | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [fileUri, setFileUri] = useState<string | null>(null);
@@ -87,6 +93,7 @@ export function JobDocumentsSection({ jobId }: Props) {
   const startDraft = (kind: JobDocumentKind) => {
     setKindMenuOpen(false);
     setDraftKind(kind);
+    setDraftType(null);
     setTitle('');
     setBody('');
     setFileUri(null);
@@ -137,6 +144,7 @@ export function JobDocumentsSection({ jobId }: Props) {
       const ok = await addJobDocument({
         jobId,
         kind: draftKind,
+        docType: draftType ?? undefined,
         title,
         body: draftKind === 'text' ? body.trim() : undefined,
         localUri: fileUri ?? undefined,
@@ -193,6 +201,13 @@ export function JobDocumentsSection({ jobId }: Props) {
                 />
               </View>
               <View style={styles.docText}>
+                {/* Typed documents lead with the type so installers can spot
+                    e.g. every Window Layout Plan at a glance. */}
+                {doc.docType && (
+                  <Text style={styles.docTypeTag} numberOfLines={1}>
+                    {JOB_DOCUMENT_TYPE_LABELS[doc.docType]}
+                  </Text>
+                )}
                 <Text style={styles.docTitle} numberOfLines={1}>
                   {doc.title}
                 </Text>
@@ -289,6 +304,36 @@ export function JobDocumentsSection({ jobId }: Props) {
               placeholder="Title (required)"
               placeholderTextColor={colors.textTertiary}
             />
+
+            {/* Optional type tag — helps installers identify layout plans. */}
+            <Text style={styles.typeLabel}>Type (optional)</Text>
+            <View style={styles.typeRow}>
+              {(
+                Object.keys(JOB_DOCUMENT_TYPE_LABELS) as JobDocumentType[]
+              ).map((type) => {
+                const active = draftType === type;
+                return (
+                  <Pressable
+                    key={type}
+                    style={({ pressed }) => [
+                      styles.typeChip,
+                      active && styles.typeChipActive,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setDraftType(active ? null : type)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        active && styles.typeChipTextActive,
+                      ]}
+                    >
+                      {JOB_DOCUMENT_TYPE_LABELS[type]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
             {draftKind === 'text' && (
               <TextInput
@@ -483,6 +528,42 @@ const styles = themed(() =>
       color: colors.textPrimary,
       fontFamily: fonts.semiBold,
       fontSize: 14,
+    },
+    docTypeTag: {
+      color: colors.primary,
+      fontFamily: fonts.semiBold,
+      fontSize: 10,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    typeLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+    },
+    typeRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    typeChip: {
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+    },
+    typeChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    typeChipText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.semiBold,
+      fontSize: 12,
+    },
+    typeChipTextActive: {
+      color: colors.textOnAccent,
     },
     docMeta: {
       color: colors.textTertiary,

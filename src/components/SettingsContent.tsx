@@ -1,20 +1,14 @@
+import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { updatePassword } from '@/integrations/supabase';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
+import { initialsOf } from '@/utils/initials';
 import { formatMoney } from '@/utils/time';
-
-function initialsOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('');
-}
 
 const THEME_OPTIONS = ['Dark', 'Light'] as const;
 
@@ -25,14 +19,16 @@ const THEME_OPTIONS = ['Dark', 'Light'] as const;
  */
 export function SettingsContent() {
   const user = useCurrentWorker();
+  // Password changes go through Supabase auth, so they need a real signed-in
+  // session — the dev role switcher's local identities don't have one.
+  const authWorker = useAppStore((s) => s.authWorker);
   const updateUser = useAppStore((s) => s.updateUser);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
 
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
-  const [password, setPassword] = useState('');
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,17 +45,11 @@ export function SettingsContent() {
       setError('Name is required.');
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError('Enter a valid email address.');
-      return;
-    }
     setError(null);
     updateUser({
       name: name.trim(),
       phone: phone.trim(),
-      email: email.trim(),
     });
-    setPassword('');
     setSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => setSaved(false), 2500);
@@ -101,22 +91,31 @@ export function SettingsContent() {
           placeholder="(555) 000-0000"
           keyboardType="phone-pad"
         />
-        <FormInput
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <FormInput
-          label="New password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Leave blank to keep current"
-          secureTextEntry
-          autoCapitalize="none"
-        />
+        {/* Email is the sign-in identity (Supabase auth) — not editable here,
+            since changing only the profile row would break sign-in. */}
+        <View style={styles.readonlyField}>
+          <Text style={styles.readonlyLabel}>Email</Text>
+          <Text style={styles.readonlyValue}>{user.email}</Text>
+        </View>
+        {/* Password changes live behind their own popup (they hit Supabase
+            auth, not the profile row). Dev-switcher identities have no auth
+            session to change. */}
+        {authWorker ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.changePasswordButton,
+              pressed && styles.savePressed,
+            ]}
+            onPress={() => setPasswordOpen(true)}
+          >
+            <Feather name="lock" size={15} color={colors.textSecondary} />
+            <Text style={styles.changePasswordText}>Change Password</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.devPasswordHint}>
+            Sign in with your account to change your password.
+          </Text>
+        )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -141,7 +140,109 @@ export function SettingsContent() {
           onChange={(option) => setTheme(option === 'Dark' ? 'dark' : 'light')}
         />
       </View>
+
+      <ChangePasswordModal
+        visible={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+      />
     </>
+  );
+}
+
+/**
+ * The Change Password popup: new password + confirmation, validated like the
+ * set-password screen, then pushed to Supabase auth. (The old inline "New
+ * password" field was silently discarded — this actually changes it.)
+ */
+function ChangePasswordModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const flash = useAppStore((s) => s.flash);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    setPassword('');
+    setConfirm('');
+    setError(null);
+    setBusy(false);
+    onClose();
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    if (password.length < 6) {
+      setError('Choose a password of at least 6 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('The passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error: updateError } = await updatePassword(password);
+    if (updateError) {
+      setBusy(false);
+      setError(updateError.message);
+      return;
+    }
+    flash('Password changed', 'success');
+    close();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.formTitle}>Change Password</Text>
+            <Pressable onPress={close} hitSlop={8}>
+              <Feather name="x" size={20} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          <FormInput
+            label="New password"
+            value={password}
+            onChangeText={setPassword}
+            placeholder="At least 6 characters"
+            secureTextEntry
+            autoCapitalize="none"
+          />
+          <FormInput
+            label="Confirm new password"
+            value={confirm}
+            onChangeText={setConfirm}
+            placeholder="Type it again"
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.saveButton,
+              (busy || pressed) && styles.savePressed,
+            ]}
+            onPress={submit}
+            disabled={busy}
+          >
+            <Text style={styles.saveText}>
+              {busy ? 'Changing…' : 'Change Password'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -204,6 +305,61 @@ const styles = themed(() =>
       color: colors.danger,
       fontFamily: fonts.medium,
       fontSize: 13,
+    },
+    readonlyField: {
+      gap: spacing.xs,
+    },
+    readonlyLabel: {
+      color: colors.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+    },
+    readonlyValue: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+    },
+    changePasswordButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.pill,
+      paddingVertical: spacing.md,
+    },
+    changePasswordText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.semiBold,
+      fontSize: 14,
+    },
+    devPasswordHint: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+    },
+    modalOverlay: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 440,
+      backgroundColor: colors.surface,
+      ...modalShadow,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.lg,
+      gap: spacing.lg,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     },
     saveButton: {
       backgroundColor: colors.primary,

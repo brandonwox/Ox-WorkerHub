@@ -137,7 +137,7 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
               label="Window Opening Flashing Material"
               value={effectiveFlashing}
               onChangeText={setFlashing}
-              placeholder="e.g. Peel & stick membrane"
+              placeholder="e.g. regular rainbuster"
             />
           )}
 

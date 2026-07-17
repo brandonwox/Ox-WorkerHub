@@ -12,6 +12,7 @@ import {
   JobcardTask,
   JobDocument,
   JobDocumentKind,
+  JobDocumentType,
   JobIssue,
   JobIssueStatus,
   JobPhoto,
@@ -48,6 +49,14 @@ interface JobRow {
   labor_budget: number | string | null;
   parent_job_id: string | null;
   has_sub_jobs: boolean | null;
+  window_count_done: number | null;
+  window_count_total: number | null;
+  sgd_count_done: number | null;
+  sgd_count_total: number | null;
+  mirror_count_done: number | null;
+  mirror_count_total: number | null;
+  window_layout_not_needed: boolean | null;
+  mirror_layout_not_needed: boolean | null;
 }
 
 interface JobFieldSuperRow {
@@ -155,6 +164,7 @@ interface JobDocumentRow {
   job_id: string;
   worker_id: string;
   kind: string;
+  doc_type: string | null;
   title: string;
   body: string | null;
   storage_path: string | null;
@@ -181,6 +191,14 @@ function rowToJob(r: JobRow): Job {
     laborBudget: r.labor_budget != null ? Number(r.labor_budget) : undefined,
     parentJobId: r.parent_job_id ?? undefined,
     hasSubJobs: r.has_sub_jobs ?? undefined,
+    windowCountDone: r.window_count_done ?? undefined,
+    windowCountTotal: r.window_count_total ?? undefined,
+    sgdCountDone: r.sgd_count_done ?? undefined,
+    sgdCountTotal: r.sgd_count_total ?? undefined,
+    mirrorCountDone: r.mirror_count_done ?? undefined,
+    mirrorCountTotal: r.mirror_count_total ?? undefined,
+    windowLayoutNotNeeded: r.window_layout_not_needed || undefined,
+    mirrorLayoutNotNeeded: r.mirror_layout_not_needed || undefined,
   };
 }
 
@@ -290,6 +308,7 @@ function rowToJobDocument(r: JobDocumentRow): JobDocument {
     jobId: r.job_id,
     workerId: r.worker_id,
     kind: r.kind as JobDocumentKind,
+    docType: (r.doc_type as JobDocumentType | null) ?? undefined,
     title: r.title,
     body: r.body ?? undefined,
     storagePath: r.storage_path ?? undefined,
@@ -481,6 +500,14 @@ function jobToRow(job: Job) {
     labor_budget: job.laborBudget ?? null,
     parent_job_id: job.parentJobId ?? null,
     has_sub_jobs: job.hasSubJobs ?? false,
+    window_count_done: job.windowCountDone ?? null,
+    window_count_total: job.windowCountTotal ?? null,
+    sgd_count_done: job.sgdCountDone ?? null,
+    sgd_count_total: job.sgdCountTotal ?? null,
+    mirror_count_done: job.mirrorCountDone ?? null,
+    mirror_count_total: job.mirrorCountTotal ?? null,
+    window_layout_not_needed: job.windowLayoutNotNeeded ?? false,
+    mirror_layout_not_needed: job.mirrorLayoutNotNeeded ?? false,
   };
 }
 
@@ -835,7 +862,14 @@ export async function uploadJobDocumentFile(
   if (Platform.OS === 'web') {
     body = await (await fetch(localUri)).blob();
   } else {
-    const base64 = await FileSystem.readAsStringAsync(localUri, {
+    // "Choose from Job images" passes the photo's public https URL — native
+    // FileSystem only reads file uris, so pull it into the cache first.
+    let fileUri = localUri;
+    if (/^https?:/.test(localUri)) {
+      const target = `${FileSystem.cacheDirectory}doc-src-${Date.now()}.tmp`;
+      fileUri = (await FileSystem.downloadAsync(localUri, target)).uri;
+    }
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     body = base64ToBytes(base64).buffer as ArrayBuffer;
@@ -854,11 +888,31 @@ export async function insertJobDocument(doc: JobDocument): Promise<void> {
         job_id: doc.jobId,
         worker_id: doc.workerId,
         kind: doc.kind,
+        doc_type: doc.docType ?? null,
         title: doc.title,
         body: doc.body ?? null,
         storage_path: doc.storagePath ?? null,
         created_at: doc.createdAt,
       })
+    ).error
+  );
+}
+
+/**
+ * Retag an existing document ("Choose from Job documents" assigns a layout
+ * plan to a document that already exists). RLS: the creator, the Operator, or
+ * a Field Super scoped to the document's job.
+ */
+export async function updateJobDocumentType(
+  id: string,
+  docType: JobDocumentType | undefined
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_documents')
+        .update({ doc_type: docType ?? null })
+        .eq('id', id)
     ).error
   );
 }

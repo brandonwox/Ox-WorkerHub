@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { signOut } from '@/integrations/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { initialsOf } from '@/utils/initials';
 
 interface Props {
   /** 'card' for the mobile Settings screen, 'bar' for the desktop top bar. */
@@ -12,9 +13,12 @@ interface Props {
 }
 
 /**
- * Sign in / sign out control. When signed in (a real Supabase worker), shows the
- * account + a sign-out button; otherwise a "Sign in" button. In dev mode (the
- * Developer base identity) this is how you switch into a real account.
+ * Account control. Signed in, the desktop top bar ('bar') shows a profile chip
+ * — initials avatar + name — that opens the Settings page (sign-out lives at
+ * the bottom of that page); the 'card' variant IS that sign-out button (mobile
+ * Settings + the bottom of web Settings). Signed out, both show "Sign in" —
+ * in dev mode (the Developer base identity) that's how you switch into a real
+ * account.
  */
 export function AuthControl({ variant = 'card' }: Props) {
   const router = useRouter();
@@ -29,12 +33,24 @@ export function AuthControl({ variant = 'card' }: Props) {
   const isBar = variant === 'bar';
 
   if (authWorker) {
+    if (isBar) {
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.bar, pressed && styles.pressed]}
+          onPress={() => router.push('/console-settings')}
+        >
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initialsOf(authWorker.name)}</Text>
+          </View>
+          <Text style={styles.name} numberOfLines={1}>
+            {authWorker.name}
+          </Text>
+        </Pressable>
+      );
+    }
     return (
       <Pressable
-        style={({ pressed }) => [
-          isBar ? styles.bar : styles.card,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
         onPress={handleSignOut}
       >
         <Feather name="log-out" size={15} color={colors.textSecondary} />
@@ -87,6 +103,21 @@ const styles = themed(() => StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  avatar: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primaryDim,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: colors.primary,
+    fontFamily: fonts.bold,
+    fontSize: 10,
   },
   text: {
     flexShrink: 1,

@@ -267,7 +267,7 @@ export const mockJobs: Job[] = [
     location: '1420 W Fulton Market, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90112',
-    flashingMaterial: 'Clear Anodized Aluminum',
+    flashingMaterial: 'Regular rainbuster',
     fieldSuperIds: ['w-fs', 'w-fs2'],
   },
   {
@@ -276,7 +276,7 @@ export const mockJobs: Job[] = [
     location: '233 S Wacker Dr, Chicago, IL',
     status: 'Active',
     qbtJobcodeId: '90113',
-    flashingMaterial: 'Stainless Steel (Brushed)',
+    flashingMaterial: 'Regular rainbuster',
     fieldSuperIds: ['w-fs'],
   },
   {

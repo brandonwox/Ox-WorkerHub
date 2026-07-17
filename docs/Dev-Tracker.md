@@ -4,19 +4,41 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-can you check if schedulers have a mobile view? (I want all worker roles to be  able to operate on the web or on their phone.)
+update the left sidebar:
+- remove the blue highlight behind the active page. instead the background behind the active page should be a different color (with rounded corners). 
+- move icons to the left of the title of the page so everything is on one line.
+- for calendar icons, use lucide CalendarDays
+- for jobs icons use lucide Briefcase
+- for jobcard icons use lucide NotepadText
+- for settings icons use lucide Settings
 
-let schedulers and field supers create TOP-LEVEL jobs (without requiring a QBT Jobcode ID — the finance manager fills those in later). Sub-job creation already works for them; this is about normal jobs. Needs UI (a create button on a page schedulers/field supers can reach) plus a Supabase policy change (their job INSERTs are currently limited to sub-jobs, and a field super creating a top-level job must also be auto-assigned to it or they won't see it).
+add an "Overview" page for schedulers and field supers. the overview page keeps the workers up to date on important information. For schedulers this would be any new "Now" priority jobcards, how many jobcards are in work requests, any jobcards with new "finished" status, etc. For field supers this would be: any jobcards with new "issues", any jobcards with "false start"s, etc.
 
-in the settings theres a "new password" option: they should have to click a button that says "Change Password" that opens a popup for them to change their password. (and double check the functionality of it, does it actually work?)
+jobs (and subjobs, since they operate the same) -> if the job has the scope "Windows": needs to have a detail "Window Count" which can be a number. also needs another detail "SGD Count". if job has scope "Mirrors": needs to have a detail "Mirror Count". (this detail should be displayed on the job details page, and also on any jobcard for that job)
+- the count is both an amount done and a total amount, so it should always be displayed like: 0/100 (amount done / total amount)
+- now that the window, or sgd, or mirror counts show on the jobcards -> allow the installers to click on the count to open a popup that allows them to change the amount done. (it should display the current amount done number as pre-filled grayed out text, and show the total amount on the right.)
 
-web needs a way to access settings: Let's change the log out button at the top of the screen. add a profile image to the left of their name. and instead of signing them out, it opens a large settings page, the sign out button at the bottom of the settings page.
-
-in order to turn this app into a real appstore app we need to add all the permissions popups. for example, when the app first tries to access the user's location, camera, microphone, etc., it should show a popup asking the user to grant permission. (it needs to be elaborate and detailed, otherwise apple will reject it.) (I assume there's also a system like this on android devices.)
-
-MENTAL NOTE FOR LATER (NOT RIGHT NOW): field supers OR installers will have to enter how many windows have been done (out of the total) for each job, and those numbers should show up for the finance manager.
+make the speech to text work for mobile users. (add mic button in text sections, especially for image notes.) use lucide Mic icon.
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
+
+installers can only be on one crew at a time (one installer cannot be assigned to crew a and crew b.) the only acception are daily crews. an installer can only ever be on a single crew, but can be on any amount of daily crews (along with their regular crew.) (I thought this was already working, but its not.)
+
+Daily crew names can be up to 10 characters (doesnt limit to a single letter). (regular crews names should still only be a single letter).
+
+use font Poppins for everything aside from the "WorkerHub" text in the header. here's the import code:
+```
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+```
+
+use font Quantico for the "WorkerHub" text in the header. here's the import code:
+```
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quantico:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+```
 
 
 
@@ -25,6 +47,27 @@ Not every single change needs to display the "Changes Saved" notification. can y
 
 
 # DONE
+
+Window/Mirror Layout Plans documents (REQUIRES: apply the new layout-plan-documents Supabase migration — it also fixes a regression in the uncommitted job-scope-counts migration that accidentally re-blocked flashing-material edits for installers/schedulers/finance):
+- Field supers on a Windows-scoped job with no assigned "Window Layout Plans" see a plain-text warning below the field super names ("The installers need an image of the window layout.", no background/border) on both the mobile job details page and the web job dashboard sidebar, with a clearly-a-button + button.
+- The + button offers: Take photo (native only) / Upload Image / Choose from Job images / Choose from Job documents / "Window layout plans not necessary" (bottom, muted). The first three create a new photo document that MUST be given a label (e.g. "West face"); choosing an existing document retags it as the layout plan; "not necessary" flags the job and stops the warnings. Any one of these clears the warning.
+- Mirrors-scoped jobs get the identical flow for "Mirror Layout Plans".
+- New documents have an optional Type selector ("Window Layout Plans", "Mirror Layout Plans", "Window Flashing Example"); typed documents show the type label above their title in the Documents list so installers can spot the right plan fast.
+- The retag write queues offline like other metadata writes; new layout-plan images upload immediately like other file documents.
+
+the "window flashing material" pre-filled text now says "regular rainbuster" everywhere it was still something else (sub-job creation placeholder, web sidebar edit-mode placeholder, and the dev-mode mock values that showed "Clear Anodized Aluminum" / "Stainless Steel"). The mobile field-super editor and jobcard quick view already said it.
+
+settings & account surfaces:
+- web top bar: the logout button is now a profile chip (initials avatar + name) that opens the Settings page; Sign out moved to the bottom of that page. The Developer role switcher stays in the top bar.
+- Change Password is now a button that opens a popup (new password + confirmation, 6+ chars, must match) and ACTUALLY changes the password via Supabase auth — the old inline "New password" field was silently discarded and never worked. In dev-switcher mode (no real session) the button is replaced with a hint.
+- email is no longer editable anywhere: the Settings profile form and the Operator's Edit worker popup both show it read-only (it's the Supabase sign-in identity — editing only the profile row would break sign-in; a wrong email means remove + re-invite). Name/phone editing unchanged.
+- scheduler mobile check: schedulers DO have a mobile view — Calendar (with assign), Backlog, Settings. Missing vs their web console: the Jobcards page and the new Jobs page (job dashboards + creation). Building those two tabs would bring scheduler mobile to parity.
+
+top-level job creation for schedulers + field supers (REQUIRES: apply the new top-level-jobs Supabase migration — creations are rejected server-side without it):
+- field supers (web Jobs page + mobile Jobs tab) and schedulers (a NEW web "Jobs" nav page between Calendar and Jobcards) get a "Create job" button: job name, jobsite address, scopes — no QBT jobcode (the Finance Manager fills it in later; the job lands in their amber missing-ID list) and no field-super picker.
+- a field super who creates a job is auto-assigned to it (DB trigger + mirrored locally) so it stays visible in their scoped views.
+- the migration widens the jobs INSERT policy (schedulers: any job; field supers: top-level jobs, sub-jobs still only under their own) and DB-enforces that non-operator creations leave the QBT jobcode and labor budget empty.
+- the scheduler's new Jobs page lists every top-level job with search + the job dashboard sidebar; job fields stay read-only for them, but they can now toggle "This job has Sub-Jobs" and create sub-jobs from here (the DB always allowed it — there was just no scheduler UI for it before).
 
 jobcard ↔ job navigation + display fixes:
 - the parent job name on a jobcard is now clickable: on jobcard pages it opens the job details sidebar stacked over the jobcard sidebar with a back arrow (top-left) returning to the jobcard; from a calendar popup (scheduler + field super) it opens the job details over the popup, back (or clicking outside) returns to the still-open jobcard. Field supers get the editable job view; schedulers get read-only.

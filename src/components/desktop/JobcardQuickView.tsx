@@ -39,6 +39,7 @@ import {
   READINESS_PRESETS,
 } from '@/types';
 import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
+import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { effectivePriority } from '@/utils/priorityRange';
@@ -295,6 +296,8 @@ export function JobcardQuickView({
     ? SCOPE_OPTIONS
     : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
   const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
+  // The parent JOB's scope counts, shown on every one of its jobcards.
+  const cardCounts = jobCounts(parentJob);
   // Crew assignment drives the title square: permanent crews first so colors
   // match the scheduler calendar (same ordering as CalendarBoard).
   const cardAssignments = assignments.filter((a) => a.jobcardId === jobcard.id);
@@ -845,6 +848,18 @@ export function JobcardQuickView({
           </Row>
         ) : null}
 
+        {/* Parent job's scope counts, "done/total" (installers update the
+            done numbers from their jobcard view). */}
+        {cardCounts.length > 0 && (
+          <Row icon="hash">
+            <Text style={styles.mutedText}>
+              {cardCounts
+                .map((c) => `${c.label} ${formatCount(c)}`)
+                .join('  ·  ')}
+            </Text>
+          </Row>
+        )}
+
         {/* Status — changeable, but always behind an inline confirm. A draft
             is always "Untouched", so create mode shows a static pill. */}
         <Row icon="activity" label="Status">
@@ -1130,7 +1145,7 @@ export function JobcardQuickView({
                     placeholder={
                       parentJob?.flashingMaterial
                         ? `Defaults to ${parentJob.flashingMaterial}`
-                        : 'e.g. Clear Anodized Aluminum'
+                        : 'e.g. regular rainbuster'
                     }
                     placeholderTextColor={colors.textTertiary}
                     autoFocus

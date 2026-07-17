@@ -8,7 +8,6 @@ import { Worker } from '@/types';
 
 export interface WorkerChanges {
   name: string;
-  email: string;
 }
 
 interface Props {
@@ -21,7 +20,6 @@ interface Props {
 
 export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -29,7 +27,6 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
   useEffect(() => {
     if (!worker) return;
     setName(worker.name);
-    setEmail(worker.email);
     setError(null);
     setConfirmDelete(false);
   }, [worker]);
@@ -40,11 +37,7 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
       setError('Name is required.');
       return;
     }
-    if (!email.trim()) {
-      setError('Email is required.');
-      return;
-    }
-    onSave(worker.id, { name: name.trim(), email: email.trim() });
+    onSave(worker.id, { name: name.trim() });
     onClose();
   };
 
@@ -85,15 +78,14 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
                 autoCapitalize="words"
               />
             </View>
+            {/* Email is the worker's sign-in identity (Supabase auth) — not
+                editable, since changing only the profile row would break
+                their sign-in. A wrong email means remove + re-invite. */}
             <View style={styles.col}>
-              <FormInput
-                label="Email"
-                value={email}
-                onChangeText={setEmail}
-                placeholder="jane@ox-glass.com"
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
+              <Text style={styles.readonlyLabel}>Email</Text>
+              <Text style={styles.readonlyValue} numberOfLines={1}>
+                {worker?.email ?? ''}
+              </Text>
             </View>
           </View>
 
@@ -178,6 +170,18 @@ const styles = themed(() => StyleSheet.create({
   },
   col: {
     flex: 1,
+  },
+  readonlyLabel: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    marginBottom: spacing.xs + 2,
+  },
+  readonlyValue: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    paddingVertical: spacing.sm,
   },
   error: {
     color: colors.danger,

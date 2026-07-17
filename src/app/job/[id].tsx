@@ -24,10 +24,16 @@ import {
   useJobcardPhotos,
 } from '@/components/photos/useJobPhotos';
 import { jobcardStatusColors } from '@/components/StatusPill';
+import { CountEditModal } from '@/components/jobsite/CountEditModal';
 import { pickJobPhotos } from '@/lib/photoCapture';
-import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
+import {
+  useAppStore,
+  useCurrentRole,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { JOBCARD_STATUSES } from '@/types';
+import { formatCount, JobCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
 
@@ -42,9 +48,11 @@ export default function JobDetailsScreen() {
   const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
   const setJobcardTaskDone = useAppStore((s) => s.setJobcardTaskDone);
   const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
+  const updateJob = useAppStore((s) => s.updateJob);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const addJobIssue = useAppStore((s) => s.addJobIssue);
   const jobIssues = useAppStore((s) => s.jobIssues);
+  const role = useCurrentRole();
   const photos = useJobcardPhotos(job?.id);
   // This card's issues, newest first (right under the button that raised them).
   const issues = useMemo(
@@ -68,6 +76,13 @@ export default function JobDetailsScreen() {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
   const [picking, setPicking] = useState(false);
+  // The parent JOB's scope counts ("Window Count 0/100") — tapping one opens
+  // the done-number popup for the roles that update progress.
+  const [editingCount, setEditingCount] = useState<JobCount | null>(null);
+  const counts = jobCounts(parentJob);
+  const canEditCounts =
+    parentJob != null &&
+    (role === 'installer' || role === 'field_super' || role === 'operator');
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
     index: number;
@@ -255,6 +270,30 @@ export default function JobDetailsScreen() {
               value={job.pickupLocation || 'Yes'}
             />
           ) : null}
+          {/* Parent job's scope counts — installers tap to update the done
+              number (office roles too); others see them read-only. */}
+          {counts.map((count) =>
+            canEditCounts ? (
+              <Pressable
+                key={count.doneField}
+                style={({ pressed }) => [pressed && styles.countPressed]}
+                onPress={() => setEditingCount(count)}
+              >
+                <InfoRow
+                  icon="hash"
+                  label={count.label}
+                  value={formatCount(count)}
+                />
+              </Pressable>
+            ) : (
+              <InfoRow
+                key={count.doneField}
+                icon="hash"
+                label={count.label}
+                value={formatCount(count)}
+              />
+            )
+          )}
         </View>
 
         <View style={styles.section}>
@@ -533,6 +572,14 @@ export default function JobDetailsScreen() {
         initialIndex={viewer?.index ?? null}
         onClose={() => setViewer(null)}
       />
+
+      <CountEditModal
+        count={editingCount}
+        onClose={() => setEditingCount(null)}
+        onSave={(doneField, done) => {
+          if (parentJob) updateJob(parentJob.id, { [doneField]: done });
+        }}
+      />
       </View>
     </View>
   );
@@ -737,6 +784,9 @@ const styles = themed(() => StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  countPressed: {
+    opacity: 0.7,
   },
   flashingRow: {
     flexDirection: 'row',

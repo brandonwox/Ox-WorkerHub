@@ -22,6 +22,7 @@ import {
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
@@ -37,6 +38,7 @@ import {
   themed,
 } from '@/theme';
 import { Job } from '@/types';
+import { formatCount, jobCounts } from '@/utils/jobCounts';
 
 type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
 
@@ -191,6 +193,10 @@ export default function JobSiteScreen() {
     setMapsOpen(false);
   };
 
+  // Scope counts, display-only here (totals are office-edited; done numbers
+  // change from the jobcard popup).
+  const counts = jobCounts(job);
+
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
   // Sub-Jobs list: name-only search, then collapse to 3 unless expanded.
@@ -336,6 +342,21 @@ export default function JobSiteScreen() {
                 : 'No Field Super assigned'}
             </Text>
           </View>
+          {/* Scope counts, "done/total" — shown once a total is set (totals
+              are edited from the office surfaces; done from jobcards). */}
+          {counts.length > 0 && (
+            <View style={styles.infoRow}>
+              <Feather name="hash" size={14} color={colors.textSecondary} />
+              <Text style={styles.infoValue} numberOfLines={2}>
+                {counts
+                  .map((c) => `${c.label} ${formatCount(c)}`)
+                  .join('  ·  ')}
+              </Text>
+            </View>
+          )}
+          {/* Field-Super-only layout-plan warnings (component gates itself). */}
+          <LayoutPlanBanner job={job} kind="window" />
+          <LayoutPlanBanner job={job} kind="mirror" />
         </View>
 
         {/* Section cards — the active one hides its button and shows below. */}

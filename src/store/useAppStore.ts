@@ -30,6 +30,7 @@ import {
   JobcardStatus,
   JobDocument,
   JobDocumentKind,
+  JobDocumentType,
   JobIssue,
   JobPhoto,
   JobScope,
@@ -213,6 +214,7 @@ const pendingIssueDeletes = new Map<string, number>();
 const pendingPhotoNotes = new Map<string, number>();
 const pendingJobcardTaskWrites = new Map<string, number>();
 const pendingDocumentInserts = new Map<string, number>();
+const pendingDocumentUpdates = new Map<string, number>();
 
 const GUARD_MAPS = {
   issueUpsert: pendingIssueUpserts,
@@ -220,6 +222,7 @@ const GUARD_MAPS = {
   photoNote: pendingPhotoNotes,
   jobcardTasks: pendingJobcardTaskWrites,
   documentInsert: pendingDocumentInserts,
+  documentUpdate: pendingDocumentUpdates,
 } as const;
 
 /** Which guard map a queued op holds a row in (serialized with the op). */
@@ -284,6 +287,8 @@ const OUTBOX_EXECUTORS = {
   deleteJobPhoto: (p: { id: string; storagePath: string }) =>
     backend.deleteJobPhoto(p.id, p.storagePath),
   insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
+  updateJobDocumentType: (p: { id: string; docType?: JobDocumentType }) =>
+    backend.updateJobDocumentType(p.id, p.docType),
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
@@ -899,13 +904,20 @@ interface AppState {
     jobId: string;
     kind: JobDocumentKind;
     title: string;
+    /** Optional type tag (layout plans / flashing example). */
+    docType?: JobDocumentType;
     /** Content of a 'text' document. */
     body?: string;
-    /** Local file uri of a 'photo'/'pdf' document. */
+    /** Local file uri of a 'photo'/'pdf' document (an https URL works too). */
     localUri?: string;
     /** MIME type of the file ('image/jpeg' | 'application/pdf'). */
     contentType?: string;
   }) => Promise<boolean>;
+  /**
+   * Retag an existing document ("Choose from Job documents" assigns it as a
+   * layout plan). Queues offline like other metadata writes.
+   */
+  setJobDocumentType: (id: string, docType: JobDocumentType | undefined) => void;
 
   // --- Job issues ---
   /**
@@ -1247,14 +1259,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         const local = state.jobPhotos.find((p) => p.id === photo.id);
         return local ? { ...photo, note: local.note } : photo;
       }),
-      // Documents with a queued insert survive refreshes that predate them.
+      // Documents with a queued insert survive refreshes that predate them;
+      // ones with a queued update (retag) keep their local shape.
       jobDocuments: [
         ...state.jobDocuments.filter(
           (doc) =>
             pendingDocumentInserts.has(doc.id) &&
             !data.jobDocuments.some((f) => f.id === doc.id)
         ),
-        ...data.jobDocuments,
+        ...data.jobDocuments.map((doc) => {
+          if (!pendingDocumentUpdates.has(doc.id)) return doc;
+          const local = state.jobDocuments.find((d) => d.id === doc.id);
+          return local ?? doc;
+        }),
       ],
       // Issues with unsettled writes keep their local shape: pending deletes
       // stay gone, pending inserts/updates keep the local row (including ones
@@ -2128,6 +2145,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       jobId: input.jobId,
       workerId: me.id,
       kind: input.kind,
+      docType: input.docType,
       title: input.title.trim(),
       body: input.kind === 'text' ? input.body : undefined,
       createdAt: new Date().toISOString(),
@@ -2168,6 +2186,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       write('insertJobDocument', doc, { map: 'documentInsert', id: doc.id });
     }
     return true;
+  },
+
+  setJobDocumentType: (id, docType) => {
+    set((s) => ({
+      jobDocuments: s.jobDocuments.map((doc) =>
+        doc.id === id ? { ...doc, docType } : doc
+      ),
+    }));
+    if (backendActive(get())) {
+      write(
+        'updateJobDocumentType',
+        { id, docType },
+        { map: 'documentUpdate', id }
+      );
+    }
   },
 
   addJobIssue: (input) => {

@@ -1,12 +1,13 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { AuthControl } from '@/components/AuthControl';
 import { SettingsContent } from '@/components/SettingsContent';
 import { spacing, themed } from '@/theme';
 
 /**
  * Settings on the web console (every role) — profile + appearance in a
- * centered column. Sign-out and the Developer role switcher live in the top
- * bar here, so unlike the mobile tab they aren't repeated on the page.
+ * centered column, reached from the top bar's profile chip. Sign out sits at
+ * the bottom of the page; the Developer role switcher stays in the top bar.
  */
 export default function SettingsPage() {
   return (
@@ -17,6 +18,7 @@ export default function SettingsPage() {
         showsVerticalScrollIndicator={false}
       >
         <SettingsContent />
+        <AuthControl variant="card" />
       </ScrollView>
     </View>
   );
