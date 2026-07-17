@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,13 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormInput } from '@/components/FormInput';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Job } from '@/types';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
+import { Job, JOB_SCOPES, JobScope } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
 /**
- * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap a
- * job to expand it and update the jobsite address and flashing material.
+ * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap
+ * a job to open its details page; the chevron expands an inline editor for
+ * the jobsite address and flashing material.
  */
 export function FieldSuperJobsMobile() {
   const me = useCurrentWorker();
@@ -29,7 +31,10 @@ export function FieldSuperJobsMobile() {
   const jobcards = useAppStore((s) => s.jobcards);
   const assignments = useAppStore((s) => s.assignments);
   const updateJob = useAppStore((s) => s.updateJob);
+  const addJob = useAppStore((s) => s.addJob);
+  const flash = useAppStore((s) => s.flash);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Sub-jobs stay out of this office list — they're managed from the web job
   // details sidebar (their jobcards still show on the Jobcards tab).
@@ -58,9 +63,22 @@ export function FieldSuperJobsMobile() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.heading}>Jobs</Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading}>Jobs</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.newJobButton,
+              pressed && styles.saveDim,
+            ]}
+            onPress={() => setCreateOpen(true)}
+          >
+            <Feather name="plus" size={15} color={colors.textOnAccent} />
+            <Text style={styles.newJobText}>New job</Text>
+          </Pressable>
+        </View>
         <Text style={styles.hint}>
-          Tap a job to update its address and flashing material.
+          Tap a job to open it. Use the arrow to edit its address and flashing
+          material.
         </Text>
 
         <ScrollView contentContainerStyle={styles.listContent}>
@@ -88,7 +106,150 @@ export function FieldSuperJobsMobile() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CreateJobSheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={(input) => {
+          const created = addJob({ ...input, fieldSuperIds: [] });
+          flash(`Job "${created.name}" created`, 'success');
+        }}
+      />
     </SafeAreaView>
+  );
+}
+
+/**
+ * Phone-layout job creation: name, jobsite address, and scope chips. No QBT
+ * jobcode — the Finance Manager fills it in later — and the creating Field
+ * Super is auto-assigned to the job (store + DB trigger).
+ */
+function CreateJobSheet({
+  visible,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSubmit: (input: {
+    name: string;
+    location: string;
+    scopes?: JobScope[];
+  }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
+  const [scopes, setScopes] = useState<JobScope[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setName('');
+    setLocation('');
+    setScopes([]);
+    setError(null);
+    onClose();
+  };
+
+  const toggleScope = (scope: JobScope) =>
+    setScopes((prev) =>
+      prev.includes(scope)
+        ? prev.filter((s) => s !== scope)
+        : [...prev, scope]
+    );
+
+  const submit = () => {
+    if (!name.trim()) {
+      setError('Job name is required.');
+      return;
+    }
+    onSubmit({
+      name: name.trim(),
+      location: location.trim(),
+      scopes: scopes.length > 0 ? scopes : undefined,
+    });
+    close();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
+      <View style={styles.sheetOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        <View style={styles.sheetCard}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Create job</Text>
+            <Pressable onPress={close} hitSlop={8}>
+              <Feather name="x" size={20} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          <FormInput
+            label="Job name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Snyderville Commercial Complex"
+            autoCapitalize="words"
+          />
+          <FormInput
+            label="Jobsite address"
+            value={location}
+            onChangeText={setLocation}
+            placeholder="123 Main St, Park City, UT"
+          />
+
+          <View style={styles.scopeField}>
+            <Text style={styles.scopeLabel}>Scopes</Text>
+            <View style={styles.scopeChips}>
+              {JOB_SCOPES.map((scope) => {
+                const active = scopes.includes(scope);
+                return (
+                  <Pressable
+                    key={scope}
+                    style={[styles.scopeChip, active && styles.scopeChipOn]}
+                    onPress={() => toggleScope(scope)}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeChipText,
+                        active && styles.scopeChipTextOn,
+                      ]}
+                    >
+                      {scope}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.sheetHint}>
+              The QuickBooks Time jobcode ID is filled in later by the Finance
+              Manager.
+            </Text>
+          </View>
+
+          {error ? <Text style={styles.sheetError}>{error}</Text> : null}
+
+          <View style={styles.sheetActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.sheetCancel,
+                pressed && styles.saveDim,
+              ]}
+              onPress={close}
+            >
+              <Text style={styles.sheetCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.sheetSubmit,
+                pressed && styles.saveDim,
+              ]}
+              onPress={submit}
+            >
+              <Text style={styles.sheetSubmitText}>Create job</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -123,8 +284,18 @@ function JobRow({
 
   return (
     <View style={[styles.card, archived && styles.cardArchived]}>
-      <Pressable style={styles.cardHeader} onPress={onToggle}>
-        <View style={styles.cardTitleWrap}>
+      {/* Tapping the row opens the job's details page; the chevron alone
+          expands the inline address/flashing editor. */}
+      <View style={styles.cardHeader}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.cardTitleWrap,
+            pressed && styles.saveDim,
+          ]}
+          onPress={() =>
+            router.push({ pathname: '/job-site/[id]', params: { id: job.id } })
+          }
+        >
           <Text style={styles.cardTitle} numberOfLines={1}>
             {job.name}
           </Text>
@@ -133,13 +304,19 @@ function JobRow({
             {counts.scheduled} on calendar
             {archived ? ' · Finished' : ''}
           </Text>
-        </View>
-        <Feather
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={colors.textSecondary}
-        />
-      </Pressable>
+        </Pressable>
+        <Pressable
+          hitSlop={12}
+          style={({ pressed }) => [pressed && styles.saveDim]}
+          onPress={onToggle}
+        >
+          <Feather
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textSecondary}
+          />
+        </Pressable>
+      </View>
 
       {expanded && (
         <View style={styles.cardBody}>
@@ -179,18 +356,6 @@ function JobRow({
               {saved && !dirty ? 'Saved ✓' : 'Save'}
             </Text>
           </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.picsButton,
-              pressed && styles.saveDim,
-            ]}
-            onPress={() =>
-              router.push({ pathname: '/job-site/[id]', params: { id: job.id } })
-            }
-          >
-            <Feather name="image" size={15} color={colors.primary} />
-            <Text style={styles.picsText}>Job pics</Text>
-          </Pressable>
         </View>
       )}
     </View>
@@ -205,12 +370,31 @@ const styles = themed(() => StyleSheet.create({
   flex: {
     flex: 1,
   },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
   heading: {
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 24,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+  },
+  newJobButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  newJobText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 13,
   },
   hint: {
     color: colors.textSecondary,
@@ -274,18 +458,102 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 14,
   },
-  picsButton: {
-    flexDirection: 'row',
+  sheetOverlay: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.pill,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    paddingVertical: spacing.md,
+    padding: spacing.lg,
   },
-  picsText: {
+  sheetCard: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: colors.surface,
+    ...modalShadow,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sheetTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 18,
+  },
+  scopeField: {
+    gap: spacing.sm,
+  },
+  scopeLabel: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  scopeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  scopeChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  scopeChipOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  scopeChipText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  scopeChipTextOn: {
     color: colors.primary,
+  },
+  sheetHint: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  sheetError: {
+    color: colors.danger,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  sheetCancel: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sheetCancelText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  sheetSubmit: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+  },
+  sheetSubmitText: {
+    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },

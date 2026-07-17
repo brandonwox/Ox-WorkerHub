@@ -448,8 +448,23 @@ export async function fetchAllData(): Promise<BackendData> {
 // --- Write layer (domain -> row). INSERT and UPDATE are kept separate so an
 //     update never trips a stricter INSERT RLS policy (e.g. self profile edits).
 
-function check(error: { message: string } | null): void {
-  if (error) throw new Error(error.message);
+/**
+ * An error thrown by the write layer, carrying Postgres' SQLSTATE. The outbox
+ * flusher reads `code` to tell a permission refusal ('42501' — RLS or one of
+ * the role guards) apart from a bug or a transport failure.
+ */
+export class BackendWriteError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'BackendWriteError';
+    this.code = code;
+  }
+}
+
+function check(error: { message: string; code?: string } | null): void {
+  if (error) throw new BackendWriteError(error.message, error.code);
 }
 
 function jobToRow(job: Job) {
@@ -474,9 +489,13 @@ export async function insertJob(job: Job): Promise<void> {
   // Sub-jobs inherit the parent's Field Supers via a DB trigger (the creator —
   // a scheduler or field super — has no write grant on job_field_supers).
   if (job.parentJobId) return;
-  // Field Super assignments live in the job_field_supers join table, not on the
-  // jobs row.
-  await setJobFieldSupers(job.id, job.fieldSuperIds ?? []);
+  // Field Super assignments live in the job_field_supers join table, not on
+  // the jobs row. Only written when there are assignments to record (the
+  // Operator's create flow) — scheduler/field-super creations pass none, and
+  // they couldn't write the operator-only table anyway (a creating Field
+  // Super is auto-assigned by a DB trigger instead).
+  const supers = job.fieldSuperIds ?? [];
+  if (supers.length > 0) await setJobFieldSupers(job.id, supers);
 }
 export async function updateJob(job: Job): Promise<void> {
   // Note: Field Super assignments are NOT written here. They go through

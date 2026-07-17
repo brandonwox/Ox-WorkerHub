@@ -44,10 +44,15 @@ interface Props {
   onClose: () => void;
   /**
    * Whether the viewer may edit the jobsite address / flashing material inline
-   * (Field Supers and the Operator; RLS matches). Also gates the options
-   * button and sub-job creation.
+   * (Field Supers and the Operator; RLS matches). Gates the Edit pencil.
    */
   editable?: boolean;
+  /**
+   * Whether the viewer may toggle "This job has Sub-Jobs" and create sub-jobs
+   * (schedulers may, despite not being `editable`; RLS matches). Defaults to
+   * `editable`.
+   */
+  canManageSubJobs?: boolean;
   /** Jobs passed through to the jobcard quick view (the viewer's scope). */
   quickViewJobs: Job[];
   /**
@@ -56,6 +61,11 @@ interface Props {
    * those rows render non-navigable.
    */
   onOpenJob?: (jobId: string) => void;
+  /**
+   * When set, the sidebar was opened on top of another view (a jobcard's
+   * parent-job link): the top-left X becomes a back arrow calling this.
+   */
+  onBack?: () => void;
 }
 
 /**
@@ -70,8 +80,10 @@ export function JobDashboardSidebar({
   job,
   onClose,
   editable = false,
+  canManageSubJobs = editable,
   quickViewJobs,
   onOpenJob,
+  onBack,
 }: Props) {
   const workers = useAppStore((s) => s.workers);
   const jobs = useAppStore((s) => s.jobs);
@@ -287,28 +299,36 @@ export function JobDashboardSidebar({
           <Pressable
             style={({ pressed }) => [pressed && styles.pressed]}
             hitSlop={12}
-            onPress={onClose}
+            onPress={onBack ?? onClose}
           >
-            <Feather name="x" size={24} color={colors.textPrimary} />
+            <Feather
+              name={onBack ? 'arrow-left' : 'x'}
+              size={24}
+              color={colors.textPrimary}
+            />
           </Pressable>
-          {editable && (
+          {(editable || canManageSubJobs) && (
             <View style={styles.topRowActions}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.optionsButton,
-                  editMode && styles.editButtonActive,
-                  pressed && styles.pressed,
-                ]}
-                hitSlop={8}
-                onPress={() => setEditMode((on) => !on)}
-              >
-                <Feather
-                  name={editMode ? 'check' : 'edit-2'}
-                  size={17}
-                  color={editMode ? colors.textOnAccent : colors.textSecondary}
-                />
-              </Pressable>
-              {!job.parentJobId && (
+              {editable && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.optionsButton,
+                    editMode && styles.editButtonActive,
+                    pressed && styles.pressed,
+                  ]}
+                  hitSlop={8}
+                  onPress={() => setEditMode((on) => !on)}
+                >
+                  <Feather
+                    name={editMode ? 'check' : 'edit-2'}
+                    size={17}
+                    color={
+                      editMode ? colors.textOnAccent : colors.textSecondary
+                    }
+                  />
+                </Pressable>
+              )}
+              {canManageSubJobs && !job.parentJobId && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.optionsButton,
@@ -552,7 +572,7 @@ export function JobDashboardSidebar({
           <View style={styles.section}>
             <View style={styles.picturesHeader}>
               <Text style={styles.sectionHeader}>Sub-Jobs</Text>
-              {editable && (
+              {canManageSubJobs && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.uploadButton,

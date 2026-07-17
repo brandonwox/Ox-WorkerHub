@@ -4,25 +4,11 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-on mobile -> field super jobs tab -> clicking on a job: should open the job details for the job (like it does ).
-
-on the calendar -> viewing the monthly calendar -> inside a day -> displaying multiple jobcards -> if a jobcard has been assigned multiple crews it currently shows "Crew A" and "Crew B" (or whatever the crew name is). but it shouldn't be saying "Crew" it should just be showing "A" and "B" (or whatever letters the crew name is)
-
-jobcard details right sidebar -> the parent job should be clickable, which opens the job details right sidebar over top of the current jobcards right sidebar. there should be a back button in the top left. (and when viewing from a calendar it should also open the job details page, but over the current jobcard in the popup)
-
-job details page: there needs to be a search option for the sub-jobs section.
-
-job details page:
-- put the subjobs section into a button next to the three buttons for "Issues", "Jobcards", and "Documents". the subjobs section should be open by default. (it should rotate out when one of the other options is clicked.)
-- the subjobs section should collapse to 3 sub-jobs displayed by default unless expanded the section is expanded.
-
-job details -> right sidebar on web: add an edit button to the top right of the sidebar (now that we have an edit button we can remove the second jobsite address, and just allow the original to be edited when the edit button is active.
+can you check if schedulers have a mobile view? (I want all worker roles to be  able to operate on the web or on their phone.)
 
 let schedulers and field supers create TOP-LEVEL jobs (without requiring a QBT Jobcode ID — the finance manager fills those in later). Sub-job creation already works for them; this is about normal jobs. Needs UI (a create button on a page schedulers/field supers can reach) plus a Supabase policy change (their job INSERTs are currently limited to sub-jobs, and a field super creating a top-level job must also be auto-assigned to it or they won't see it).
 
-when i log in on web, if i enter a site that my role as a worker doesnt have access to it displayed a weird page, are we able to customize the page so that it says something like "You don't have access to this page." and there should be a button below on the page that takes them to their dashboard.
-
-in the settings theres a new password option: they should have to click a button that says "Change Password" that opens a popup for them to change their password.
+in the settings theres a "new password" option: they should have to click a button that says "Change Password" that opens a popup for them to change their password. (and double check the functionality of it, does it actually work?)
 
 web needs a way to access settings: Let's change the log out button at the top of the screen. add a profile image to the left of their name. and instead of signing them out, it opens a large settings page, the sign out button at the bottom of the settings page.
 
@@ -32,16 +18,24 @@ MENTAL NOTE FOR LATER (NOT RIGHT NOW): field supers OR installers will have to e
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
 
-add "profit sharing" tab for installers: (DO NOT IMPLEMENT UNTIL I DETAIL THIS PLAN MORE (e.g. HOW WILL PROFIT SHARING BE TRACKED))
-1. installers should be able to see their profit sharing in a list of all most recent to oldest. They should also be able to sort through jobs and see profit sharing progress for each job (each profit sharing check they've received so far).
+
 
 # Unsure
-
-create sms provider account (twilio is the standard). This would allow us to send text messages to schedulers when a Field Super creates a jobcard with a priority of "Now".
 
 
 
 # DONE
+
+jobcard ↔ job navigation + display fixes:
+- the parent job name on a jobcard is now clickable: on jobcard pages it opens the job details sidebar stacked over the jobcard sidebar with a back arrow (top-left) returning to the jobcard; from a calendar popup (scheduler + field super) it opens the job details over the popup, back (or clicking outside) returns to the still-open jobcard. Field supers get the editable job view; schedulers get read-only.
+- mobile field super Jobs tab: tapping a job now opens its job details page; the chevron alone expands the inline address/flashing editor (the redundant "Job pics" button was removed since the row tap goes there).
+- monthly calendar + day sidebar crew tags: legacy crew names like "Crew A" now render as just "A" (leading "Crew" prefix stripped; single-letter names unchanged).
+
+job details page — sub-jobs section + sidebar editing (web + mobile):
+- Sub-Jobs is now a 4th section card next to Issues / Documents / Jobcards (leading the row, only on parent jobs with sub-jobs enabled). One section is always open and clicking another card cycles to it — Sub-Jobs opens by default when the job has sub-jobs, otherwise Issues opens by default.
+- the sub-jobs list collapses to 3 by default with a "View all N sub-jobs" / "Show fewer" toggle.
+- a search box appears in the Sub-Jobs section once there are more than 3 sub-jobs, filtering by name only.
+- web sidebar only: an Edit pencil toggle at the top-right (next to the ⋯ options button, editable viewers only). The duplicate "Jobsite address" edit block is gone — the single header address swaps to an inline editor while Edit mode is on, and the flashing material editor (window jobs) also only shows in Edit mode.
 
 jobcard sidebar + creation rework:
 - field-super-jobcards and other jobcards pages (not the calendar pages): clicking a jobcard opens it in a right sidebar the same size as the job details sidebar, instead of the old centered popup.

@@ -121,6 +121,11 @@ interface Props {
   onDelete: (id: string) => void;
   /** Receives the validated draft when `creating`; required in that mode. */
   onCreate?: (input: NewJobcardInput) => void;
+  /**
+   * When provided, the parent job name above the title becomes a link that
+   * hands the job id up — the host opens its job details over this view.
+   */
+  onOpenJob?: (jobId: string) => void;
 }
 
 /**
@@ -142,6 +147,7 @@ export function JobcardQuickView({
   onClose,
   onDelete,
   onCreate,
+  onOpenJob,
 }: Props) {
   // Read the live card from the store so autosaved edits render back instantly.
   const storeJobcard = useAppStore((s) =>
@@ -693,6 +699,19 @@ export function JobcardQuickView({
                 </View>
               )}
             </View>
+          ) : parentJob && onOpenJob ? (
+            <Pressable
+              style={({ pressed, hovered }: PressState) => [
+                styles.parentJobLinkWrap,
+                (hovered || pressed) && styles.pressedLink,
+              ]}
+              hitSlop={4}
+              onPress={() => onOpenJob(parentJob.id)}
+            >
+              <Text style={styles.parentJobText}>
+                {jobDisplayName(parentJob, jobs)}
+              </Text>
+            </Pressable>
           ) : (
             <Text style={styles.parentJobText}>
               {parentJob ? jobDisplayName(parentJob, jobs) : 'Unlinked job'}
@@ -1521,6 +1540,12 @@ const styles = themed(() => StyleSheet.create({
     // Line up with the title text: crew-square margin + square + row gap +
     // the title Editable's own inset.
     paddingLeft: 5 + 14 + spacing.md + spacing.sm,
+  },
+  parentJobLinkWrap: {
+    alignSelf: 'flex-start',
+  },
+  pressedLink: {
+    opacity: 0.7,
   },
   parentJobPicker: {
     gap: spacing.sm,

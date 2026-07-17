@@ -1,15 +1,23 @@
 import { Feather } from '@expo/vector-icons';
 import { addMonths, format, parseISO, subMonths } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
+import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
 import { Backlog, isReadyNow } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
 import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
@@ -58,6 +66,7 @@ export function CalendarBoard({
   const unassignJobcard = useAppStore((s) => s.unassignJobcard);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const flash = useAppStore((s) => s.flash);
+  const role = useCurrentRole();
 
   // Crews toggled OFF in the calendar view. Empty = every crew is visible, so
   // crews added later show up automatically until the scheduler hides them.
@@ -76,6 +85,9 @@ export function CalendarBoard({
   // The day whose schedule shows in the sidebar, or null when closed.
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // A jobcard popup's parent-job link opens the job dashboard OVER the popup;
+  // its back arrow returns to the (still-open) jobcard.
+  const [viewingJobId, setViewingJobId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
   // The day currently flashing from a "View on calendar" jump (clears itself).
   const [flashDate, setFlashDate] = useState<string | null>(null);
@@ -143,6 +155,13 @@ export function CalendarBoard({
     () => [...crews, ...dailyCrews],
     [crews, dailyCrews]
   );
+
+  // Calendar tags show just the crew's letter — legacy names like "Crew A"
+  // drop the "Crew" prefix (new names are single letters already).
+  const crewTagFor = (crewId: string) => {
+    const name = allCrews.find((c) => c.id === crewId)?.name ?? '?';
+    return name.replace(/^crew\s+/i, '');
+  };
 
   // Distinct, stable color per crew for tinting cards and chips.
   const crewColorMap = useMemo(
@@ -399,9 +418,7 @@ export function CalendarBoard({
             }}
             canUnassign={canAssign}
             canAssign={canAssign}
-            crewNameFor={(crewId) =>
-              allCrews.find((c) => c.id === crewId)?.name ?? '?'
-            }
+            crewNameFor={crewTagFor}
           />
         </Animated.View>
 
@@ -412,9 +429,7 @@ export function CalendarBoard({
             jobcards={jobcards}
             jobNameFor={jobNameFor}
             colorForCrew={colorForCrew}
-            crewNameFor={(crewId) =>
-              allCrews.find((c) => c.id === crewId)?.name ?? '?'
-            }
+            crewNameFor={crewTagFor}
             onOpenCard={setViewingId}
             onClose={() => setDayFocus(null)}
           />
@@ -462,9 +477,37 @@ export function CalendarBoard({
       <JobcardQuickView
         jobcardId={viewingId}
         jobs={jobs}
-        onClose={() => setViewingId(null)}
+        onClose={() => {
+          setViewingId(null);
+          setViewingJobId(null);
+        }}
         onDelete={handleDelete}
+        onOpenJob={setViewingJobId}
       />
+
+      {/* The popup's parent-job link opens the job dashboard over it (its own
+          Modal stacks above the popup's); back returns to the jobcard. */}
+      {viewingJobId != null && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setViewingJobId(null)}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setViewingJobId(null)}
+          />
+          <JobDashboardSidebar
+            job={jobs.find((j) => j.id === viewingJobId) ?? null}
+            onClose={() => setViewingJobId(null)}
+            onBack={() => setViewingJobId(null)}
+            editable={role === 'field_super'}
+            quickViewJobs={jobs}
+            onOpenJob={setViewingJobId}
+          />
+        </Modal>
+      )}
     </View>
   );
 }

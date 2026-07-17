@@ -21,19 +21,28 @@ const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 
 interface Props {
   visible: boolean;
+  /**
+   * Who is creating: the Operator's full form (default), or the trimmed
+   * 'field' form for Schedulers / Field Supers — no QBT jobcode (the Finance
+   * Manager fills it in later) and no Field Super picker (a creating Field
+   * Super is auto-assigned), but with a jobsite address input.
+   */
+  mode?: 'operator' | 'field';
   /** Roster of field supers the Operator can assign to this job. */
-  fieldSupers: Worker[];
+  fieldSupers?: Worker[];
   onClose: () => void;
   onSubmit: (job: NewJobInput) => void;
 }
 
 export function CreateJobModal({
   visible,
-  fieldSupers,
+  mode = 'operator',
+  fieldSupers = [],
   onClose,
   onSubmit,
 }: Props) {
   const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
@@ -41,6 +50,7 @@ export function CreateJobModal({
 
   const reset = () => {
     setName('');
+    setLocation('');
     setQbtJobcodeId('');
     setScopes([]);
     setFieldSuperIds([]);
@@ -57,12 +67,14 @@ export function CreateJobModal({
       setError('Job name is required.');
       return;
     }
-    // Address is set by the Field Super, not the Operator.
+    // Operator mode leaves the address to the Field Super; field mode offers
+    // it right on the form (still optional — editable later either way).
     onSubmit({
       name: name.trim(),
-      location: '',
-      qbtJobcodeId: qbtJobcodeId.trim() || undefined,
-      fieldSuperIds,
+      location: mode === 'field' ? location.trim() : '',
+      qbtJobcodeId:
+        mode === 'operator' ? qbtJobcodeId.trim() || undefined : undefined,
+      fieldSuperIds: mode === 'operator' ? fieldSuperIds : [],
       scopes: scopes.length > 0 ? scopes : undefined,
     });
     close();
@@ -87,13 +99,28 @@ export function CreateJobModal({
             placeholder="Snyderville Commercial Complex"
             autoCapitalize="words"
           />
-          <FormInput
-            label="QuickBooks Time jobcode ID"
-            value={qbtJobcodeId}
-            onChangeText={setQbtJobcodeId}
-            placeholder="e.g. 90112 — maps hours to QBT"
-            autoCapitalize="none"
-          />
+          {mode === 'operator' ? (
+            <FormInput
+              label="QuickBooks Time jobcode ID"
+              value={qbtJobcodeId}
+              onChangeText={setQbtJobcodeId}
+              placeholder="e.g. 90112 — maps hours to QBT"
+              autoCapitalize="none"
+            />
+          ) : (
+            <>
+              <FormInput
+                label="Jobsite address"
+                value={location}
+                onChangeText={setLocation}
+                placeholder="123 Main St, Park City, UT"
+              />
+              <Text style={styles.fieldHint}>
+                The QuickBooks Time jobcode ID is filled in later by the
+                Finance Manager.
+              </Text>
+            </>
+          )}
 
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Scopes</Text>
@@ -110,22 +137,26 @@ export function CreateJobModal({
             </Text>
           </View>
 
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Field supers</Text>
-            <FieldSuperPicker
-              fieldSupers={fieldSupers}
-              selected={fieldSuperIds}
-              onToggle={(id) =>
-                setFieldSuperIds((ids) =>
-                  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
-                )
-              }
-            />
-            <Text style={styles.fieldHint}>
-              Assigned field supers see this job and its jobcards. You can pick
-              more than one.
-            </Text>
-          </View>
+          {mode === 'operator' && (
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Field supers</Text>
+              <FieldSuperPicker
+                fieldSupers={fieldSupers}
+                selected={fieldSuperIds}
+                onToggle={(id) =>
+                  setFieldSuperIds((ids) =>
+                    ids.includes(id)
+                      ? ids.filter((x) => x !== id)
+                      : [...ids, id]
+                  )
+                }
+              />
+              <Text style={styles.fieldHint}>
+                Assigned field supers see this job and its jobcards. You can
+                pick more than one.
+              </Text>
+            </View>
+          )}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 

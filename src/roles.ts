@@ -27,6 +27,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
  */
 export type DesktopHref =
   | '/scheduler-calendar'
+  | '/scheduler-jobs'
   | '/scheduler-jobcards'
   | '/operator-jobs'
   | '/operator-people'
@@ -76,6 +77,8 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   ],
   scheduler: [
     { href: '/scheduler-calendar', label: 'Calendar', icon: 'calendar' },
+    // Every job (schedulers aren't scoped) — job dashboards + job creation.
+    { href: '/scheduler-jobs', label: 'Jobs', icon: 'briefcase' },
     // Distinct route from the Field Super's '/field-super-jobcards' — the
     // Scheduler creates jobcards across every job, not just their own.
     { href: '/scheduler-jobcards', label: 'Jobcards', icon: 'clipboard' },

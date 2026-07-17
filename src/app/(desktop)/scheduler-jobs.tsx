@@ -15,22 +15,17 @@ import {
   NewJobInput,
 } from '@/components/desktop/CreateJobModal';
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
-import {
-  jobsForFieldSuper,
-  useAppStore,
-  useCurrentRole,
-  useCurrentWorker,
-} from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
- * Field Super → Jobs: searchable list of their jobs; clicking one opens the
- * job dashboard sidebar (address, flashing material, jobcards, issues,
- * documents, pictures) on the right.
+ * Scheduler → Jobs: searchable list of every job; clicking one opens the job
+ * dashboard sidebar. Read-only on job fields (the pencil is hidden), but
+ * schedulers may create jobs and manage sub-jobs — RLS matches. New jobs
+ * carry no QBT jobcode; the Finance Manager fills it in later.
  */
-export default function FieldSuperJobsScreen() {
+export default function SchedulerJobsScreen() {
   const role = useCurrentRole();
-  const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
   const jobcards = useAppStore((s) => s.jobcards);
   const addJob = useAppStore((s) => s.addJob);
@@ -40,20 +35,18 @@ export default function FieldSuperJobsScreen() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  // A Field Super sees ONLY the jobs they're assigned to, Active first.
-  const myJobs = useMemo(
+  // Every job, Active first. Sub-jobs stay out of the top-level list — they
+  // live inside their parent's Sub-Jobs section.
+  const sortedJobs = useMemo(
     () =>
-      (me ? jobsForFieldSuper(jobs, me.id) : []).sort((a, b) =>
+      [...jobs].sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
-    [jobs, me]
+    [jobs]
   );
-
-  // Sub-jobs stay out of the top-level list — they live inside their parent's
-  // Sub-Jobs section (myJobs keeps them for the sidebar/quick-view lookups).
   const listJobs = useMemo(
-    () => myJobs.filter((job) => !job.parentJobId),
-    [myJobs]
+    () => sortedJobs.filter((job) => !job.parentJobId),
+    [sortedJobs]
   );
 
   const visibleJobs = useMemo(() => {
@@ -67,17 +60,15 @@ export default function FieldSuperJobsScreen() {
   }, [listJobs, query]);
 
   const selectedJob = useMemo(
-    () => myJobs.find((job) => job.id === selectedJobId) ?? null,
-    [myJobs, selectedJobId]
+    () => jobs.find((job) => job.id === selectedJobId) ?? null,
+    [jobs, selectedJobId]
   );
 
-  if (role !== 'field_super') return <AccessDenied />;
+  if (role !== 'scheduler') return <AccessDenied />;
 
   const jobcardCountFor = (jobId: string) =>
     jobcards.filter((c) => c.jobId === jobId).length;
 
-  // No QBT jobcode here — the Finance Manager fills it in later. The creator
-  // is auto-assigned to the job (store + DB trigger).
   const handleCreate = (input: NewJobInput) => {
     const created = addJob(input);
     flash(`Job "${created.name}" created`, 'success');
@@ -88,8 +79,8 @@ export default function FieldSuperJobsScreen() {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionHint}>
-          A card for every job — open one for its full dashboard: address,
-          flashing material, jobcards, issues, documents, and pictures.
+          A card for every job — open one for its dashboard: jobcards, issues,
+          documents, sub-jobs, and pictures.
         </Text>
 
         <View style={styles.toolbar}>
@@ -121,10 +112,7 @@ export default function FieldSuperJobsScreen() {
         </View>
 
         {listJobs.length === 0 ? (
-          <Text style={styles.emptyText}>
-            No jobs assigned to you yet — the Operator assigns Field Supers to
-            jobs.
-          </Text>
+          <Text style={styles.emptyText}>No jobs yet.</Text>
         ) : visibleJobs.length === 0 ? (
           <Text style={styles.emptyText}>No jobs match “{query.trim()}”.</Text>
         ) : (
@@ -184,8 +172,9 @@ export default function FieldSuperJobsScreen() {
       <JobDashboardSidebar
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
-        editable
-        quickViewJobs={myJobs}
+        editable={false}
+        canManageSubJobs
+        quickViewJobs={jobs}
         onOpenJob={setSelectedJobId}
       />
     </View>

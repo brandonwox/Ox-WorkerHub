@@ -3,6 +3,7 @@ import { endOfWeek, format, startOfWeek } from 'date-fns';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import {
   JobcardQuickView,
   NewJobcardInput,
@@ -13,7 +14,7 @@ import {
 } from '@/components/desktop/JobcardFilters';
 import { JobcardRow } from '@/components/desktop/JobcardRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
-import { useAppStore, uuid } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
@@ -47,23 +48,30 @@ export function JobcardsScreen({
   const addJobcard = useAppStore((s) => s.addJobcard);
   const deleteJobcard = useAppStore((s) => s.deleteJobcard);
   const flash = useAppStore((s) => s.flash);
+  const role = useCurrentRole();
 
   // The right sidebar shows either one jobcard or the creation draft —
   // opening one closes the other.
   const [createOpen, setCreateOpen] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // A jobcard's parent-job link opens the job dashboard ON TOP of the jobcard
+  // sidebar; its back arrow returns here.
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [photosJob, setPhotosJob] = useState<Job | null>(null);
 
   const openCreate = () => {
     setViewingId(null);
+    setOpenJobId(null);
     setCreateOpen(true);
   };
   const openCard = (id: string) => {
     setCreateOpen(false);
+    setOpenJobId(null);
     setViewingId(id);
   };
   const closeSidebar = () => {
     setCreateOpen(false);
+    setOpenJobId(null);
     setViewingId(null);
   };
 
@@ -385,6 +393,18 @@ export function JobcardsScreen({
         onClose={closeSidebar}
         onDelete={handleDelete}
         onCreate={handleCreate}
+        onOpenJob={setOpenJobId}
+      />
+
+      {/* The jobcard's parent-job link opens the job dashboard over the
+          jobcard sidebar (rendered after = stacked on top); back returns. */}
+      <JobDashboardSidebar
+        job={jobs.find((j) => j.id === openJobId) ?? null}
+        onClose={closeSidebar}
+        onBack={() => setOpenJobId(null)}
+        editable={role === 'field_super'}
+        quickViewJobs={jobs}
+        onOpenJob={setOpenJobId}
       />
 
       <JobPhotosModal job={photosJob} onClose={() => setPhotosJob(null)} />

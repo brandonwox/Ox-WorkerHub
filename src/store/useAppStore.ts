@@ -297,6 +297,19 @@ const OUTBOX_EXECUTORS = {
     notificationsBackend.deleteNotification(p),
 } as const;
 
+/**
+ * Ops that are bookkeeping rather than a change the worker made. Reading a
+ * notification, or the notification a jobcard transition fires at the
+ * schedulers, must not pop "Changes Saved" — the worker didn't save anything,
+ * and a pill appearing next to an unrelated failure reads as a lie.
+ */
+const SILENT_OUTBOX_KINDS = new Set<string>([
+  'insertNotification',
+  'markNotificationRead',
+  'markAllNotificationsRead',
+  'deleteNotification',
+]);
+
 type OutboxKind = keyof typeof OUTBOX_EXECUTORS;
 type OutboxPayload<K extends OutboxKind> = Parameters<
   (typeof OUTBOX_EXECUTORS)[K]
@@ -432,6 +445,17 @@ function looksLikeNetworkError(e: unknown): boolean {
   );
 }
 
+/**
+ * Was this rejection about the signed-in role simply not being allowed to make
+ * the edit? Postgres reports 42501 (insufficient_privilege) both for an RLS
+ * policy refusing the row and for our own role guards, which raise it
+ * explicitly. Anything else — a constraint, a validity guard, a bug — is a real
+ * failure the worker should be told about loudly.
+ */
+function looksLikePermissionError(e: unknown): boolean {
+  return e instanceof backend.BackendWriteError && e.code === '42501';
+}
+
 function scheduleOutboxRetry(): void {
   if (outboxRetryTimer) return;
   outboxRetryTimer = setTimeout(() => {
@@ -473,17 +497,36 @@ async function flushOutbox(): Promise<void> {
       }
       try {
         await OUTBOX_EXECUTORS[op.kind](op.payload as never);
-        useAppStore.getState().signalSaved();
+        if (!SILENT_OUTBOX_KINDS.has(op.kind)) {
+          useAppStore.getState().signalSaved();
+        }
       } catch (e) {
         if (looksLikeNetworkError(e)) {
           scheduleOutboxRetry();
           return;
         }
-        console.error(
-          `Supabase write failed permanently (${op.kind}) — change not saved:`,
-          e
-        );
-        notifySaveFailed(op.workerId, `“${humanizeKind(op.kind)}” change`);
+        if (looksLikePermissionError(e)) {
+          // Not a malfunction — this role just isn't allowed to make that edit.
+          // Stays a quiet system message; no notification, nothing on the bell.
+          console.warn(
+            `Supabase write refused (${op.kind}) — role lacks permission:`,
+            e
+          );
+          useAppStore
+            .getState()
+            .flash(
+              `You don't have permission to change that — your “${humanizeKind(
+                op.kind
+              )}” edit was discarded`,
+              'warning'
+            );
+        } else {
+          console.error(
+            `Supabase write failed permanently (${op.kind}) — change not saved:`,
+            e
+          );
+          notifySaveFailed(op.workerId, `“${humanizeKind(op.kind)}” change`);
+        }
       }
       settleOutboxOp(op);
     }
@@ -1380,17 +1423,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addJob: (job) => {
-    const isBackend = backendActive(get());
+    const state = get();
+    const isBackend = backendActive(state);
+    const me = currentWorkerOf(state);
     const created: Job = {
       status: 'Active',
       ...job,
       id: job.id ?? (isBackend ? uuid() : `job-${nextJobId++}`),
     };
-    set((state) => ({ jobs: [created, ...state.jobs] }));
-    // insertJob writes both the job row and its Field Super assignments
-    // (job_field_supers).
+    // A Field Super creating a job is auto-assigned to it — otherwise it
+    // would vanish from their scoped views immediately. The DB does the same
+    // server-side via trigger (they can't write job_field_supers themselves),
+    // so this only mirrors it locally; the write payload stays untouched.
+    const local: Job =
+      me?.role === 'field_super' && !created.parentJobId
+        ? {
+            ...created,
+            fieldSuperIds: [
+              ...new Set([...(created.fieldSuperIds ?? []), me.id]),
+            ],
+          }
+        : created;
+    set((s) => ({ jobs: [local, ...s.jobs] }));
+    // insertJob writes the job row and, for the Operator, its Field Super
+    // assignments (job_field_supers).
     if (isBackend) write('insertJob', created);
-    return created;
+    return local;
   },
 
   addSubJob: ({ parentJobId, name, location, scopes, flashingMaterial }) => {
