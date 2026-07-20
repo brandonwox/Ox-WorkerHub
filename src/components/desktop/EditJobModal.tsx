@@ -26,7 +26,7 @@ interface Props {
   fieldSupers: Worker[];
   /**
    * How many sub-jobs hang off this job — deleting it deletes them (and their
-   * jobcards) too, so the delete confirmation calls it out.
+   * work requests) too, so the delete confirmation calls it out.
    */
   subJobCount?: number;
   onClose: () => void;
@@ -158,7 +158,7 @@ export function EditJobModal({
             />
             <Text style={styles.fieldHint}>
               The trades this job covers. Without the Windows scope, the
-              flashing material never shows for this job or its jobcards.
+              flashing material never shows for this job or its work requests.
             </Text>
           </View>
 
@@ -174,7 +174,7 @@ export function EditJobModal({
               }
             />
             <Text style={styles.fieldHint}>
-              Assigned field supers see this job and its jobcards. You can pick
+              Assigned field supers see this job and its work requests. You can pick
               more than one.
             </Text>
           </View>
@@ -193,13 +193,13 @@ export function EditJobModal({
             <View style={styles.deleteConfirmBox}>
               <Text style={styles.deleteWarning}>
                 This permanently deletes &ldquo;{job?.name}&rdquo; and every one
-                of its jobcards
+                of its work requests
                 {subJobCount > 0
                   ? ` — including its ${
                       subJobCount === 1
                         ? 'sub-job'
                         : `${subJobCount} sub-jobs`
-                    } and their jobcards`
+                    } and their work requests`
                   : ''}
                 . A deleted job cannot be restored.
               </Text>

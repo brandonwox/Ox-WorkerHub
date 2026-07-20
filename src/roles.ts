@@ -33,19 +33,19 @@ export const ROLE_LABELS: Record<AppRole, string> = {
  * Every desktop page is role-prefixed so each route is owned by exactly one
  * role (e.g. the Operator's Jobs lives at /operator-jobs, the Field Super's at
  * /field-super-jobs).
- * Universal routes (/sign-in, /set-password, the /job/[id] modal) are not listed.
+ * Universal routes (/sign-in, /set-password, the /work-request/[id] modal) are not listed.
  */
 export type DesktopHref =
   | '/scheduler-overview'
   | '/scheduler-calendar'
   | '/scheduler-jobs'
-  | '/scheduler-jobcards'
+  | '/scheduler-work-requests'
   | '/operator-jobs'
   | '/operator-people'
   | '/finance-manager-jobs'
   | '/finance-manager-timesheets'
   | '/field-super-overview'
-  | '/field-super-jobcards'
+  | '/field-super-work-requests'
   | '/field-super-jobs'
   | '/field-super-calendar'
   | '/installer-schedule'
@@ -95,9 +95,9 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/scheduler-calendar', label: 'Calendar', icon: CalendarDays },
     // Every job (schedulers aren't scoped) — job dashboards + job creation.
     { href: '/scheduler-jobs', label: 'Jobs', icon: Briefcase },
-    // Distinct route from the Field Super's '/field-super-jobcards' — the
-    // Scheduler creates jobcards across every job, not just their own.
-    { href: '/scheduler-jobcards', label: 'Jobcards', icon: NotepadText },
+    // Distinct route from the Field Super's '/field-super-work-requests' — the
+    // Scheduler creates work requests across every job, not just their own.
+    { href: '/scheduler-work-requests', label: 'Work Requests', icon: NotepadText },
     { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   field_super: [
@@ -106,7 +106,7 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     // Distinct route from the Operator's '/operator-jobs', shown to the Field
     // Super as "Jobs".
     { href: '/field-super-jobs', label: 'Jobs', icon: Briefcase },
-    { href: '/field-super-jobcards', label: 'Jobcards', icon: NotepadText },
+    { href: '/field-super-work-requests', label: 'Work Requests', icon: NotepadText },
     { href: '/field-super-calendar', label: 'Calendar', icon: CalendarDays },
     { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
@@ -181,7 +181,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
   ],
   field_super: [
     { name: 'overview', label: 'Overview', icon: 'grid' },
-    { name: 'index', label: 'Jobcards', icon: 'clipboard' },
+    { name: 'index', label: 'Work Requests', icon: 'clipboard' },
     { name: 'jobs', label: 'Jobs', icon: 'briefcase' },
     { name: 'calendar', label: 'Calendar', icon: 'calendar' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
@@ -253,7 +253,7 @@ export function roleCanAccessPath(role: AppRole, pathname: string): boolean {
 
 /**
  * Whether `role` may view the mobile tab at `pathname`. Only polices known tab
- * paths — anything else (/job/[id], /sign-in, …) is outside the tab bar's
+ * paths — anything else (/work-request/[id], /sign-in, …) is outside the tab bar's
  * jurisdiction and always allowed.
  */
 export function roleCanAccessMobilePath(role: AppRole, pathname: string): boolean {

@@ -10,7 +10,7 @@ import {
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Crew, Jobcard, ScheduleAssignment } from '@/types';
+import { Crew, WorkRequest, ScheduleAssignment } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -24,7 +24,7 @@ interface Props {
   activeCrews: Crew[];
   /** Assignments already filtered to the visible (toggled-on) crews. */
   visibleAssignments: ScheduleAssignment[];
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   /** Distinct color for a crew id, used to tint that crew's cards. */
   colorForCrew: (crewId: string) => string;
   /** True when a work request is selected and waiting to be placed. */
@@ -35,8 +35,8 @@ interface Props {
   onOpenDay?: (date: string) => void;
   /** Day to flash (yyyy-MM-dd) after a "View on calendar" jump, or null. */
   highlightDate?: string | null;
-  /** Open a placed jobcard (same quick view the Jobcards pages use). */
-  onOpenCard: (jobcardId: string) => void;
+  /** Open a placed work request (same quick view the Work Requests pages use). */
+  onOpenCard: (workRequestId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
   canUnassign?: boolean;
   /**
@@ -55,7 +55,7 @@ export function MonthCalendar({
   onNextMonth,
   activeCrews,
   visibleAssignments,
-  jobcards,
+  workRequests,
   colorForCrew,
   placing,
   onAssignToDate,
@@ -88,7 +88,7 @@ export function MonthCalendar({
     </Text>
   ));
 
-  const cardById = (id: string) => jobcards.find((c) => c.id === id);
+  const cardById = (id: string) => workRequests.find((c) => c.id === id);
 
   return (
     <View style={styles.wrap}>
@@ -127,7 +127,7 @@ export function MonthCalendar({
         <View style={[styles.placingBanner, { backgroundColor: withAlpha(activeColor, 0.18) }]}>
           <Feather name="crosshair" size={14} color={activeColor} />
           <Text style={styles.placingText}>
-            Click a day to assign the selected jobcard
+            Click a day to assign the selected work request
             {activeCrews.length > 0 ? <> to {crewNameSpans}</> : ''}.
           </Text>
         </View>
@@ -151,16 +151,16 @@ export function MonthCalendar({
           const dayAssignments = visibleAssignments.filter(
             (a) => a.date === dateStr
           );
-          // One chip per jobcard even when several visible crews share it —
+          // One chip per work request even when several visible crews share it —
           // the crew letters on the end of the chip say who it belongs to.
-          const dayCards: { card: Jobcard; group: ScheduleAssignment[] }[] = [];
+          const dayCards: { card: WorkRequest; group: ScheduleAssignment[] }[] = [];
           for (const a of dayAssignments) {
-            const entry = dayCards.find((e) => e.card.id === a.jobcardId);
+            const entry = dayCards.find((e) => e.card.id === a.workRequestId);
             if (entry) {
               entry.group.push(a);
               continue;
             }
-            const card = cardById(a.jobcardId);
+            const card = cardById(a.workRequestId);
             if (card) dayCards.push({ card, group: [a] });
           }
 

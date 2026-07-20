@@ -9,12 +9,12 @@ import { Job } from '@/types';
 
 /**
  * The Operator's jobs on the phone: a read-only monitor of every jobsite —
- * status, QBT mapping, field supers, jobcard counts. Creating and editing jobs
+ * status, QBT mapping, field supers, work request counts. Creating and editing jobs
  * stays on the desktop console.
  */
 export function OperatorJobsMobile() {
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const workers = useAppStore((s) => s.workers);
 
   // Sub-jobs stay out of this office list — they're reached through their
@@ -32,7 +32,7 @@ export function OperatorJobsMobile() {
   );
 
   const cardCountFor = (job: Job) =>
-    jobcards.filter((c) => c.jobId === job.id).length;
+    workRequests.filter((c) => c.jobId === job.id).length;
 
   const superNamesFor = (job: Job) =>
     (job.fieldSuperIds ?? [])
@@ -104,7 +104,7 @@ export function OperatorJobsMobile() {
                 <View style={styles.metaItem}>
                   <Feather name="clipboard" size={12} color={colors.textSecondary} />
                   <Text style={styles.metaText}>
-                    {cardCount} {cardCount === 1 ? 'jobcard' : 'jobcards'}
+                    {cardCount} {cardCount === 1 ? 'work request' : 'work requests'}
                   </Text>
                 </View>
               </View>

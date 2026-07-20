@@ -8,27 +8,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddTimecardSheet } from '@/components/AddTimecardSheet';
 import { ClockControls } from '@/components/ClockControls';
 import { ClockEntrySheet, ClockEntryMode } from '@/components/ClockEntrySheet';
-import { JobCard } from '@/components/JobCard';
+import { WorkRequestCard } from '@/components/WorkRequestCard';
 import { Toast } from '@/components/Toast';
 import { WeekRibbon } from '@/components/WeekRibbon';
 import {
   assignedDatesForInstaller,
   currentWorkerOf,
-  jobcardsForInstallerOnDate,
+  workRequestsForInstallerOnDate,
   useAppStore,
 } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
-import { Jobcard, TimesheetLog } from '@/types';
+import { WorkRequest, TimesheetLog } from '@/types';
 import { formatHours } from '@/utils/time';
 
 /**
  * The installer's day-by-day agenda: week ribbon, the selected day's crew
- * jobcards, and the clock in/out controls. Rendered by the mobile home tab and
+ * work requests, and the clock in/out controls. Rendered by the mobile home tab and
  * (in a centered column) by the desktop /installer-schedule page.
  */
 export function InstallerAgenda() {
   const router = useRouter();
-  const allJobcards = useAppStore((s) => s.jobcards);
+  const allWorkRequests = useAppStore((s) => s.workRequests);
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
@@ -54,25 +54,25 @@ export function InstallerAgenda() {
     [crews, dailyCrews, assignments, currentUserId]
   );
 
-  const dayJobcards = useMemo(
+  const dayWorkRequests = useMemo(
     () =>
-      jobcardsForInstallerOnDate(
-        { crews, dailyCrews, assignments, jobcards: allJobcards },
+      workRequestsForInstallerOnDate(
+        { crews, dailyCrews, assignments, workRequests: allWorkRequests },
         currentUserId,
         format(selectedDate, 'yyyy-MM-dd')
       ).sort((a, b) => a.priorityOrder - b.priorityOrder),
-    [crews, dailyCrews, assignments, allJobcards, currentUserId, selectedDate]
+    [crews, dailyCrews, assignments, allWorkRequests, currentUserId, selectedDate]
   );
 
-  const handleJobcardPress = (jobcard: Jobcard) => {
+  const handleWorkRequestPress = (workRequest: WorkRequest) => {
     if (editShift) {
-      updateShiftProject({ jobcardId: jobcard.id });
+      updateShiftProject({ workRequestId: workRequest.id });
       setEditShift(false);
     } else if (selectMode) {
-      clockIn({ jobcardId: jobcard.id });
+      clockIn({ workRequestId: workRequest.id });
       setSelectMode(false);
     } else {
-      router.push(`/job/${jobcard.id}`);
+      router.push(`/work-request/${workRequest.id}`);
     }
   };
 
@@ -102,21 +102,21 @@ export function InstallerAgenda() {
         </Text>
       ) : (
         <Text style={styles.dayLabel}>
-          {dayLabel} · {dayJobcards.length}{' '}
-          {dayJobcards.length === 1 ? 'jobcard' : 'jobcards'}
+          {dayLabel} · {dayWorkRequests.length}{' '}
+          {dayWorkRequests.length === 1 ? 'work request' : 'work requests'}
         </Text>
       )}
 
       <FlatList
-        data={dayJobcards}
-        keyExtractor={(jobcard) => jobcard.id}
+        data={dayWorkRequests}
+        keyExtractor={(workRequest) => workRequest.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <JobCard
-            jobcard={item}
+          <WorkRequestCard
+            workRequest={item}
             selectable={selectMode || editShift}
-            active={activeShift?.jobcardId === item.id}
-            onPress={() => handleJobcardPress(item)}
+            active={activeShift?.workRequestId === item.id}
+            onPress={() => handleWorkRequestPress(item)}
           />
         )}
         ListEmptyComponent={

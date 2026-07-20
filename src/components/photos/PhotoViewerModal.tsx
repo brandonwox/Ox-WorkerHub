@@ -53,7 +53,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   const { width, height } = useWindowDimensions();
   const me = useCurrentWorker();
   const workers = useAppStore((s) => s.workers);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const uploadedPhotos = useAppStore((s) => s.jobPhotos);
   const pendingPhotos = useAppStore((s) => s.pendingPhotos);
   const setJobPhotoNote = useAppStore((s) => s.setJobPhotoNote);
@@ -125,12 +125,12 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
     () => workers.find((w) => w.id === photo?.workerId),
     [workers, photo]
   );
-  const jobcard = useMemo(
+  const workRequest = useMemo(
     () =>
-      photo?.jobcardId
-        ? jobcards.find((c) => c.id === photo.jobcardId)
+      photo?.workRequestId
+        ? workRequests.find((c) => c.id === photo.workRequestId)
         : undefined,
-    [jobcards, photo]
+    [workRequests, photo]
   );
 
   const isOwn = !!me && !!photo && photo.workerId === me.id;
@@ -301,12 +301,12 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                     )}
                   </View>
 
-                  {jobcard && (
+                  {workRequest && (
                     <Pressable
-                      style={styles.jobcardChip}
+                      style={styles.workRequestChip}
                       onPress={() => {
                         onClose();
-                        router.push(`/job/${jobcard.id}`);
+                        router.push(`/work-request/${workRequest.id}`);
                       }}
                     >
                       <Feather
@@ -314,8 +314,8 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                         size={12}
                         color={colors.primary}
                       />
-                      <Text style={styles.jobcardChipText} numberOfLines={1}>
-                        {jobcard.title}
+                      <Text style={styles.workRequestChipText} numberOfLines={1}>
+                        {workRequest.title}
                       </Text>
                     </Pressable>
                   )}
@@ -458,7 +458,7 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
-  jobcardChip: {
+  workRequestChip: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
@@ -468,7 +468,7 @@ const styles = themed(() => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  jobcardChipText: {
+  workRequestChipText: {
     color: colors.primary,
     fontFamily: fonts.semiBold,
     fontSize: 12,

@@ -133,7 +133,7 @@ export function CreateJobModal({
             <Text style={styles.fieldHint}>
               The trades this job covers — more can be added later from Edit
               job. Without the Windows scope, the flashing material never shows
-              for this job or its jobcards.
+              for this job or its work requests.
             </Text>
           </View>
 
@@ -152,7 +152,7 @@ export function CreateJobModal({
                 }
               />
               <Text style={styles.fieldHint}>
-                Assigned field supers see this job and its jobcards. You can
+                Assigned field supers see this job and its work requests. You can
                 pick more than one.
               </Text>
             </View>

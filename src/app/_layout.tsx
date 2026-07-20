@@ -111,13 +111,13 @@ export default function RootLayout() {
           <Stack.Screen name="set-password" />
           {/* Full-screen login gate (no modal/header) — it's the logged-out landing. */}
           <Stack.Screen name="sign-in" />
-          {/* Jobcard details renders its own close (X) button — no nav header.
+          {/* Work Request details renders its own close (X) button — no nav header.
               transparentModal (not 'modal'): the iOS pageSheet dims/scales the
               page behind it, and the tracker wants the page visible undimmed —
               so the screen draws its own sheet card over a transparent
               backdrop. */}
           <Stack.Screen
-            name="job/[id]"
+            name="work-request/[id]"
             options={{
               presentation: 'transparentModal',
               animation: 'slide_from_bottom',

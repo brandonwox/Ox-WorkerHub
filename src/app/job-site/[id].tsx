@@ -40,7 +40,7 @@ import {
 import { Job } from '@/types';
 import { formatCount, jobCounts } from '@/utils/jobCounts';
 
-type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
+type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
 
 /** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
 const defaultSectionFor = (job?: Job): SectionKey =>
@@ -48,7 +48,7 @@ const defaultSectionFor = (job?: Job): SectionKey =>
 
 /**
  * A parent Job's page: centered cover photo + header, section cards
- * (Issues / Documents / Jobcards — one open at a time), and the photo wall.
+ * (Issues / Documents / Work Requests — one open at a time), and the photo wall.
  * Installers open it from the Jobs tab. Capture/upload float at the bottom as
  * icon buttons (no live camera on web — upload only there).
  */
@@ -59,14 +59,14 @@ export default function JobSiteScreen() {
   const jobs = useAppStore((s) => s.jobs);
   const job = jobs.find((j) => j.id === id);
   const workers = useAppStore((s) => s.workers);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const updateJob = useAppStore((s) => s.updateJob);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobPhotos(job?.id);
 
-  // This job's issues from every jobcard, newest first; split by status below.
+  // This job's issues from every work request, newest first; split by status below.
   const issues = useMemo(
     () =>
       jobIssues
@@ -83,14 +83,14 @@ export default function JobSiteScreen() {
     [issues]
   );
 
-  const jobJobcards = useMemo(
+  const jobWorkRequests = useMemo(
     () =>
-      jobcards
+      workRequests
         .filter((card) => card.jobId === job?.id)
         .sort((a, b) =>
           (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
         ),
-    [jobcards, job?.id]
+    [workRequests, job?.id]
   );
 
   const documentCount = useMemo(
@@ -194,7 +194,7 @@ export default function JobSiteScreen() {
   };
 
   // Scope counts, display-only here (totals are office-edited; done numbers
-  // change from the jobcard popup).
+  // change from the work request popup).
   const counts = jobCounts(job);
 
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
@@ -245,9 +245,9 @@ export default function JobSiteScreen() {
       dim: colors.primaryDim,
     },
     {
-      key: 'jobcards',
-      label: 'Jobcards',
-      sub: `${jobJobcards.length} Total`,
+      key: 'work requests',
+      label: 'Work Requests',
+      sub: `${jobWorkRequests.length} Total`,
       icon: 'clipboard',
       tint: colors.success,
       dim: colors.successDim,
@@ -343,7 +343,7 @@ export default function JobSiteScreen() {
             </Text>
           </View>
           {/* Scope counts, "done/total" — shown once a total is set (totals
-              are edited from the office surfaces; done from jobcards). */}
+              are edited from the office surfaces; done from work requests). */}
           {counts.length > 0 && (
             <View style={styles.infoRow}>
               <Feather name="hash" size={14} color={colors.textSecondary} />
@@ -394,7 +394,7 @@ export default function JobSiteScreen() {
                   <IssueCard
                     key={issue.id}
                     issue={issue}
-                    showJobcardLink
+                    showWorkRequestLink
                     onPhotoPress={(photo, all) =>
                       setViewer({
                         photos: all,
@@ -429,7 +429,7 @@ export default function JobSiteScreen() {
                     <IssueCard
                       key={issue.id}
                       issue={issue}
-                      showJobcardLink
+                      showWorkRequestLink
                       onPhotoPress={(photo, all) =>
                         setViewer({
                           photos: all,
@@ -445,35 +445,35 @@ export default function JobSiteScreen() {
 
         {section === 'documents' && <JobDocumentsSection jobId={job.id} />}
 
-        {section === 'jobcards' && (
+        {section === 'work requests' && (
           <View style={styles.issuesSection}>
-            <Text style={styles.sectionHeader}>Jobcards</Text>
-            {jobJobcards.length === 0 ? (
-              <Text style={styles.emptyText}>No jobcards yet.</Text>
+            <Text style={styles.sectionHeader}>Work Requests</Text>
+            {jobWorkRequests.length === 0 ? (
+              <Text style={styles.emptyText}>No work requests yet.</Text>
             ) : (
-              jobJobcards.map((card) => {
+              jobWorkRequests.map((card) => {
                 const tasks = card.tasks ?? [];
                 const done = tasks.filter((t) => t.done).length;
                 return (
                   <Pressable
                     key={card.id}
                     style={({ pressed }) => [
-                      styles.jobcardRow,
+                      styles.workRequestRow,
                       pressed && styles.pressed,
                     ]}
                     onPress={() =>
                       router.push({
-                        pathname: '/job/[id]',
+                        pathname: '/work-request/[id]',
                         params: { id: card.id },
                       })
                     }
                   >
-                    <View style={styles.jobcardText}>
-                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                    <View style={styles.workRequestText}>
+                      <Text style={styles.workRequestTitle} numberOfLines={1}>
                         {card.title}
                       </Text>
                       {tasks.length > 0 && (
-                        <Text style={styles.jobcardMeta}>
+                        <Text style={styles.workRequestMeta}>
                           {done}/{tasks.length} tasks
                         </Text>
                       )}
@@ -520,7 +520,7 @@ export default function JobSiteScreen() {
                   <Pressable
                     key={sub.id}
                     style={({ pressed }) => [
-                      styles.jobcardRow,
+                      styles.workRequestRow,
                       pressed && styles.pressed,
                     ]}
                     onPress={() =>
@@ -530,12 +530,12 @@ export default function JobSiteScreen() {
                       })
                     }
                   >
-                    <View style={styles.jobcardText}>
-                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                    <View style={styles.workRequestText}>
+                      <Text style={styles.workRequestTitle} numberOfLines={1}>
                         {sub.name}
                       </Text>
                       {sub.location ? (
-                        <Text style={styles.jobcardMeta} numberOfLines={1}>
+                        <Text style={styles.workRequestMeta} numberOfLines={1}>
                           {sub.location}
                         </Text>
                       ) : null}
@@ -922,7 +922,7 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 13,
   },
-  jobcardRow: {
+  workRequestRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -931,16 +931,16 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
   },
-  jobcardText: {
+  workRequestText: {
     flex: 1,
     gap: 2,
   },
-  jobcardTitle: {
+  workRequestTitle: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 14,
   },
-  jobcardMeta: {
+  workRequestMeta: {
     color: colors.textTertiary,
     fontFamily: fonts.medium,
     fontSize: 11,

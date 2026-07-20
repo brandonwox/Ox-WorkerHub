@@ -14,18 +14,18 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface Props {
-  /** The ready (readiness "Now") unassigned jobcards — the Work Requests pool. */
-  cards: Jobcard[];
+  /** The ready (readiness "Yes") unassigned work requests — the Work Requests pool. */
+  cards: WorkRequest[];
   jobNameFor: (jobId?: string) => string;
   /** Open a request's details (the same quick view the board uses). */
-  onOpenCard: (card: Jobcard) => void;
+  onOpenCard: (card: WorkRequest) => void;
   /** Collapse back to the Work Requests list. */
   onCollapse: () => void;
 }
@@ -51,7 +51,7 @@ export function BacklogCalendar({
 
   const monthKey = format(month, 'yyyy-MM');
   const cardsByDate = useMemo(() => {
-    const map = new Map<string, Jobcard[]>();
+    const map = new Map<string, WorkRequest[]>();
     for (const card of cards) {
       if (!card.date.startsWith(monthKey)) continue;
       const list = map.get(card.date) ?? [];

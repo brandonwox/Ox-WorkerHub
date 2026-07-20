@@ -4,7 +4,7 @@ import {
   Crew,
   DailyCrew,
   Job,
-  Jobcard,
+  WorkRequest,
   ScheduleAssignment,
   TimesheetLog,
   TimesheetSendStatus,
@@ -130,7 +130,7 @@ function day(daysFromToday: number): string {
   return format(addDays(new Date(), daysFromToday), 'yyyy-MM-dd');
 }
 
-const seededJobcards: Jobcard[] = [
+const seededWorkRequests: WorkRequest[] = [
   // Today
   {
     id: 'j-1',
@@ -158,7 +158,7 @@ const seededJobcards: Jobcard[] = [
     date: day(0),
     startTime: at(0, 12, 30),
     endTime: at(0, 16),
-    status: 'Untouched',
+    status: 'Undefined',
     priorityOrder: 2,
     priority: 'Medium',
     scopeOfWork: 'Replace cracked curtain-wall units on Tower B, floors 4–6.',
@@ -175,7 +175,7 @@ const seededJobcards: Jobcard[] = [
     address: '88 Oakdale Ave, Evanston, IL',
     date: day(0),
     // No time window assigned — worker fits this in around their other jobs.
-    status: 'Untouched',
+    status: 'Undefined',
     priorityOrder: 3,
     priority: 'Low',
     details: {
@@ -209,7 +209,7 @@ const seededJobcards: Jobcard[] = [
     date: day(1),
     startTime: at(1, 7, 30),
     endTime: at(1, 13),
-    status: 'Untouched',
+    status: 'Undefined',
     priorityOrder: 1,
     priority: 'High',
     scopeOfWork: 'Mount lobby mirror wall; level and anchor to substrate.',
@@ -225,7 +225,7 @@ const seededJobcards: Jobcard[] = [
     address: '1255 S Prairie Ave, Chicago, IL',
     date: day(1),
     // No time window assigned.
-    status: 'Untouched',
+    status: 'Undefined',
     priorityOrder: 2,
     priority: 'Low',
     details: {
@@ -242,7 +242,7 @@ const seededJobcards: Jobcard[] = [
     date: day(2),
     startTime: at(2, 8),
     endTime: at(2, 12),
-    status: 'Untouched',
+    status: 'Undefined',
     priorityOrder: 1,
     priority: 'Medium',
     details: {
@@ -254,7 +254,7 @@ const seededJobcards: Jobcard[] = [
 ];
 
 /**
- * Jobsites/projects the Operator owns. Jobcards (below) hang off these.
+ * Jobsites/projects the Operator owns. Work Requests (below) hang off these.
  *
  * `fieldSuperIds` are the assigned Field Supers: Derek (w-fs) and Alicia (w-fs2)
  * share job-1 (exercises the multi-Field-Super case) and otherwise cover
@@ -313,8 +313,8 @@ export const mockJobs: Job[] = [
   },
 ];
 
-/** Which jobsite each seeded jobcard belongs to. */
-const JOBCARD_TO_JOB: Record<string, string> = {
+/** Which jobsite each seeded work request belongs to. */
+const WORK_REQUEST_TO_JOB: Record<string, string> = {
   'j-1': 'job-1',
   'j-2': 'job-2',
   'j-3': 'job-3',
@@ -325,13 +325,13 @@ const JOBCARD_TO_JOB: Record<string, string> = {
 };
 
 /**
- * Seeded jobcards, parented to jobs and (temporarily) all assigned to the
+ * Seeded work requests, parented to jobs and (temporarily) all assigned to the
  * primary installer until crew-based scheduling exists. The parent Job's
  * `flashingMaterial` is snapshotted onto each card here, mirroring the
- * auto-inheritance rule in `addJobcard` so seed data stays consistent.
+ * auto-inheritance rule in `addWorkRequest` so seed data stays consistent.
  */
-export const mockJobcards: Jobcard[] = seededJobcards.map((card) => {
-  const jobId = JOBCARD_TO_JOB[card.id];
+export const mockWorkRequests: WorkRequest[] = seededWorkRequests.map((card) => {
+  const jobId = WORK_REQUEST_TO_JOB[card.id];
   const parentJob = mockJobs.find((job) => job.id === jobId);
   return {
     ...card,
@@ -343,7 +343,7 @@ export const mockJobcards: Jobcard[] = seededJobcards.map((card) => {
 
 /**
  * Permanent crews, installers only. Marcus (the primary installer) is in Crew
- * Alpha, which is assigned every seeded jobcard below — so once Step 5 switches
+ * Alpha, which is assigned every seeded work request below — so once Step 5 switches
  * the installer agenda to crew resolution, Marcus keeps seeing exactly the cards
  * he sees today.
  */
@@ -352,11 +352,13 @@ export const mockCrews: Crew[] = [
     id: 'crew-alpha',
     name: 'Crew Alpha',
     installerIds: [PRIMARY_INSTALLER_ID], // Marcus Lee
+    foremanId: PRIMARY_INSTALLER_ID,
   },
   {
     id: 'crew-bravo',
     name: 'Crew Bravo',
     installerIds: ['w-i2'], // Sofia Ramirez
+    foremanId: 'w-i2',
   },
 ];
 
@@ -377,17 +379,17 @@ export const mockDailyCrews: DailyCrew[] = [
 
 /**
  * Schedule assignments (the single-source-of-truth fan-out). Every seeded
- * jobcard is placed on Crew Alpha for its existing date; `j-7` is additionally
+ * work request is placed on Crew Alpha for its existing date; `j-7` is additionally
  * placed on the day+2 Daily Crew so the override resolves to the same card.
  */
 export const mockAssignments: ScheduleAssignment[] = [
-  ...mockJobcards.map((card, i) => ({
+  ...mockWorkRequests.map((card, i) => ({
     id: `asn-${i + 1}`,
-    jobcardId: card.id,
+    workRequestId: card.id,
     crewId: 'crew-alpha',
     date: card.date,
   })),
-  { id: 'asn-dc-1', jobcardId: 'j-7', crewId: 'dc-1', date: day(2) },
+  { id: 'asn-dc-1', workRequestId: 'j-7', crewId: 'dc-1', date: day(2) },
 ];
 
 function makeLog(
@@ -397,7 +399,7 @@ function makeLog(
   startHour: number,
   endHour: number,
   endMinutes: number,
-  ref: { jobcardId?: string; customProjectName?: string },
+  ref: { workRequestId?: string; customProjectName?: string },
   sendStatus: TimesheetSendStatus = 'sent'
 ): TimesheetLog {
   const day = subDays(new Date(), daysAgo);
@@ -422,9 +424,9 @@ const S = 'w-i2'; // Sofia Ramirez — gives the Operator review a second instal
 
 export const mockLogs: TimesheetLog[] = [
   // Marcus — current week (not yet swept) + history (already sent to QBT)
-  makeLog('t-1', M, 0, 7, 11, 30, { jobcardId: 'j-1' }, 'unsent'),
-  makeLog('t-2', M, 1, 8, 12, 0, { jobcardId: 'j-4' }, 'unsent'),
-  makeLog('t-3', M, 1, 12, 15, 0, { jobcardId: 'j-4' }, 'unsent'),
+  makeLog('t-1', M, 0, 7, 11, 30, { workRequestId: 'j-1' }, 'unsent'),
+  makeLog('t-2', M, 1, 8, 12, 0, { workRequestId: 'j-4' }, 'unsent'),
+  makeLog('t-3', M, 1, 12, 15, 0, { workRequestId: 'j-4' }, 'unsent'),
   // Sofia — current week, so the Operator sees more than one installer
   makeLog('t-s1', S, 0, 8, 16, 0, { customProjectName: 'Lobby Glazing — North Loop' }, 'unsent'),
   makeLog('t-s2', S, 1, 7, 15, 30, { customProjectName: 'Lobby Glazing — North Loop' }, 'unsent'),

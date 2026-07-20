@@ -21,17 +21,17 @@ function errorMessage(e: unknown): string {
 /**
  * Resolve the QBT jobcode a log should book to. Precedence per the blueprint
  * financial lifecycle:
- *   1. log → jobcard → parent Job's `qbtJobcodeId` (the intended path),
+ *   1. log → work request → parent Job's `qbtJobcodeId` (the intended path),
  *   2. else the explicit `qbt.jobcodeMap` entry for this project key,
  *   3. else `qbt.defaultJobcodeId`.
- * Custom-named logs (no jobcard) skip step 1 and use the map/default.
+ * Custom-named logs (no work request) skip step 1 and use the map/default.
  */
 export function resolveJobcodeId(log: TimesheetLog): number | undefined {
-  const { qbt, jobcards, jobs } = store();
+  const { qbt, workRequests, jobs } = store();
 
   // 1. Climb to the parent Job and use its mapped jobcode if set.
-  if (log.jobcardId) {
-    const card = jobcards.find((j) => j.id === log.jobcardId);
+  if (log.workRequestId) {
+    const card = workRequests.find((j) => j.id === log.workRequestId);
     const job = card?.jobId ? jobs.find((j) => j.id === card.jobId) : undefined;
     if (job?.qbtJobcodeId) {
       const id = Number(job.qbtJobcodeId);
@@ -47,9 +47,9 @@ export function resolveJobcodeId(log: TimesheetLog): number | undefined {
 
 /** Human-facing project name, used as the QBT timesheet note. */
 function projectNameFor(log: TimesheetLog): string {
-  const { jobcards } = store();
-  if (log.jobcardId)
-    return jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard';
+  const { workRequests } = store();
+  if (log.workRequestId)
+    return workRequests.find((j) => j.id === log.workRequestId)?.title ?? 'Work Request';
   return log.customProjectName ?? 'Custom Project';
 }
 

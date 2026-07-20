@@ -5,8 +5,8 @@ import { CalendarBoard } from '@/components/desktop/scheduler/CalendarBoard';
 import { useCurrentRole } from '@/store/useAppStore';
 
 /**
- * Scheduler → Calendar. `openCard` (a jobcard id, from clicking a "New
- * Priority Jobcard" notification) opens that card's quick view on arrival;
+ * Scheduler → Calendar. `openCard` (a work request id, from clicking a "New
+ * Priority Work Request" notification) opens that card's quick view on arrival;
  * `oc` is a nonce so re-clicking the same notification re-opens it.
  */
 export default function ScheduleScreen() {

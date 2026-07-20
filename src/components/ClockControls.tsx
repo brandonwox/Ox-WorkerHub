@@ -53,7 +53,7 @@ export function ClockControls({
   onClockedOut,
 }: Props) {
   const activeShift = useAppStore((s) => s.activeShift);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const clockOut = useAppStore((s) => s.clockOut);
   const [now, setNow] = useState(() => new Date());
   const [editStartOpen, setEditStartOpen] = useState(false);
@@ -66,8 +66,8 @@ export function ClockControls({
   }, [activeShift]);
 
   if (activeShift) {
-    const projectName = activeShift.jobcardId
-      ? jobcards.find((j) => j.id === activeShift.jobcardId)?.title ?? 'Jobcard'
+    const projectName = activeShift.workRequestId
+      ? workRequests.find((j) => j.id === activeShift.workRequestId)?.title ?? 'Work Request'
       : activeShift.customProjectName ?? 'Custom Project';
 
     // Editing the shift: project + start-time editors replace the pill/timer,

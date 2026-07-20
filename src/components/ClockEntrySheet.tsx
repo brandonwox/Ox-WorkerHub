@@ -34,7 +34,7 @@ interface Props {
  * `editing` is set — to switch the project of the in-progress shift.
  */
 export function ClockEntrySheet({ mode, editing, onClose }: Props) {
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const clockIn = useAppStore((s) => s.clockIn);
   const updateShiftProject = useAppStore((s) => s.updateShiftProject);
   const [text, setText] = useState('');
@@ -52,15 +52,15 @@ export function ClockEntrySheet({ mode, editing, onClose }: Props) {
     onClose();
   };
 
-  const startJobcard = (jobcardId: string) => {
-    applyProject({ jobcardId });
+  const startWorkRequest = (workRequestId: string) => {
+    applyProject({ workRequestId });
     onClose();
   };
 
   const query = text.trim().toLowerCase();
   const matches =
     mode === 'search' && query
-      ? jobcards.filter((j) => j.title.toLowerCase().includes(query))
+      ? workRequests.filter((j) => j.title.toLowerCase().includes(query))
       : [];
 
   return (
@@ -135,7 +135,7 @@ export function ClockEntrySheet({ mode, editing, onClose }: Props) {
                       styles.result,
                       pressed && styles.resultPressed,
                     ]}
-                    onPress={() => startJobcard(job.id)}
+                    onPress={() => startWorkRequest(job.id)}
                   >
                     <View style={styles.resultInfo}>
                       <Text style={styles.resultTitle} numberOfLines={1}>

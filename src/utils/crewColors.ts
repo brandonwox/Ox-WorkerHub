@@ -2,7 +2,7 @@ import { colors } from '@/theme';
 
 /**
  * Distinct, dark-theme-friendly colors assigned to crews in order. Used to tint
- * scheduled jobcards and the crew filter chips so every crew reads as its color.
+ * scheduled work requests and the crew filter chips so every crew reads as its color.
  */
 export const CREW_PALETTE = [
   '#3E96F4', // blue

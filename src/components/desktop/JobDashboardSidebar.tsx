@@ -21,7 +21,7 @@ import {
   CreateSubJobModal,
   NewSubJobInput,
 } from '@/components/desktop/CreateSubJobModal';
-import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
+import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
@@ -34,7 +34,7 @@ import { Job } from '@/types';
 import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
-type SectionKey = 'issues' | 'documents' | 'jobcards' | 'subjobs';
+type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
 
 /** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
 const defaultSectionFor = (job: Job | null): SectionKey =>
@@ -55,7 +55,7 @@ interface Props {
    * `editable`.
    */
   canManageSubJobs?: boolean;
-  /** Jobs passed through to the jobcard quick view (the viewer's scope). */
+  /** Jobs passed through to the work request quick view (the viewer's scope). */
   quickViewJobs: Job[];
   /**
    * Swap the sidebar to another job — used by the Sub-Jobs section (open a
@@ -64,7 +64,7 @@ interface Props {
    */
   onOpenJob?: (jobId: string) => void;
   /**
-   * When set, the sidebar was opened on top of another view (a jobcard's
+   * When set, the sidebar was opened on top of another view (a work request's
    * parent-job link): the top-left X becomes a back arrow calling this.
    */
   onBack?: () => void;
@@ -74,7 +74,7 @@ interface Props {
  * The desktop job dashboard: a wide right-hand sidebar mirroring the mobile
  * installer job details page — cover photo (tap to view/change), centered
  * name / tappable location / Field Supers, then the Issues / Documents /
- * Jobcards section cards (one open at a time, the active card hides), with
+ * Work Requests section cards (one open at a time, the active card hides), with
  * the photo wall always visible below. Editable viewers additionally get the
  * inline jobsite-address and flashing-material fields.
  */
@@ -89,12 +89,12 @@ export function JobDashboardSidebar({
 }: Props) {
   const workers = useAppStore((s) => s.workers);
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const updateJob = useAppStore((s) => s.updateJob);
   const addSubJob = useAppStore((s) => s.addSubJob);
-  const deleteJobcard = useAppStore((s) => s.deleteJobcard);
+  const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
   const photos = useJobPhotos(job?.id);
@@ -158,12 +158,12 @@ export function JobDashboardSidebar({
     [jobs, job?.parentJobId]
   );
 
-  const jobJobcards = useMemo(
+  const jobWorkRequests = useMemo(
     () =>
-      jobcards
+      workRequests
         .filter((card) => card.jobId === job?.id)
         .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
-    [jobcards, job?.id]
+    [workRequests, job?.id]
   );
 
   const issues = useMemo(
@@ -285,9 +285,9 @@ export function JobDashboardSidebar({
       dim: colors.primaryDim,
     },
     {
-      key: 'jobcards',
-      label: 'Jobcards',
-      sub: `${jobJobcards.length} Total`,
+      key: 'work requests',
+      label: 'Work Requests',
+      sub: `${jobWorkRequests.length} Total`,
       icon: 'clipboard',
       tint: colors.success,
       dim: colors.successDim,
@@ -553,7 +553,7 @@ export function JobDashboardSidebar({
                   <IssueCard
                     key={issue.id}
                     issue={issue}
-                    showJobcardLink
+                    showWorkRequestLink
                     onPhotoPress={openPhoto}
                   />
                 )}
@@ -582,7 +582,7 @@ export function JobDashboardSidebar({
                     <IssueCard
                       key={issue.id}
                       issue={issue}
-                      showJobcardLink
+                      showWorkRequestLink
                       onPhotoPress={openPhoto}
                     />
                   ))}
@@ -593,30 +593,30 @@ export function JobDashboardSidebar({
 
         {section === 'documents' && <JobDocumentsSection jobId={job.id} />}
 
-        {section === 'jobcards' && (
+        {section === 'work requests' && (
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Jobcards</Text>
-            {jobJobcards.length === 0 ? (
-              <Text style={styles.emptyText}>No jobcards yet.</Text>
+            <Text style={styles.sectionHeader}>Work Requests</Text>
+            {jobWorkRequests.length === 0 ? (
+              <Text style={styles.emptyText}>No work requests yet.</Text>
             ) : (
-              jobJobcards.map((card) => {
+              jobWorkRequests.map((card) => {
                 const tasks = card.tasks ?? [];
                 const done = tasks.filter((t) => t.done).length;
                 return (
                   <Pressable
                     key={card.id}
                     style={({ pressed }) => [
-                      styles.jobcardRow,
+                      styles.workRequestRow,
                       pressed && styles.pressed,
                     ]}
                     onPress={() => setViewingCardId(card.id)}
                   >
-                    <View style={styles.jobcardText}>
-                      <Text style={styles.jobcardTitle} numberOfLines={1}>
+                    <View style={styles.workRequestText}>
+                      <Text style={styles.workRequestTitle} numberOfLines={1}>
                         {card.title}
                       </Text>
                       {tasks.length > 0 && (
-                        <Text style={styles.jobcardMeta}>
+                        <Text style={styles.workRequestMeta}>
                           {done}/{tasks.length} tasks
                         </Text>
                       )}
@@ -674,25 +674,25 @@ export function JobDashboardSidebar({
             ) : (
               <>
                 {visibleSubJobs.map((sub) => {
-                  const count = jobcards.filter(
+                  const count = workRequests.filter(
                     (c) => c.jobId === sub.id
                   ).length;
                   return (
                     <Pressable
                       key={sub.id}
                       style={({ pressed }) => [
-                        styles.jobcardRow,
+                        styles.workRequestRow,
                         pressed && styles.pressed,
                       ]}
                       disabled={!onOpenJob}
                       onPress={() => onOpenJob?.(sub.id)}
                     >
-                      <View style={styles.jobcardText}>
-                        <Text style={styles.jobcardTitle} numberOfLines={1}>
+                      <View style={styles.workRequestText}>
+                        <Text style={styles.workRequestTitle} numberOfLines={1}>
                           {sub.name}
                         </Text>
-                        <Text style={styles.jobcardMeta} numberOfLines={1}>
-                          {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                        <Text style={styles.workRequestMeta} numberOfLines={1}>
+                          {count} {count === 1 ? 'work request' : 'work requests'}
                           {sub.location ? ` · ${sub.location}` : ''}
                         </Text>
                       </View>
@@ -984,16 +984,16 @@ export function JobDashboardSidebar({
         }}
       />
 
-      <JobcardQuickView
-        jobcardId={viewingCardId}
+      <WorkRequestQuickView
+        workRequestId={viewingCardId}
         jobs={quickViewJobs}
         onClose={() => setViewingCardId(null)}
         onDelete={(id) => {
-          const title = jobJobcards.find((c) => c.id === id)?.title;
-          deleteJobcard(id);
+          const title = jobWorkRequests.find((c) => c.id === id)?.title;
+          deleteWorkRequest(id);
           setViewingCardId(null);
           flash(
-            title ? `Jobcard "${title}" deleted` : 'Jobcard deleted',
+            title ? `Work Request "${title}" deleted` : 'Work Request deleted',
             'success'
           );
         }}
@@ -1359,7 +1359,7 @@ const styles = themed(() =>
       fontFamily: fonts.regular,
       fontSize: 13,
     },
-    jobcardRow: {
+    workRequestRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
@@ -1368,16 +1368,16 @@ const styles = themed(() =>
       borderRadius: radii.md,
       padding: spacing.md,
     },
-    jobcardText: {
+    workRequestText: {
       flex: 1,
       gap: 2,
     },
-    jobcardTitle: {
+    workRequestTitle: {
       color: colors.textPrimary,
       fontFamily: fonts.semiBold,
       fontSize: 14,
     },
-    jobcardMeta: {
+    workRequestMeta: {
       color: colors.textTertiary,
       fontFamily: fonts.medium,
       fontSize: 11,

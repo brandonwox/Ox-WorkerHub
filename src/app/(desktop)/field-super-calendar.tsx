@@ -6,10 +6,10 @@ import { useCurrentRole } from '@/store/useAppStore';
 
 /**
  * Field Super → Calendar: the same board the Scheduler uses, but read-only for
- * crew assignment. Field Supers can view the schedule and open / edit jobcards,
+ * crew assignment. Field Supers can view the schedule and open / edit work requests,
  * they just can't place work onto crews.
  *
- * `highlight` (yyyy-MM-dd, from a jobcard row's "View on calendar") jumps the
+ * `highlight` (yyyy-MM-dd, from a work request row's "View on calendar") jumps the
  * calendar to that month and flashes the day for a few seconds; `hl` is a nonce
  * so repeating the same date still re-fires it.
  */

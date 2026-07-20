@@ -22,9 +22,10 @@ import { AppNotification, NotificationType } from '@/types';
 
 /** Feather glyph per notification type. */
 const TYPE_ICON: Record<NotificationType, keyof typeof Feather.glyphMap> = {
-  jobcard_now: 'alert-circle',
+  work_request_now: 'alert-circle',
   schedule_change: 'calendar',
   save_failed: 'alert-triangle',
+  status_update_needed: 'clock',
 };
 
 function timeAgo(iso: string): string {
@@ -49,20 +50,20 @@ export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
-  // A "New Priority Jobcard" ping is actionable for the Scheduler: clicking it
-  // jumps to the calendar with that jobcard's quick view open (`oc` is a nonce
+  // A "New Priority Work Request" ping is actionable for the Scheduler: clicking it
+  // jumps to the calendar with that work request's quick view open (`oc` is a nonce
   // so re-clicking a notification for the same card re-opens it).
   const openNotification = (n: AppNotification) => {
     markRead(n.id);
-    const jobcardId =
-      n.type === 'jobcard_now' && typeof n.data?.jobcardId === 'string'
-        ? n.data.jobcardId
+    const workRequestId =
+      n.type === 'work_request_now' && typeof n.data?.workRequestId === 'string'
+        ? n.data.workRequestId
         : null;
-    if (jobcardId && role === 'scheduler') {
+    if (workRequestId && role === 'scheduler') {
       setOpen(false);
       router.push({
         pathname: '/scheduler-calendar',
-        params: { openCard: jobcardId, oc: Date.now().toString() },
+        params: { openCard: workRequestId, oc: Date.now().toString() },
       });
     }
   };

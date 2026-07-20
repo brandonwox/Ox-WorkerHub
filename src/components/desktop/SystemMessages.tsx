@@ -11,20 +11,20 @@ import { detectDoubleBookings } from '@/utils/doubleBookings';
  * Persistent system messages pinned above the transient flash pill in the
  * sidebar. Unlike the flash (which fades), these stick around as long as the
  * underlying condition holds. Today that's schedule double-bookings; each row
- * expands to show the conflicting day, crews, and jobcards.
+ * expands to show the conflicting day, crews, and work requests.
  */
 export function SystemMessages() {
   const role = useCurrentRole();
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const workers = useAppStore((s) => s.workers);
 
   const bookings = useMemo(
     () =>
-      detectDoubleBookings({ crews, dailyCrews, assignments, jobcards, workers }),
-    [crews, dailyCrews, assignments, jobcards, workers]
+      detectDoubleBookings({ crews, dailyCrews, assignments, workRequests, workers }),
+    [crews, dailyCrews, assignments, workRequests, workers]
   );
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -98,8 +98,8 @@ export function SystemMessages() {
                           {crew.crewName}
                           {crew.isDaily ? ' · Daily' : ''}
                         </Text>
-                        {crew.jobcards.map((jc) => (
-                          <Text key={jc.id} style={styles.jobcardLine}>
+                        {crew.workRequests.map((jc) => (
+                          <Text key={jc.id} style={styles.workRequestLine}>
                             • {jc.title}
                           </Text>
                         ))}
@@ -201,7 +201,7 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 11,
   },
-  jobcardLine: {
+  workRequestLine: {
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 11,

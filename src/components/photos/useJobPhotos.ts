@@ -11,7 +11,7 @@ import { JobPhoto, PendingJobPhoto, PendingPhotoState } from '@/types';
 export interface DisplayPhoto {
   id: string;
   jobId: string;
-  jobcardId?: string;
+  workRequestId?: string;
   issueId?: string;
   taskId?: string;
   workerId: string;
@@ -25,7 +25,7 @@ function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
   return {
     id: p.id,
     jobId: p.jobId,
-    jobcardId: p.jobcardId,
+    workRequestId: p.workRequestId,
     issueId: p.issueId,
     taskId: p.taskId,
     workerId: p.workerId,
@@ -39,7 +39,7 @@ function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
   return {
     id: p.id,
     jobId: p.jobId,
-    jobcardId: p.jobcardId,
+    workRequestId: p.workRequestId,
     issueId: p.issueId,
     taskId: p.taskId,
     workerId: p.workerId,
@@ -77,30 +77,30 @@ export function useJobPhotos(jobId: string | undefined): DisplayPhoto[] {
 }
 
 /**
- * Every photo linked to one jobcard (the installer shots taken from its
+ * Every photo linked to one work request (the installer shots taken from its
  * screen), uploaded + this device's queued ones, newest first. Issue photos are
  * excluded here too (they show under their issue on the same screen). Used by
- * the Field Super's jobcard view and the installer jobcard's Photos section.
+ * the Field Super's work request view and the installer work request's Photos section.
  */
-export function useJobcardPhotos(jobcardId: string | undefined): DisplayPhoto[] {
+export function useWorkRequestPhotos(workRequestId: string | undefined): DisplayPhoto[] {
   const jobPhotos = useAppStore((s) => s.jobPhotos);
   const pendingPhotos = useAppStore((s) => s.pendingPhotos);
   return useMemo(() => {
-    if (!jobcardId) return [];
+    if (!workRequestId) return [];
     return newestFirst([
       ...jobPhotos
-        .filter((p) => p.jobcardId === jobcardId && !p.issueId)
+        .filter((p) => p.workRequestId === workRequestId && !p.issueId)
         .map(uploadedToDisplay),
       ...pendingPhotos
-        .filter((p) => p.jobcardId === jobcardId && !p.issueId)
+        .filter((p) => p.workRequestId === workRequestId && !p.issueId)
         .map(pendingToDisplay),
     ]);
-  }, [jobcardId, jobPhotos, pendingPhotos]);
+  }, [workRequestId, jobPhotos, pendingPhotos]);
 }
 
 /**
  * Every photo documenting one issue, uploaded + this device's queued ones,
- * newest first. Rendered inside the issue's card on the jobcard screen and the
+ * newest first. Rendered inside the issue's card on the work request screen and the
  * parent job page.
  */
 export function useIssuePhotos(issueId: string | undefined): DisplayPhoto[] {

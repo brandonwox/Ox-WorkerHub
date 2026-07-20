@@ -27,7 +27,7 @@ const FILTER_STATUS: Record<Exclude<Filter, 'All'>, TimesheetLog['sendStatus']> 
  */
 export function OperatorTimesheetsMobile() {
   const logs = useAppStore((s) => s.logs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const workers = useAppStore((s) => s.workers);
   const [filter, setFilter] = useState<Filter>('All');
   const [editingLog, setEditingLog] = useState<TimesheetLog | null>(null);
@@ -57,8 +57,8 @@ export function OperatorTimesheetsMobile() {
   }, [logs, workers, filter]);
 
   const projectNameFor = (log: TimesheetLog) =>
-    log.jobcardId
-      ? jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard'
+    log.workRequestId
+      ? workRequests.find((j) => j.id === log.workRequestId)?.title ?? 'Work Request'
       : log.customProjectName ?? 'Custom Project';
 
   return (

@@ -1,6 +1,6 @@
 import { addDays, format, isFriday, nextFriday, parseISO } from 'date-fns';
 
-import { Jobcard, PriorityChoice } from '@/types';
+import { WorkRequest, PriorityChoice } from '@/types';
 import { priorityColor } from '@/utils/priority';
 
 /** Local calendar day as yyyy-MM-dd. */
@@ -106,7 +106,7 @@ function legacySortKey(priority: string): string {
  * visual and instant; the store's escalation sweep persists it (and pings the
  * schedulers) shortly after.
  */
-export function effectivePriority(card: Jobcard): EffectivePriority {
+export function effectivePriority(card: WorkRequest): EffectivePriority {
   const raw = card.priority;
   const start = card.priorityStartDate;
   const end = card.priorityEndDate;
@@ -147,6 +147,6 @@ export function effectivePriority(card: Jobcard): EffectivePriority {
 }
 
 /** Sort comparator: most urgent first (earlier effective date). */
-export function comparePriority(a: Jobcard, b: Jobcard): number {
+export function comparePriority(a: WorkRequest, b: WorkRequest): number {
   return effectivePriority(a).sortKey.localeCompare(effectivePriority(b).sortKey);
 }

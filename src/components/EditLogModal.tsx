@@ -28,7 +28,7 @@ interface Props {
 }
 
 export function EditLogModal({ log, projectName, onClose }: Props) {
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const updateLog = useAppStore((s) => s.updateLog);
   const deleteLog = useAppStore((s) => s.deleteLog);
 
@@ -43,7 +43,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
   useEffect(() => {
     if (log) {
       setQuery(projectName);
-      setSelectedJobId(log.jobcardId ?? null);
+      setSelectedJobId(log.workRequestId ?? null);
       setStartDate(format(new Date(log.startTime), 'yyyy-MM-dd'));
       setStartTime(formatTime(log.startTime));
       setEndDate(format(new Date(log.endTime), 'yyyy-MM-dd'));
@@ -55,7 +55,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
   const trimmed = query.trim();
   const matches =
     trimmed && !selectedJobId
-      ? jobcards.filter((j) =>
+      ? workRequests.filter((j) =>
           j.title.toLowerCase().includes(trimmed.toLowerCase())
         )
       : [];
@@ -89,7 +89,7 @@ export function EditLogModal({ log, projectName, onClose }: Props) {
     }
     updateLog(log.id, {
       date: format(sDate, 'yyyy-MM-dd'),
-      jobcardId: selectedJobId ?? undefined,
+      workRequestId: selectedJobId ?? undefined,
       customProjectName: selectedJobId ? undefined : trimmed,
       startTime: start.toISOString(),
       endTime: end.toISOString(),

@@ -4,6 +4,7 @@ import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotificationToaster } from '@/components/NotificationToaster';
+import { UndefinedStatusCatchUp } from '@/components/UndefinedStatusCatchUp';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
 import {
   desktopHomeHref,
@@ -44,7 +45,7 @@ export default function MobileTabsLayout() {
   }
 
   // Landed on another role's tab (e.g. via a stale deep link) → go home. Only
-  // tab paths are policed; stack routes like /job/[id] pass through untouched.
+  // tab paths are policed; stack routes like /work-request/[id] pass through untouched.
   if (!roleCanAccessMobilePath(role, pathname)) {
     return <Redirect href="/" />;
   }
@@ -109,6 +110,7 @@ export default function MobileTabsLayout() {
       </Tabs>
       <NotificationToaster />
       <SyncStatusChip variant="floating" />
+      <UndefinedStatusCatchUp />
     </View>
   );
 }

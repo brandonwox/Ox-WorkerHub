@@ -5,19 +5,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { effectivePriority } from '@/utils/priorityRange';
 
-/** One jobcard as a list row. Shared by the Jobcards view and the job popup. */
-export function JobcardRow({
-  jobcard,
+/** One work request as a list row. Shared by the Work Requests view and the job popup. */
+export function WorkRequestRow({
+  workRequest,
   jobName,
   scheduled,
   scheduledDate,
   onViewCalendar,
   onPress,
 }: {
-  jobcard: Jobcard;
+  workRequest: WorkRequest;
   jobName: string;
   scheduled: boolean;
   /**
@@ -33,7 +33,7 @@ export function JobcardRow({
   /** When provided, the row becomes pressable (e.g. the Field Super tapping to edit). */
   onPress?: () => void;
 }) {
-  const priority = effectivePriority(jobcard);
+  const priority = effectivePriority(workRequest);
   const meta = priorityMeta(priority.label);
   const [statusHovered, setStatusHovered] = useState(false);
 
@@ -52,12 +52,12 @@ export function JobcardRow({
     <>
       <View style={styles.main}>
         <Text style={styles.title} numberOfLines={1}>
-          {jobcard.title}
+          {workRequest.title}
         </Text>
         <Text style={styles.sub} numberOfLines={1}>
           {jobName}
-          {jobcard.scopes && jobcard.scopes.length > 0
-            ? `  ·  ${jobcard.scopes.join(', ')}`
+          {workRequest.scopes && workRequest.scopes.length > 0
+            ? `  ·  ${workRequest.scopes.join(', ')}`
             : ''}
         </Text>
       </View>

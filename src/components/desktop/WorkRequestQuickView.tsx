@@ -25,16 +25,20 @@ import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
-import { DisplayPhoto, useJobcardPhotos } from '@/components/photos/useJobPhotos';
-import { jobcardStatusColors } from '@/components/StatusPill';
+import { DisplayPhoto, useWorkRequestPhotos } from '@/components/photos/useJobPhotos';
+import {
+  StatusChangeModal,
+  statusNeedsNote,
+} from '@/components/StatusChangeModal';
+import { workRequestStatusColors } from '@/components/StatusPill';
 import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
   Job,
   JOB_SCOPES,
-  Jobcard,
-  JOBCARD_STATUSES,
-  JobcardStatus,
+  SELECTABLE_WORK_REQUEST_STATUSES,
+  WorkRequest,
+  WorkRequestStatus,
   JobScope,
   READINESS_PRESETS,
 } from '@/types';
@@ -50,10 +54,10 @@ const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
 
 /**
- * Payload handed to `addJobcard` when the quick view creates a card.
- * (Moved here from the retired CreateJobcardModal.)
+ * Payload handed to `addWorkRequest` when the quick view creates a card.
+ * (Moved here from the retired CreateWorkRequestModal.)
  */
-export interface NewJobcardInput {
+export interface NewWorkRequestInput {
   jobId: string;
   title: string;
   scopes: JobScope[];
@@ -73,12 +77,12 @@ export interface NewJobcardInput {
 }
 
 /** Blank draft backing create mode — the same shape as a stored card. */
-const emptyDraft = (): Jobcard => ({
+const emptyDraft = (): WorkRequest => ({
   id: '',
   title: '',
   address: '',
   date: '',
-  status: 'Untouched',
+  status: 'Undefined',
   priorityOrder: 0,
   priority: '',
   scopes: [],
@@ -103,25 +107,25 @@ type EditField =
 type PressState = { pressed: boolean; hovered?: boolean };
 
 interface Props {
-  /** Id of the jobcard to show, or null when the popup is closed. */
-  jobcardId: string | null;
+  /** Id of the work request to show, or null when the popup is closed. */
+  workRequestId: string | null;
   /**
-   * Author a new jobcard instead of showing a stored one: the exact same
-   * layout, backed by a local draft, plus Cancel / Create Jobcard buttons at
-   * the bottom. Takes precedence over `jobcardId`.
+   * Author a new work request instead of showing a stored one: the exact same
+   * layout, backed by a local draft, plus Cancel / Create Work Request buttons at
+   * the bottom. Takes precedence over `workRequestId`.
    */
   creating?: boolean;
   /** Jobs in the viewer's scope — parent-job options and lookups. */
   jobs: Job[];
   /**
    * 'popup' (default): centered floating card. 'sidebar': a right-hand panel
-   * the same size as the job dashboard sidebar (the jobcards pages).
+   * the same size as the job dashboard sidebar (the work requests pages).
    */
   variant?: 'popup' | 'sidebar';
   onClose: () => void;
   onDelete: (id: string) => void;
   /** Receives the validated draft when `creating`; required in that mode. */
-  onCreate?: (input: NewJobcardInput) => void;
+  onCreate?: (input: NewWorkRequestInput) => void;
   /**
    * When provided, the parent job name above the title becomes a link that
    * hands the job id up — the host opens its job details over this view.
@@ -130,18 +134,18 @@ interface Props {
 }
 
 /**
- * Google-Calendar-style quick view of a jobcard: a compact read-first popup
+ * Google-Calendar-style quick view of a work request: a compact read-first popup
  * where every editable value highlights on hover and turns into its editor on
  * click. Edits save automatically as they're made (no Save/Cancel) — the only
  * guarded actions are delete (two-click confirm), status changes, and marking
  * readiness "Now" (both confirm inline before applying).
  *
  * With `creating` the identical layout authors a new card instead: edits land
- * on a local draft, and Cancel / Create Jobcard buttons sit at the bottom
+ * on a local draft, and Cancel / Create Work Request buttons sit at the bottom
  * (creation is blocked until the required fields are filled).
  */
-export function JobcardQuickView({
-  jobcardId,
+export function WorkRequestQuickView({
+  workRequestId,
   creating = false,
   jobs,
   variant = 'popup',
@@ -151,23 +155,23 @@ export function JobcardQuickView({
   onOpenJob,
 }: Props) {
   // Read the live card from the store so autosaved edits render back instantly.
-  const storeJobcard = useAppStore((s) =>
-    s.jobcards.find((c) => c.id === jobcardId)
+  const storeWorkRequest = useAppStore((s) =>
+    s.workRequests.find((c) => c.id === workRequestId)
   );
   const jobIssues = useAppStore((s) => s.jobIssues);
-  const updateJobcard = useAppStore((s) => s.updateJobcard);
-  const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
+  const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
+  const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
   const flash = useAppStore((s) => s.flash);
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const assignJobcard = useAppStore((s) => s.assignJobcard);
-  const unassignJobcard = useAppStore((s) => s.unassignJobcard);
+  const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
+  const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const role = useCurrentRole();
 
   // Create mode edits this local draft; view mode edits the stored card.
-  const [draftCard, setDraftCard] = useState<Jobcard>(emptyDraft);
-  const jobcard = creating ? draftCard : storeJobcard;
+  const [draftCard, setDraftCard] = useState<WorkRequest>(emptyDraft);
+  const workRequest = creating ? draftCard : storeWorkRequest;
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<EditField | null>(null);
@@ -176,7 +180,11 @@ export function JobcardQuickView({
   /** In-progress priority edit (null = seed from the card when editing opens). */
   const [priorityDraft, setPriorityDraft] = useState<PriorityValue | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<JobcardStatus | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<WorkRequestStatus | null>(null);
+  // Status picks that need a typed note (Untouched / False Start / Finished)
+  // route through the StatusChangeModal instead of the inline ConfirmBar.
+  const [pendingNoteStatus, setPendingNoteStatus] =
+    useState<WorkRequestStatus | null>(null);
   const [pendingReadinessNow, setPendingReadinessNow] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
@@ -203,18 +211,18 @@ export function JobcardQuickView({
 
   // The calendar day this card is scheduled for: its next upcoming assignment
   // date, or the most recent one when they're all in the past (mirrors the
-  // jobcard list's status pill). Null when the Scheduler hasn't placed it.
+  // work request list's status pill). Null when the Scheduler hasn't placed it.
   const scheduledDate = useMemo(() => {
     const dates = assignments
-      .filter((a) => a.jobcardId === jobcardId)
+      .filter((a) => a.workRequestId === workRequestId)
       .map((a) => a.date)
       .sort();
     if (dates.length === 0) return null;
     const today = format(new Date(), 'yyyy-MM-dd');
     return dates.find((d) => d >= today) ?? dates[dates.length - 1];
-  }, [assignments, jobcardId]);
+  }, [assignments, workRequestId]);
 
-  const photos = useJobcardPhotos(creating ? undefined : jobcard?.id);
+  const photos = useWorkRequestPhotos(creating ? undefined : workRequest?.id);
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
     index: number;
@@ -234,7 +242,7 @@ export function JobcardQuickView({
     setConfirmDelete(false);
     setCrewMenuOpen(false);
     setCrewSquareHovered(false);
-  }, [jobcardId, creating]);
+  }, [workRequestId, creating]);
 
   // An armed delete disarms itself after 4s if the second click never comes.
   useEffect(() => {
@@ -243,17 +251,17 @@ export function JobcardQuickView({
     return () => clearTimeout(timer);
   }, [confirmDelete]);
 
-  if (!jobcard) return null;
+  if (!workRequest) return null;
 
   /** Route an edit to the create draft or the stored card (autosave). */
-  const applyChange = (patch: Partial<Jobcard>) => {
+  const applyChange = (patch: Partial<WorkRequest>) => {
     if (creating) setDraftCard((prev) => ({ ...prev, ...patch }));
-    else updateJobcard(jobcard.id, patch);
+    else updateWorkRequest(workRequest.id, patch);
   };
 
   const palette =
-    jobcardStatusColors[jobcard.status] ?? jobcardStatusColors.Untouched;
-  const parentJob = jobs.find((j) => j.id === jobcard.jobId);
+    workRequestStatusColors[workRequest.status] ?? workRequestStatusColors.Undefined;
+  const parentJob = jobs.find((j) => j.id === workRequest.jobId);
   const activeJobs = jobs.filter((j) => j.status === 'Active');
   // Parent-job options for the create draft (the parent is fixed once a card
   // exists). Sub-jobs are listed with their parent's name conjoined ("Vista
@@ -271,12 +279,12 @@ export function JobcardQuickView({
     parentJob != null &&
     jobAllowsWindows(parentJob) &&
     !parentJob.flashingMaterial?.trim();
-  const tasks = jobcard.tasks ?? [];
-  const scopes = jobcard.scopes ?? [];
+  const tasks = workRequest.tasks ?? [];
+  const scopes = workRequest.scopes ?? [];
   // Installer-raised issues on this card, newest first — nested under the task
-  // they were raised for, mirroring the installer's jobcard screen.
+  // they were raised for, mirroring the installer's work request screen.
   const cardIssues = jobIssues
-    .filter((issue) => issue.jobcardId === jobcard.id)
+    .filter((issue) => issue.workRequestId === workRequest.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   // Issues whose task is gone (or that predate per-task issues) — shown in a
   // fallback section instead of silently disappearing.
@@ -288,19 +296,19 @@ export function JobcardQuickView({
       photos: all,
       index: all.findIndex((p) => p.id === photo.id),
     });
-  // Flashing only exists when the jobcard covers windows AND the parent job's
+  // Flashing only exists when the work request covers windows AND the parent job's
   // scopes allow window work at all.
   const windowsAllowed = jobAllowsWindows(parentJob);
   const includesWindows = windowsAllowed && scopes.includes('Windows');
   const scopeOptions = windowsAllowed
     ? SCOPE_OPTIONS
     : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
-  const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
-  // The parent JOB's scope counts, shown on every one of its jobcards.
+  const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
+  // The parent JOB's scope counts, shown on every one of its work requests.
   const cardCounts = jobCounts(parentJob);
   // Crew assignment drives the title square: permanent crews first so colors
   // match the scheduler calendar (same ordering as CalendarBoard).
-  const cardAssignments = assignments.filter((a) => a.jobcardId === jobcard.id);
+  const cardAssignments = assignments.filter((a) => a.workRequestId === workRequest.id);
   const allCrews = [...crews, ...dailyCrews];
   const crewColorMap = buildCrewColorMap(allCrews.map((c) => c.id));
   const assignedCrewIds = [...new Set(cardAssignments.map((a) => a.crewId))];
@@ -320,7 +328,7 @@ export function JobcardQuickView({
     setDraft(initial);
   };
 
-  // --- Autosave commits (each fires updateJobcard directly) -----------------
+  // --- Autosave commits (each fires updateWorkRequest directly) -----------------
 
   const commitTitle = () => {
     const t = draft.trim();
@@ -330,13 +338,13 @@ export function JobcardQuickView({
       if (!creating) flash('Title is required — change discarded.', 'warning');
       return;
     }
-    if (t !== jobcard.title) applyChange({ title: t });
+    if (t !== workRequest.title) applyChange({ title: t });
   };
 
   // Create mode only — the parent job is fixed once a card exists.
   const changeJob = (nextId: string) => {
     const next = jobs.find((j) => j.id === nextId);
-    if (!next || next.id === jobcard.jobId) return;
+    if (!next || next.id === workRequest.jobId) return;
     // A job without the Windows scope drops the draft's Windows scope (and
     // its flashing material) — those never show for such jobs.
     const dropWindows =
@@ -344,7 +352,7 @@ export function JobcardQuickView({
     // The address follows the parent job.
     applyChange({
       jobId: next.id,
-      address: next.location ?? jobcard.address,
+      address: next.location ?? workRequest.address,
       ...(dropWindows
         ? {
             scopes: scopes.filter((s) => s !== 'Windows'),
@@ -356,7 +364,7 @@ export function JobcardQuickView({
 
   const changeScopes = (vals: string[]) => {
     if (vals.length === 0) {
-      flash('A jobcard needs at least one scope.', 'warning');
+      flash('A work request needs at least one scope.', 'warning');
       return;
     }
     const next = vals as JobScope[];
@@ -372,7 +380,7 @@ export function JobcardQuickView({
     setEditing(null);
     if (!t) {
       if (!creating && tasks.length <= 1) {
-        flash('A jobcard needs at least one task.', 'warning');
+        flash('A work request needs at least one task.', 'warning');
         return;
       }
       applyChange({ tasks: tasks.filter((_, i) => i !== index) });
@@ -399,9 +407,10 @@ export function JobcardQuickView({
   const changeReadiness = (value: string) => {
     setEditing(null);
     const v = value.trim();
-    if (!v || v === jobcard.readiness) return;
-    // "Now" pings installers — keep the explicit double-check before applying.
-    if (v === 'Now') {
+    if (!v || v === workRequest.readiness) return;
+    // "Yes" drops the request into the schedulers' pool — keep the explicit
+    // double-check before applying.
+    if (v === 'Yes') {
       setPendingReadinessNow(true);
       return;
     }
@@ -414,9 +423,9 @@ export function JobcardQuickView({
     setPriorityDraft(value);
     if (!priorityValueComplete(value)) return;
     if (
-      value.priority === jobcard.priority &&
-      value.startDate === (jobcard.priorityStartDate ?? '') &&
-      value.endDate === (jobcard.priorityEndDate ?? '')
+      value.priority === workRequest.priority &&
+      value.startDate === (workRequest.priorityStartDate ?? '') &&
+      value.endDate === (workRequest.priorityEndDate ?? '')
     ) {
       return;
     }
@@ -429,19 +438,19 @@ export function JobcardQuickView({
 
   // How the priority reads when not editing: "Now · Jul 11",
   // "This week · Jul 11 – Jul 18", or just the range for "Set dates".
-  const cardPriority = effectivePriority(jobcard);
-  const priorityDisplay = !jobcard.priority
+  const cardPriority = effectivePriority(workRequest);
+  const priorityDisplay = !workRequest.priority
     ? 'Set priority…'
     : cardPriority.range
       ? cardPriority.raw === 'Set dates' && !cardPriority.escalated
         ? cardPriority.range
         : `${cardPriority.label} · ${cardPriority.range}`
-      : jobcard.priority;
+      : workRequest.priority;
 
   const commitFlashing = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.flashingMaterial) {
+    if (v !== workRequest.flashingMaterial) {
       applyChange({ flashingMaterial: v });
     }
   };
@@ -449,11 +458,11 @@ export function JobcardQuickView({
   const commitMaterials = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.materials) applyChange({ materials: v });
+    if (v !== workRequest.materials) applyChange({ materials: v });
   };
 
   const changePickupRequired = (required: boolean) => {
-    if (required === jobcard.pickupRequired) return;
+    if (required === workRequest.pickupRequired) return;
     applyChange({
       pickupRequired: required,
       // "No" clears any stale location so it can't silently reappear.
@@ -464,7 +473,7 @@ export function JobcardQuickView({
   const commitPickupLocation = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.pickupLocation) {
+    if (v !== workRequest.pickupLocation) {
       applyChange({ pickupLocation: v });
     }
   };
@@ -472,27 +481,33 @@ export function JobcardQuickView({
   const commitNotes = () => {
     setEditing(null);
     const v = draft.trim() || undefined;
-    if (v !== jobcard.notes) applyChange({ notes: v });
+    if (v !== workRequest.notes) applyChange({ notes: v });
   };
 
   // --- Guarded actions -------------------------------------------------------
 
-  const pickStatus = (status: JobcardStatus) => {
+  const pickStatus = (status: WorkRequestStatus) => {
     setStatusMenuOpen(false);
-    if (status === jobcard.status) return;
+    if (status === workRequest.status) return;
+    // Untouched / False Start need a typed reason, Finished a completion
+    // note — those commit from the popup instead of the inline confirm.
+    if (statusNeedsNote(status)) {
+      setPendingNoteStatus(status);
+      return;
+    }
     setPendingStatus(status);
   };
 
   const confirmStatusChange = () => {
     if (pendingStatus) {
-      setJobcardStatus(jobcard.id, pendingStatus);
+      setWorkRequestStatus(workRequest.id, pendingStatus);
       flash(`Status changed to "${pendingStatus}"`, 'success');
     }
     setPendingStatus(null);
   };
 
   const confirmReadinessNow = () => {
-    applyChange({ readiness: 'Now' });
+    applyChange({ readiness: 'Yes' });
     setPendingReadinessNow(false);
   };
 
@@ -502,7 +517,7 @@ export function JobcardQuickView({
       setConfirmDelete(true);
       return;
     }
-    onDelete(jobcard.id);
+    onDelete(workRequest.id);
     onClose();
   };
 
@@ -526,8 +541,8 @@ export function JobcardQuickView({
     setCrewMenuOpen(false);
     if (assignedCrewIds.length === 1 && assignedCrewIds[0] === crewId) return;
     const dates = [...new Set(cardAssignments.map((a) => a.date))];
-    cardAssignments.forEach((a) => unassignJobcard(a.id));
-    dates.forEach((date) => assignJobcard(jobcard.id, crewId, date));
+    cardAssignments.forEach((a) => unassignWorkRequest(a.id));
+    dates.forEach((date) => assignWorkRequest(workRequest.id, crewId, date));
     flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
   };
 
@@ -535,7 +550,7 @@ export function JobcardQuickView({
   const submitCreate = () => {
     if (!onCreate) return;
     if (!parentJob) {
-      setCreateError('Pick a parent job for this jobcard.');
+      setCreateError('Pick a parent job for this work request.');
       return;
     }
     if (missingAddress) {
@@ -550,7 +565,7 @@ export function JobcardQuickView({
       );
       return;
     }
-    if (!jobcard.title.trim()) {
+    if (!workRequest.title.trim()) {
       setCreateError('Add a title.');
       return;
     }
@@ -566,59 +581,59 @@ export function JobcardQuickView({
       return;
     }
     // Readiness "Now" was already double-confirmed via the inline ConfirmBar.
-    if (!jobcard.readiness?.trim()) {
-      setCreateError('Choose when this jobcard is ready for installers.');
+    if (!workRequest.readiness?.trim()) {
+      setCreateError('Choose when this work request is ready for installers.');
       return;
     }
-    if (!jobcard.priority) {
+    if (!workRequest.priority) {
       setCreateError('Choose a priority.');
       return;
     }
     if (
       !priorityValueComplete({
-        priority: jobcard.priority,
-        startDate: jobcard.priorityStartDate ?? '',
-        endDate: jobcard.priorityEndDate ?? '',
+        priority: workRequest.priority,
+        startDate: workRequest.priorityStartDate ?? '',
+        endDate: workRequest.priorityEndDate ?? '',
       })
     ) {
       setCreateError('Set the priority start and end dates.');
       return;
     }
-    if (jobcard.pickupRequired == null) {
+    if (workRequest.pickupRequired == null) {
       setCreateError('Answer whether a pickup is required.');
       return;
     }
-    if (jobcard.pickupRequired && !jobcard.pickupLocation?.trim()) {
+    if (workRequest.pickupRequired && !workRequest.pickupLocation?.trim()) {
       setCreateError('Specify where the pickup is.');
       return;
     }
     onCreate({
       jobId: parentJob.id,
-      title: jobcard.title.trim(),
+      title: workRequest.title.trim(),
       scopes,
       tasks: cleanTasks,
-      readiness: jobcard.readiness.trim(),
-      priority: jobcard.priority,
-      priorityStartDate: jobcard.priorityStartDate ?? '',
-      priorityEndDate: jobcard.priorityEndDate ?? '',
-      materials: jobcard.materials?.trim() || undefined,
+      readiness: workRequest.readiness.trim(),
+      priority: workRequest.priority,
+      priorityStartDate: workRequest.priorityStartDate ?? '',
+      priorityEndDate: workRequest.priorityEndDate ?? '',
+      materials: workRequest.materials?.trim() || undefined,
       // An untouched flashing field falls back to the parent job's material,
       // exactly what the read view displays as the default.
       flashingMaterial: includesWindows
-        ? (jobcard.flashingMaterial ?? parentJob.flashingMaterial)?.trim() ||
+        ? (workRequest.flashingMaterial ?? parentJob.flashingMaterial)?.trim() ||
           undefined
         : undefined,
-      pickupRequired: jobcard.pickupRequired,
-      pickupLocation: jobcard.pickupRequired
-        ? jobcard.pickupLocation?.trim()
+      pickupRequired: workRequest.pickupRequired,
+      pickupLocation: workRequest.pickupRequired
+        ? workRequest.pickupLocation?.trim()
         : undefined,
-      notes: jobcard.notes?.trim() || undefined,
+      notes: workRequest.notes?.trim() || undefined,
     });
     onClose();
   };
 
   // The same panel renders either centered in a popup Modal (calendar and job
-  // dashboard) or as a fixed right-hand sidebar (the jobcards pages).
+  // dashboard) or as a fixed right-hand sidebar (the work requests pages).
   const panel = (
     <View style={variant === 'sidebar' ? styles.sidebarPanel : styles.card}>
       {/* Header action icons, Google-Calendar style. A draft has nothing to
@@ -665,7 +680,7 @@ export function JobcardQuickView({
           return false;
         }}
       >
-        {/* Parent job — always shown directly above the jobcard name (like
+        {/* Parent job — always shown directly above the work request name (like
             the mobile installer view). Fixed once the card exists; only the
             create draft still picks it. */}
         <View style={styles.header}>
@@ -673,7 +688,7 @@ export function JobcardQuickView({
             <View style={styles.parentJobPicker}>
               {jobOptions.length > 0 ? (
                 <Combobox
-                  value={jobcard.jobId ?? ''}
+                  value={workRequest.jobId ?? ''}
                   options={jobOptions}
                   onChange={changeJob}
                   placeholder="Search jobs…"
@@ -691,7 +706,7 @@ export function JobcardQuickView({
                     color={colors.warning}
                   />
                   <Text style={styles.prereqText}>
-                    Jobcards can&apos;t be created for this job until{' '}
+                    Work Requests can&apos;t be created for this job until{' '}
                     {missingAddress && missingFlashing
                       ? 'its jobsite address and Window Opening Flashing Material are'
                       : missingAddress
@@ -810,16 +825,16 @@ export function JobcardQuickView({
               />
             ) : (
               <Editable
-                onPress={() => startEdit('title', jobcard.title)}
+                onPress={() => startEdit('title', workRequest.title)}
                 style={styles.titleEditable}
               >
                 <Text
                   style={[
                     styles.titleText,
-                    !jobcard.title && styles.titlePlaceholder,
+                    !workRequest.title && styles.titlePlaceholder,
                   ]}
                 >
-                  {jobcard.title || 'Add a title…'}
+                  {workRequest.title || 'Add a title…'}
                 </Text>
               </Editable>
             )}
@@ -829,7 +844,7 @@ export function JobcardQuickView({
         {/* Address + date + optional time window (read-only). */}
         <Row icon="map-pin">
           <Text style={styles.mutedText}>
-            {jobcard.address || 'No address'}
+            {workRequest.address || 'No address'}
           </Text>
         </Row>
         <Row icon="calendar">
@@ -849,7 +864,7 @@ export function JobcardQuickView({
         ) : null}
 
         {/* Parent job's scope counts, "done/total" (installers update the
-            done numbers from their jobcard view). */}
+            done numbers from their work request view). */}
         {cardCounts.length > 0 && (
           <Row icon="hash">
             <Text style={styles.mutedText}>
@@ -860,14 +875,15 @@ export function JobcardQuickView({
           </Row>
         )}
 
-        {/* Status — changeable, but always behind an inline confirm. A draft
-            is always "Untouched", so create mode shows a static pill. */}
+        {/* Status — changeable, but always guarded (inline confirm, or the
+            note popup for Untouched / False Start / Finished). A draft is
+            always "Undefined", so create mode shows a static pill. */}
         <Row icon="activity" label="Status">
           {creating ? (
             <View style={styles.statusStatic}>
               <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
                 <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                  {jobcard.status}
+                  {workRequest.status}
                 </Text>
               </View>
             </View>
@@ -882,7 +898,7 @@ export function JobcardQuickView({
               >
                 <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
                   <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                    {jobcard.status}
+                    {workRequest.status}
                   </Text>
                   <Feather
                     name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
@@ -893,8 +909,8 @@ export function JobcardQuickView({
               </Editable>
               {statusMenuOpen && (
                 <View style={styles.menu}>
-                  {JOBCARD_STATUSES.map((status) => {
-                    const active = jobcard.status === status;
+                  {SELECTABLE_WORK_REQUEST_STATUSES.map((status) => {
+                    const active = workRequest.status === status;
                     return (
                       <Pressable
                         key={status}
@@ -907,7 +923,7 @@ export function JobcardQuickView({
                         <View
                           style={[
                             styles.menuDot,
-                            { backgroundColor: jobcardStatusColors[status].fg },
+                            { backgroundColor: workRequestStatusColors[status].fg },
                           ]}
                         />
                         <Text
@@ -936,6 +952,22 @@ export function JobcardQuickView({
               onCancel={() => setPendingStatus(null)}
             />
           )}
+          {!creating && workRequest.statusNote ? (
+            <Text style={styles.statusNoteText}>{workRequest.statusNote}</Text>
+          ) : null}
+          <StatusChangeModal
+            status={pendingNoteStatus}
+            workRequestTitle={workRequest.title}
+            windowsScope={includesWindows}
+            onConfirm={(note) => {
+              if (pendingNoteStatus) {
+                setWorkRequestStatus(workRequest.id, pendingNoteStatus, note);
+                flash(`Status changed to "${pendingNoteStatus}"`, 'success');
+              }
+              setPendingNoteStatus(null);
+            }}
+            onCancel={() => setPendingNoteStatus(null)}
+          />
         </Row>
 
         {/* Scope chips */}
@@ -1065,10 +1097,10 @@ export function JobcardQuickView({
               <Text style={styles.rowLabel}>Ready for installers</Text>
               {editing === 'readiness' ? (
                 <Combobox
-                  value={jobcard.readiness ?? ''}
+                  value={workRequest.readiness ?? ''}
                   options={READINESS_OPTIONS}
                   onChange={changeReadiness}
-                  placeholder="Now, Soon… or type + Enter"
+                  placeholder="Yes, No, Soon… or type + Enter"
                   allowCustom
                   autoFocus
                   onDismiss={() => setEditing(null)}
@@ -1077,12 +1109,12 @@ export function JobcardQuickView({
                 <Editable onPress={() => setEditing('readiness')}>
                   <Text
                     style={
-                      jobcard.readiness
+                      workRequest.readiness
                         ? styles.valueText
                         : styles.placeholderText
                     }
                   >
-                    {jobcard.readiness || 'Set readiness…'}
+                    {workRequest.readiness || 'Set readiness…'}
                   </Text>
                 </Editable>
               )}
@@ -1093,9 +1125,9 @@ export function JobcardQuickView({
                 <PrioritySelect
                   value={
                     priorityDraft ?? {
-                      priority: jobcard.priority ?? '',
-                      startDate: jobcard.priorityStartDate ?? '',
-                      endDate: jobcard.priorityEndDate ?? '',
+                      priority: workRequest.priority ?? '',
+                      startDate: workRequest.priorityStartDate ?? '',
+                      endDate: workRequest.priorityEndDate ?? '',
                     }
                   }
                   onChange={changePriority}
@@ -1109,7 +1141,7 @@ export function JobcardQuickView({
                 >
                   <Text
                     style={[
-                      jobcard.priority
+                      workRequest.priority
                         ? styles.valueText
                         : styles.placeholderText,
                       cardPriority.label === 'Now' && styles.priorityNow,
@@ -1153,17 +1185,17 @@ export function JobcardQuickView({
                 ) : (
                   <Editable
                     onPress={() =>
-                      startEdit('flashing', jobcard.flashingMaterial ?? '')
+                      startEdit('flashing', workRequest.flashingMaterial ?? '')
                     }
                   >
                     <Text
                       style={
-                        jobcard.flashingMaterial
+                        workRequest.flashingMaterial
                           ? styles.valueText
                           : styles.placeholderText
                       }
                     >
-                      {jobcard.flashingMaterial ??
+                      {workRequest.flashingMaterial ??
                         parentJob?.flashingMaterial ??
                         'Not specified'}
                     </Text>
@@ -1190,14 +1222,14 @@ export function JobcardQuickView({
             />
           ) : (
             <Editable
-              onPress={() => startEdit('materials', jobcard.materials ?? '')}
+              onPress={() => startEdit('materials', workRequest.materials ?? '')}
             >
               <Text
                 style={
-                  jobcard.materials ? styles.valueText : styles.placeholderText
+                  workRequest.materials ? styles.valueText : styles.placeholderText
                 }
               >
-                {jobcard.materials || 'Add materials…'}
+                {workRequest.materials || 'Add materials…'}
               </Text>
             </Editable>
           )}
@@ -1207,7 +1239,7 @@ export function JobcardQuickView({
         <Row icon="truck" label="Pickup Required">
           <View style={styles.pickupRow}>
             {([true, false] as const).map((choice) => {
-              const active = jobcard.pickupRequired === choice;
+              const active = workRequest.pickupRequired === choice;
               return (
                 <Pressable
                   key={String(choice)}
@@ -1226,7 +1258,7 @@ export function JobcardQuickView({
               );
             })}
           </View>
-          {jobcard.pickupRequired === true &&
+          {workRequest.pickupRequired === true &&
             (editing === 'pickup-location' ? (
               <TextInput
                 style={styles.textEditor}
@@ -1240,17 +1272,17 @@ export function JobcardQuickView({
             ) : (
               <Editable
                 onPress={() =>
-                  startEdit('pickup-location', jobcard.pickupLocation ?? '')
+                  startEdit('pickup-location', workRequest.pickupLocation ?? '')
                 }
               >
                 <Text
                   style={
-                    jobcard.pickupLocation
+                    workRequest.pickupLocation
                       ? styles.valueText
                       : styles.placeholderText
                   }
                 >
-                  {jobcard.pickupLocation || 'Add the pickup location…'}
+                  {workRequest.pickupLocation || 'Add the pickup location…'}
                 </Text>
               </Editable>
             ))}
@@ -1270,22 +1302,22 @@ export function JobcardQuickView({
               multiline
             />
           ) : (
-            <Editable onPress={() => startEdit('notes', jobcard.notes ?? '')}>
+            <Editable onPress={() => startEdit('notes', workRequest.notes ?? '')}>
               <Text
                 style={
-                  jobcard.notes ? styles.valueText : styles.placeholderText
+                  workRequest.notes ? styles.valueText : styles.placeholderText
                 }
               >
-                {jobcard.notes || 'Add notes…'}
+                {workRequest.notes || 'Add notes…'}
               </Text>
             </Editable>
           )}
         </Row>
 
         {/* Installer-authored field notes (read-only here). */}
-        {jobcard.fieldNotes ? (
+        {workRequest.fieldNotes ? (
           <Row icon="message-square" label="Field notes (installers)">
-            <Text style={styles.valueText}>{jobcard.fieldNotes}</Text>
+            <Text style={styles.valueText}>{workRequest.fieldNotes}</Text>
           </Row>
         ) : null}
 
@@ -1297,7 +1329,7 @@ export function JobcardQuickView({
         >
           {photos.length === 0 ? (
             <Text style={styles.mutedText}>
-              No photos for this jobcard yet.
+              No photos for this work request yet.
             </Text>
           ) : (
             <JobPhotoGrid
@@ -1312,15 +1344,15 @@ export function JobcardQuickView({
           )}
         </Row>
 
-        {jobcard.createdAt ? (
+        {workRequest.createdAt ? (
           <Text style={styles.createdOn}>
-            Created on {format(new Date(jobcard.createdAt), 'MMMM d, yyyy')}
+            Created on {format(new Date(workRequest.createdAt), 'MMMM d, yyyy')}
           </Text>
         ) : null}
       </ScrollView>
 
       {/* Create mode: the ONLY difference from viewing a card — Cancel /
-          Create Jobcard at the bottom (plus the validation error). */}
+          Create Work Request at the bottom (plus the validation error). */}
       {creating && (
         <View style={styles.createFooter}>
           {createError ? (
@@ -1343,7 +1375,7 @@ export function JobcardQuickView({
               ]}
               onPress={submitCreate}
             >
-              <Text style={styles.submitText}>Create Jobcard</Text>
+              <Text style={styles.submitText}>Create Work Request</Text>
             </Pressable>
           </View>
         </View>
@@ -1489,7 +1521,7 @@ const styles = themed(() => StyleSheet.create({
     paddingHorizontal: spacing.xl,
     gap: spacing.sm,
   },
-  // The jobcards pages open the same panel as a right-hand sidebar, sized
+  // The work requests pages open the same panel as a right-hand sidebar, sized
   // like the job dashboard sidebar.
   sidebarPanel: {
     position: 'absolute',
@@ -1735,6 +1767,13 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
+  statusNoteText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: spacing.xs,
+  },
   menu: {
     backgroundColor: colors.surfaceLight,
     borderRadius: radii.md,
@@ -1947,7 +1986,7 @@ const styles = themed(() => StyleSheet.create({
   flashingValue: {
     flex: 1,
   },
-  // Create-mode footer: validation error + Cancel / Create Jobcard.
+  // Create-mode footer: validation error + Cancel / Create Work Request.
   createFooter: {
     gap: spacing.md,
     paddingTop: spacing.md,

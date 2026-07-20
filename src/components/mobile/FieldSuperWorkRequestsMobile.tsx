@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
+import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -15,15 +15,15 @@ const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
 type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number];
 
 /**
- * The Field Super's jobcards on the phone: every card on their jobs, searchable
- * and filterable by calendar status. Creating and editing jobcards stays on the
+ * The Field Super's work requests on the phone: every card on their jobs, searchable
+ * and filterable by calendar status. Creating and editing work requests stays on the
  * desktop console; tapping a card opens its details.
  */
-export function FieldSuperJobcardsMobile() {
+export function FieldSuperWorkRequestsMobile() {
   const router = useRouter();
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
-  const allJobcards = useAppStore((s) => s.jobcards);
+  const allWorkRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
   const [search, setSearch] = useState('');
   const [schedule, setSchedule] = useState<ScheduleFilter>('All');
@@ -40,13 +40,13 @@ export function FieldSuperJobcardsMobile() {
   );
 
   const scheduledIds = useMemo(
-    () => new Set(assignments.map((a) => a.jobcardId)),
+    () => new Set(assignments.map((a) => a.workRequestId)),
     [assignments]
   );
 
   const cards = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return allJobcards
+    return allWorkRequests
       .filter((card) => {
         if (!card.jobId || !jobNameById.has(card.jobId)) return false;
         if (schedule === 'Scheduled' && !scheduledIds.has(card.id)) return false;
@@ -59,13 +59,13 @@ export function FieldSuperJobcardsMobile() {
         );
       })
       .sort(comparePriority);
-  }, [allJobcards, jobNameById, schedule, scheduledIds, search]);
+  }, [allWorkRequests, jobNameById, schedule, scheduledIds, search]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <Text style={styles.heading}>Jobcards</Text>
+      <Text style={styles.heading}>Work Requests</Text>
       <Text style={styles.hint}>
-        {cards.length} {cards.length === 1 ? 'jobcard' : 'jobcards'} · create and
+        {cards.length} {cards.length === 1 ? 'work request' : 'work requests'} · create and
         edit from the desktop console
       </Text>
 
@@ -76,7 +76,7 @@ export function FieldSuperJobcardsMobile() {
             style={styles.searchInput}
             value={search}
             onChangeText={setSearch}
-            placeholder="Search jobcards"
+            placeholder="Search work requests"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -94,21 +94,21 @@ export function FieldSuperJobcardsMobile() {
         keyExtractor={(card) => card.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <MobileJobcardItem
-            jobcard={item}
+          <MobileWorkRequestItem
+            workRequest={item}
             jobName={jobNameById.get(item.jobId ?? '') ?? 'Unlinked job'}
             scheduled={scheduledIds.has(item.id)}
-            onPress={() => router.push(`/job/${item.id}`)}
+            onPress={() => router.push(`/work-request/${item.id}`)}
           />
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Feather name="clipboard" size={32} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No jobcards</Text>
+            <Text style={styles.emptyTitle}>No work requests</Text>
             <Text style={styles.emptySubtitle}>
               {search || schedule !== 'All'
                 ? 'Nothing matches the current filters.'
-                : 'Jobcards on your jobs show up here.'}
+                : 'Work Requests on your jobs show up here.'}
             </Text>
           </View>
         }

@@ -15,7 +15,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** Crew names are a single letter — they tag jobcards on the calendar. */
+/** Crew names are a single letter — they tag work requests on the calendar. */
 const CREW_NAME_RE = /^[A-Za-z]$/;
 
 const toggle = (ids: string[], id: string): string[] =>
@@ -43,6 +43,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
   const [newCrewName, setNewCrewName] = useState('');
   const [newCrewMembers, setNewCrewMembers] = useState<string[]>([]);
+  const [newCrewForeman, setNewCrewForeman] = useState<string | null>(null);
   const [newDailyName, setNewDailyName] = useState('');
   const [newDailyDate, setNewDailyDate] = useState('');
   const [newDailyMembers, setNewDailyMembers] = useState<string[]>([]);
@@ -54,9 +55,19 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
       setError('Crew names must be a single letter (e.g. "A").');
       return;
     }
-    addCrew({ name, installerIds: newCrewMembers });
+    // Every permanent crew needs exactly one foreman — no more, no less.
+    if (!newCrewForeman || !newCrewMembers.includes(newCrewForeman)) {
+      setError('Pick exactly one foreman for the crew.');
+      return;
+    }
+    addCrew({
+      name,
+      installerIds: newCrewMembers,
+      foremanId: newCrewForeman,
+    });
     setNewCrewName('');
     setNewCrewMembers([]);
+    setNewCrewForeman(null);
     setError(null);
   };
 
@@ -120,6 +131,25 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                       })
                     }
                   />
+                  <Text style={styles.fieldLabel}>Foreman (exactly one)</Text>
+                  {crew.installerIds.length === 0 ? (
+                    <Text style={styles.muted}>
+                      Add members before picking a foreman.
+                    </Text>
+                  ) : (
+                    <ForemanChips
+                      installers={installers.filter((w) =>
+                        crew.installerIds.includes(w.id)
+                      )}
+                      foremanId={crew.foremanId}
+                      onPick={(id) => updateCrew(crew.id, { foremanId: id })}
+                    />
+                  )}
+                  {!crew.foremanId && crew.installerIds.length > 0 && (
+                    <Text style={styles.error}>
+                      This crew has no foreman yet — pick one.
+                    </Text>
+                  )}
                 </View>
               ))
             )}
@@ -137,8 +167,24 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
               <InstallerChips
                 installers={installers}
                 selected={newCrewMembers}
-                onToggle={(id) => setNewCrewMembers((m) => toggle(m, id))}
+                onToggle={(id) => {
+                  setNewCrewMembers((m) => toggle(m, id));
+                  // Deselecting the chosen foreman un-picks them.
+                  setNewCrewForeman((f) => (f === id ? null : f));
+                }}
               />
+              {newCrewMembers.length > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>Foreman (exactly one)</Text>
+                  <ForemanChips
+                    installers={installers.filter((w) =>
+                      newCrewMembers.includes(w.id)
+                    )}
+                    foremanId={newCrewForeman ?? undefined}
+                    onPick={setNewCrewForeman}
+                  />
+                </>
+              )}
               <Pressable
                 style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
                 onPress={createCrew}
@@ -219,6 +265,48 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
         </View>
       </View>
     </Modal>
+  );
+}
+
+/**
+ * Single-select foreman picker over a crew's members. Exactly one foreman per
+ * permanent crew — picking a different member moves the tag.
+ */
+function ForemanChips({
+  installers,
+  foremanId,
+  onPick,
+}: {
+  installers: Worker[];
+  foremanId?: string;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <View style={styles.chips}>
+      {installers.map((w) => {
+        const active = foremanId === w.id;
+        return (
+          <Pressable
+            key={w.id}
+            style={({ pressed }) => [
+              styles.chip,
+              active && styles.chipActive,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => onPick(w.id)}
+          >
+            <Feather
+              name="star"
+              size={12}
+              color={active ? colors.primary : colors.textTertiary}
+            />
+            <Text style={[styles.chipText, active && styles.chipTextActive]}>
+              {w.name}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 

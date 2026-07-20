@@ -25,12 +25,12 @@ const GAP = spacing.xs;
 interface Props {
   issue: JobIssue;
   /**
-   * Installer mode (the jobcard screen): the creator edits the description and
+   * Installer mode (the work request screen): the creator edits the description and
    * deletes; anyone adds photos. Off on the parent job page (read-only there).
    */
   editable?: boolean;
-  /** Show the source jobcard's title as a link (used on the parent job page). */
-  showJobcardLink?: boolean;
+  /** Show the source work request's title as a link (used on the parent job page). */
+  showWorkRequestLink?: boolean;
   /** Open the tapped photo in the parent screen's viewer. */
   onPhotoPress: (photo: DisplayPhoto, all: DisplayPhoto[]) => void;
 }
@@ -43,7 +43,7 @@ interface Props {
 export function IssueCard({
   issue,
   editable = false,
-  showJobcardLink = false,
+  showWorkRequestLink = false,
   onPhotoPress,
 }: Props) {
   const router = useRouter();
@@ -53,8 +53,8 @@ export function IssueCard({
   const raisedBy = useAppStore(
     (s) => s.workers.find((w) => w.id === issue.workerId)?.name
   );
-  const jobcard = useAppStore((s) =>
-    s.jobcards.find((c) => c.id === issue.jobcardId)
+  const workRequest = useAppStore((s) =>
+    s.workRequests.find((c) => c.id === issue.workRequestId)
   );
   const updateJobIssueDescription = useAppStore(
     (s) => s.updateJobIssueDescription
@@ -87,9 +87,9 @@ export function IssueCard({
     setConfirmingDelete(false);
     setExpanded(false);
   };
-  // The jobcard task the issue was raised for (shown on the parent job page,
+  // The work request task the issue was raised for (shown on the parent job page,
   // where the issue appears away from its task list).
-  const task = jobcard?.tasks?.find((t) => t.id === issue.taskId);
+  const task = workRequest?.tasks?.find((t) => t.id === issue.taskId);
 
   const upload = async () => {
     if (picking) return;
@@ -99,7 +99,7 @@ export function IssueCard({
       if (uris.length) {
         await addJobPhotos({
           jobId: issue.jobId,
-          jobcardId: issue.jobcardId,
+          workRequestId: issue.workRequestId,
           issueId: issue.id,
           localUris: uris,
         });
@@ -121,7 +121,7 @@ export function IssueCard({
         onPress={() => setExpanded(true)}
       >
         <Feather name="chevron-right" size={16} color={colors.textSecondary} />
-        {/* Collapsed rows show only the description — the jobcard link, task,
+        {/* Collapsed rows show only the description — the work request link, task,
             and author/date appear once expanded. */}
         <Text
           style={[
@@ -146,19 +146,19 @@ export function IssueCard({
           <Feather name="chevron-down" size={16} color={colors.textSecondary} />
         </Pressable>
         <View style={styles.headerText}>
-          {showJobcardLink && jobcard && (
+          {showWorkRequestLink && workRequest && (
             <Pressable
               hitSlop={6}
               onPress={() =>
-                router.push({ pathname: '/job/[id]', params: { id: jobcard.id } })
+                router.push({ pathname: '/work-request/[id]', params: { id: workRequest.id } })
               }
             >
-              <Text style={styles.jobcardLink} numberOfLines={1}>
-                {jobcard.title}
+              <Text style={styles.workRequestLink} numberOfLines={1}>
+                {workRequest.title}
               </Text>
             </Pressable>
           )}
-          {showJobcardLink && task && (
+          {showWorkRequestLink && task && (
             <Text style={styles.taskRef} numberOfLines={2}>
               Task: {task.text}
             </Text>
@@ -248,7 +248,7 @@ export function IssueCard({
                   pathname: '/camera/[jobId]',
                   params: {
                     jobId: issue.jobId,
-                    ...(issue.jobcardId ? { jobcardId: issue.jobcardId } : {}),
+                    ...(issue.workRequestId ? { workRequestId: issue.workRequestId } : {}),
                     issueId: issue.id,
                   },
                 })
@@ -349,7 +349,7 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  jobcardLink: {
+  workRequestLink: {
     color: colors.primary,
     fontFamily: fonts.medium,
     fontSize: 13,

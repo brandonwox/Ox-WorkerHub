@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
-import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
+import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
 import { Backlog, isReadyNow } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
 import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
@@ -27,18 +27,18 @@ interface Props {
   /**
    * Whether the viewer may place work onto crews. Schedulers can; Field Supers
    * share the same board read-only for crew assignment (they still open and edit
-   * jobcards), so the Schedule / unassign / Manage crews controls are hidden.
+   * work requests), so the Schedule / unassign / Manage crews controls are hidden.
    */
   canAssign: boolean;
   /**
    * Jump the calendar to this day's month and flash the day for a few seconds
-   * (the jobcards page's "View on calendar" link). yyyy-MM-dd.
+   * (the work requests page's "View on calendar" link). yyyy-MM-dd.
    */
   highlightDate?: string;
   /** Changes on every jump so repeating the same date re-fires the flash. */
   highlightNonce?: string;
   /**
-   * Open this jobcard's quick view on arrival (a "New Priority Jobcard"
+   * Open this work request's quick view on arrival (a "New Priority Work Request"
    * notification click). Ignored when the id no longer matches a card.
    */
   openCardId?: string;
@@ -60,11 +60,11 @@ export function CalendarBoard({
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
-  const assignJobcard = useAppStore((s) => s.assignJobcard);
-  const unassignJobcard = useAppStore((s) => s.unassignJobcard);
-  const deleteJobcard = useAppStore((s) => s.deleteJobcard);
+  const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
+  const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
+  const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
 
@@ -85,8 +85,8 @@ export function CalendarBoard({
   // The day whose schedule shows in the sidebar, or null when closed.
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
-  // A jobcard popup's parent-job link opens the job dashboard OVER the popup;
-  // its back arrow returns to the (still-open) jobcard.
+  // A work request popup's parent-job link opens the job dashboard OVER the popup;
+  // its back arrow returns to the (still-open) work request.
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
   // The day currently flashing from a "View on calendar" jump (clears itself).
@@ -101,12 +101,12 @@ export function CalendarBoard({
     return () => clearTimeout(timer);
   }, [highlightDate, highlightNonce]);
 
-  // A notification click lands here with the jobcard to open (skips ids that
+  // A notification click lands here with the work request to open (skips ids that
   // no longer resolve — e.g. the card was deleted since the ping).
   useEffect(() => {
     if (!openCardId) return;
     void openCardNonce; // dep only — re-clicking the same notification re-opens
-    if (useAppStore.getState().jobcards.some((c) => c.id === openCardId)) {
+    if (useAppStore.getState().workRequests.some((c) => c.id === openCardId)) {
       setViewingId(openCardId);
     }
   }, [openCardId, openCardNonce]);
@@ -267,10 +267,10 @@ export function CalendarBoard({
   const jobNameFor = (jobId?: string) =>
     jobDisplayNameById(jobId, jobs) || 'Unlinked job';
 
-  // Work Requests = jobcards with no assignment row anywhere.
+  // Work Requests = work requests with no assignment row anywhere.
   const unassigned = useMemo(
-    () => jobcards.filter((c) => assignments.every((a) => a.jobcardId !== c.id)),
-    [jobcards, assignments]
+    () => workRequests.filter((c) => assignments.every((a) => a.workRequestId !== c.id)),
+    [workRequests, assignments]
   );
   // The expanded calendar shows only ready requests — same filter as the list's
   // main section (the list handles the "Not ready yet" leftovers itself).
@@ -296,11 +296,11 @@ export function CalendarBoard({
       );
       return;
     }
-    activeCrews.forEach((c) => assignJobcard(placingCardId, c.id, date));
-    const card = jobcards.find((c) => c.id === placingCardId);
+    activeCrews.forEach((c) => assignWorkRequest(placingCardId, c.id, date));
+    const card = workRequests.find((c) => c.id === placingCardId);
     setPlacingCardId(null);
     const names = activeCrews.map((c) => c.name).join(', ');
-    flash(`Assigned "${card?.title ?? 'jobcard'}" to ${names}`, 'success');
+    flash(`Assigned "${card?.title ?? 'work request'}" to ${names}`, 'success');
   };
 
   // Removing a placed card from the calendar pulls it off EVERY crew it was
@@ -310,17 +310,17 @@ export function CalendarBoard({
     const target = assignments.find((a) => a.id === assignmentId);
     if (!target) return;
     assignments
-      .filter((a) => a.jobcardId === target.jobcardId)
-      .forEach((a) => unassignJobcard(a.id));
+      .filter((a) => a.workRequestId === target.workRequestId)
+      .forEach((a) => unassignWorkRequest(a.id));
   };
 
   const togglePlacing = (cardId: string) =>
     setPlacingCardId((prev) => (prev === cardId ? null : cardId));
 
   const handleDelete = (id: string) => {
-    const title = jobcards.find((c) => c.id === id)?.title;
-    deleteJobcard(id);
-    flash(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted', 'success');
+    const title = workRequests.find((c) => c.id === id)?.title;
+    deleteWorkRequest(id);
+    flash(title ? `Work Request "${title}" deleted` : 'Work Request deleted', 'success');
   };
 
   return (
@@ -403,7 +403,7 @@ export function CalendarBoard({
             onNextMonth={() => setMonth((m) => addMonths(m, 1))}
             activeCrews={activeCrews}
             visibleAssignments={visibleAssignments}
-            jobcards={jobcards}
+            workRequests={workRequests}
             colorForCrew={colorForCrew}
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
@@ -426,7 +426,7 @@ export function CalendarBoard({
           <DaySidebar
             date={dayFocus}
             assignments={visibleAssignments.filter((a) => a.date === dayFocus)}
-            jobcards={jobcards}
+            workRequests={workRequests}
             jobNameFor={jobNameFor}
             colorForCrew={colorForCrew}
             crewNameFor={crewTagFor}
@@ -474,8 +474,8 @@ export function CalendarBoard({
         />
       )}
 
-      <JobcardQuickView
-        jobcardId={viewingId}
+      <WorkRequestQuickView
+        workRequestId={viewingId}
         jobs={jobs}
         onClose={() => {
           setViewingId(null);
@@ -486,7 +486,7 @@ export function CalendarBoard({
       />
 
       {/* The popup's parent-job link opens the job dashboard over it (its own
-          Modal stacks above the popup's); back returns to the jobcard. */}
+          Modal stacks above the popup's); back returns to the work request. */}
       {viewingJobId != null && (
         <Modal
           visible

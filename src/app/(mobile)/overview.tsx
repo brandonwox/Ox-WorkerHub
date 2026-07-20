@@ -15,7 +15,7 @@ import { colors, fonts, spacing, themed } from '@/theme';
 
 /**
  * Overview tab — the Scheduler's / Field Super's "what needs attention"
- * dashboard. Tapping a jobcard opens its page.
+ * dashboard. Tapping a work request opens its page.
  */
 export default function OverviewTab() {
   const role = useCurrentRole();
@@ -40,8 +40,8 @@ export default function OverviewTab() {
       <OverviewContent
         mode={role}
         jobs={jobs}
-        onOpenJobcard={(id) =>
-          router.push({ pathname: '/job/[id]', params: { id } })
+        onOpenWorkRequest={(id) =>
+          router.push({ pathname: '/work-request/[id]', params: { id } })
         }
         onOpenWorkRequests={
           role === 'scheduler' ? () => router.push('/backlog') : undefined

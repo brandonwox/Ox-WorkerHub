@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
-import { JobcardQuickView } from '@/components/desktop/JobcardQuickView';
+import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
 import { OverviewContent } from '@/components/OverviewContent';
 import {
   jobsForFieldSuper,
@@ -12,16 +12,16 @@ import {
 } from '@/store/useAppStore';
 
 /**
- * Field Super → Overview (their landing page): their jobcards with open
- * issues, and this week's false starts. Clicking a card opens the jobcard
+ * Field Super → Overview (their landing page): their work requests with open
+ * issues, and this week's false starts. Clicking a card opens the work request
  * quick-view sidebar.
  */
 export default function FieldSuperOverviewScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const allJobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
-  const deleteJobcard = useAppStore((s) => s.deleteJobcard);
+  const workRequests = useAppStore((s) => s.workRequests);
+  const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const flash = useAppStore((s) => s.flash);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
@@ -38,19 +38,19 @@ export default function FieldSuperOverviewScreen() {
       <OverviewContent
         mode="field_super"
         jobs={jobs}
-        onOpenJobcard={setViewingId}
+        onOpenWorkRequest={setViewingId}
       />
-      <JobcardQuickView
-        jobcardId={viewingId}
+      <WorkRequestQuickView
+        workRequestId={viewingId}
         jobs={jobs}
         variant="sidebar"
         onClose={() => setViewingId(null)}
         onDelete={(id) => {
-          const title = jobcards.find((c) => c.id === id)?.title;
-          deleteJobcard(id);
+          const title = workRequests.find((c) => c.id === id)?.title;
+          deleteWorkRequest(id);
           setViewingId(null);
           flash(
-            title ? `Jobcard "${title}" deleted` : 'Jobcard deleted',
+            title ? `Work Request "${title}" deleted` : 'Work Request deleted',
             'success'
           );
         }}

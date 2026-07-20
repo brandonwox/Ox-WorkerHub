@@ -4,41 +4,49 @@ import { useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
+import { isReadyNow } from '@/components/desktop/scheduler/Backlog';
+import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { jobDisplayNameById } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
 
 /**
- * The Scheduler's backlog on the phone: every jobcard not yet on the calendar,
+ * The Scheduler's backlog on the phone: every work request not yet on the calendar,
  * most urgent first. Placing a card happens from the Calendar tab (pick a day,
  * then Assign on a crew).
  */
 export function SchedulerBacklogMobile() {
   const router = useRouter();
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
   const assignments = useAppStore((s) => s.assignments);
 
   // Same rule as the desktop board: no assignment row anywhere = backlog.
-  const backlog = useMemo(
+  const unassigned = useMemo(
     () =>
-      jobcards
-        .filter((c) => assignments.every((a) => a.jobcardId !== c.id))
+      workRequests
+        .filter((c) => assignments.every((a) => a.workRequestId !== c.id))
         .sort(comparePriority),
-    [jobcards, assignments]
+    [workRequests, assignments]
+  );
+  // Only requests marked ready ("Yes") sit in the schedulable pool; the rest
+  // wait in the "Not ready yet" section so schedulers can see what's coming.
+  const backlog = useMemo(() => unassigned.filter(isReadyNow), [unassigned]);
+  const notReady = useMemo(
+    () => unassigned.filter((c) => !isReadyNow(c)),
+    [unassigned]
   );
 
-  const jobNameFor = (card: Jobcard) =>
+  const jobNameFor = (card: WorkRequest) =>
     jobDisplayNameById(card.jobId, jobs) || 'Unlinked job';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <Text style={styles.heading}>Backlog</Text>
       <Text style={styles.hint}>
-        {backlog.length} {backlog.length === 1 ? 'jobcard' : 'jobcards'} waiting ·
+        {backlog.length} {backlog.length === 1 ? 'work request' : 'work requests'} waiting ·
         assign from the Calendar tab
       </Text>
 
@@ -47,10 +55,10 @@ export function SchedulerBacklogMobile() {
         keyExtractor={(card) => card.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <MobileJobcardItem
-            jobcard={item}
+          <MobileWorkRequestItem
+            workRequest={item}
             jobName={jobNameFor(item)}
-            onPress={() => router.push(`/job/${item.id}`)}
+            onPress={() => router.push(`/work-request/${item.id}`)}
           />
         )}
         ListEmptyComponent={
@@ -58,9 +66,26 @@ export function SchedulerBacklogMobile() {
             <Feather name="check-circle" size={32} color={colors.textTertiary} />
             <Text style={styles.emptyTitle}>Backlog is clear</Text>
             <Text style={styles.emptySubtitle}>
-              Every jobcard is on the calendar.
+              Every ready work request is on the calendar.
             </Text>
           </View>
+        }
+        ListFooterComponent={
+          notReady.length > 0 ? (
+            <View style={styles.notReadySection}>
+              <Text style={styles.notReadyHeader}>
+                Not ready yet ({notReady.length})
+              </Text>
+              {notReady.map((item) => (
+                <MobileWorkRequestItem
+                  key={item.id}
+                  workRequest={item}
+                  jobName={jobNameFor(item)}
+                  onPress={() => router.push(`/work-request/${item.id}`)}
+                />
+              ))}
+            </View>
+          ) : null
         }
       />
     </SafeAreaView>
@@ -96,6 +121,15 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.xxl * 2,
     gap: spacing.sm,
+  },
+  notReadySection: {
+    paddingTop: spacing.lg,
+    gap: spacing.md,
+  },
+  notReadyHeader: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
   emptyTitle: {
     color: colors.textPrimary,

@@ -31,7 +31,7 @@ export const EMPTY_PRIORITY: PriorityValue = {
   endDate: '',
 };
 
-/** Whether the value is complete enough to create/save a jobcard. */
+/** Whether the value is complete enough to create/save a work request. */
 export function priorityValueComplete(value: PriorityValue): boolean {
   return !!value.priority && !!value.startDate && !!value.endDate;
 }

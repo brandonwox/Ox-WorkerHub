@@ -1,4 +1,4 @@
-import { Crew, DailyCrew, Jobcard, ScheduleAssignment, Worker } from '@/types';
+import { Crew, DailyCrew, WorkRequest, ScheduleAssignment, Worker } from '@/types';
 
 /** One working crew that claims a double-booked installer on the conflict day. */
 export interface DoubleBookingCrewRef {
@@ -6,8 +6,8 @@ export interface DoubleBookingCrewRef {
   crewName: string;
   /** True when this is a Daily Crew (one-day override) rather than a permanent one. */
   isDaily: boolean;
-  /** The jobcards that crew has scheduled that day. */
-  jobcards: { id: string; title: string }[];
+  /** The work requests that crew has scheduled that day. */
+  workRequests: { id: string; title: string }[];
 }
 
 /**
@@ -29,13 +29,13 @@ interface Input {
   crews: Crew[];
   dailyCrews: DailyCrew[];
   assignments: ScheduleAssignment[];
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   workers: Worker[];
 }
 
 /**
  * Find every installer who is double-booked: a member of two or more crews that
- * each have a jobcard scheduled on the same day. A Daily Crew counts as its own
+ * each have a work request scheduled on the same day. A Daily Crew counts as its own
  * crew, so an installer pulled onto a Daily Crew while their permanent crew is
  * still working that day is a conflict. Pure/derived — safe to recompute from
  * store state whenever the schedule changes.
@@ -44,15 +44,15 @@ export function detectDoubleBookings({
   crews,
   dailyCrews,
   assignments,
-  jobcards,
+  workRequests,
   workers,
 }: Input): DoubleBooking[] {
   const crewById = new Map(crews.map((c) => [c.id, c]));
   const dailyById = new Map(dailyCrews.map((d) => [d.id, d]));
-  const jobcardById = new Map(jobcards.map((j) => [j.id, j]));
+  const workRequestById = new Map(workRequests.map((j) => [j.id, j]));
   const workerById = new Map(workers.map((w) => [w.id, w]));
 
-  // date -> crewId -> the crew's working reference (roster + jobcards that day).
+  // date -> crewId -> the crew's working reference (roster + work requests that day).
   const byDate = new Map<string, Map<string, DoubleBookingCrewRef>>();
 
   for (const a of assignments) {
@@ -69,13 +69,13 @@ export function detectDoubleBookings({
         crewId: crew.id,
         crewName: crew.name,
         isDaily: dailyById.has(a.crewId),
-        jobcards: [],
+        workRequests: [],
       };
       crewsForDate.set(a.crewId, ref);
     }
-    const card = jobcardById.get(a.jobcardId);
-    if (card && !ref.jobcards.some((jc) => jc.id === card.id)) {
-      ref.jobcards.push({ id: card.id, title: card.title });
+    const card = workRequestById.get(a.workRequestId);
+    if (card && !ref.workRequests.some((jc) => jc.id === card.id)) {
+      ref.workRequests.push({ id: card.id, title: card.title });
     }
   }
 

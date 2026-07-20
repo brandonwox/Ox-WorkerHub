@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { useMemo } from 'react';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
@@ -26,8 +26,8 @@ import {
   Crew,
   DailyCrew,
   Job,
-  Jobcard,
-  JobcardStatus,
+  WorkRequest,
+  WorkRequestStatus,
   JobDocument,
   JobDocumentKind,
   JobDocumentType,
@@ -77,10 +77,10 @@ function schedulerIds(workers: Worker[]): string[] {
 }
 
 /**
- * Ping every scheduler that a jobcard is now top priority. Called from the
- * jobcard create/edit actions whenever a card's priority becomes "Now".
+ * Ping every scheduler that a work request is now top priority. Called from the
+ * work request create/edit actions whenever a card's priority becomes "Now".
  */
-function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
+function notifyNowWorkRequest(get: () => AppState, card: WorkRequest): void {
   const state = get();
   const recipients = schedulerIds(state.workers);
   if (recipients.length === 0) return;
@@ -89,10 +89,10 @@ function notifyNowJobcard(get: () => AppState, card: Jobcard): void {
     : undefined;
   get().pushNotification({
     recipientIds: recipients,
-    type: 'jobcard_now',
-    title: 'New Priority Jobcard',
+    type: 'work_request_now',
+    title: 'New Priority Work Request',
     body: `${card.title}${jobName ? ` · ${jobName}` : ''} needs scheduling now.`,
-    data: { jobcardId: card.id },
+    data: { workRequestId: card.id },
   });
 }
 
@@ -119,7 +119,7 @@ function installersOnActiveCrewForDate(
 }
 
 /**
- * Installers who have `jobcardId` on TODAY's board — the union of the audiences
+ * Installers who have `workRequestId` on TODAY's board — the union of the audiences
  * of every crew the card is assigned to today. Used when a card itself is edited
  * (priority/content) so only people scheduled on it today are pinged.
  */
@@ -130,12 +130,12 @@ function todaysInstallerAudienceForCard(
     dailyCrews: DailyCrew[];
     assignments: ScheduleAssignment[];
   },
-  jobcardId: string
+  workRequestId: string
 ): string[] {
   const today = todayStr();
   const crewIds = new Set(
     state.assignments
-      .filter((a) => a.jobcardId === jobcardId && a.date === today)
+      .filter((a) => a.workRequestId === workRequestId && a.date === today)
       .map((a) => a.crewId)
   );
   const ids = new Set<string>();
@@ -157,7 +157,7 @@ function todaysInstallerAudienceForCard(
 function notifyScheduleChange(
   get: () => AppState,
   installerIds: string[],
-  card: Jobcard,
+  card: WorkRequest,
   detail: string
 ): void {
   if (installerIds.length === 0) return;
@@ -169,12 +169,31 @@ function notifyScheduleChange(
     type: 'schedule_change',
     title: 'Your schedule has changed',
     body: `${card.title}${jobName ? ` · ${jobName}` : ''} ${detail}`,
-    data: { jobcardId: card.id },
+    data: { workRequestId: card.id },
   });
 }
 
-/** Jobcard fields an installer sees on their card — an edit to any pings "updated". */
-const INSTALLER_VISIBLE_FIELDS: (keyof Jobcard)[] = [
+/**
+ * Who gets the 3:30 PM "status needs updating" ping for a crew: a permanent
+ * crew's own foreman. A daily crew has no foreman of its own, so any of its
+ * members who is a permanent-crew foreman stands in.
+ */
+function foremenForCrew(
+  state: { crews: Crew[]; dailyCrews: DailyCrew[] },
+  crewId: string
+): string[] {
+  const permanent = state.crews.find((c) => c.id === crewId);
+  if (permanent) return permanent.foremanId ? [permanent.foremanId] : [];
+  const daily = state.dailyCrews.find((dc) => dc.id === crewId);
+  if (!daily) return [];
+  const foremanIds = new Set(
+    state.crews.map((c) => c.foremanId).filter((id): id is string => !!id)
+  );
+  return daily.installerIds.filter((id) => foremanIds.has(id));
+}
+
+/** Work Request fields an installer sees on their card — an edit to any pings "updated". */
+const INSTALLER_VISIBLE_FIELDS: (keyof WorkRequest)[] = [
   'title',
   'address',
   'date',
@@ -212,7 +231,7 @@ let refreshDeferred = false;
 const pendingIssueUpserts = new Map<string, number>();
 const pendingIssueDeletes = new Map<string, number>();
 const pendingPhotoNotes = new Map<string, number>();
-const pendingJobcardTaskWrites = new Map<string, number>();
+const pendingWorkRequestTaskWrites = new Map<string, number>();
 const pendingDocumentInserts = new Map<string, number>();
 const pendingDocumentUpdates = new Map<string, number>();
 
@@ -220,7 +239,7 @@ const GUARD_MAPS = {
   issueUpsert: pendingIssueUpserts,
   issueDelete: pendingIssueDeletes,
   photoNote: pendingPhotoNotes,
-  jobcardTasks: pendingJobcardTaskWrites,
+  workRequestTasks: pendingWorkRequestTaskWrites,
   documentInsert: pendingDocumentInserts,
   documentUpdate: pendingDocumentUpdates,
 } as const;
@@ -267,9 +286,9 @@ const OUTBOX_EXECUTORS = {
   deleteJob: (p: string) => backend.deleteJob(p),
   setJobFieldSupers: (p: { jobId: string; fieldSuperIds: string[] }) =>
     backend.setJobFieldSupers(p.jobId, p.fieldSuperIds),
-  insertJobcard: (p: Jobcard) => backend.insertJobcard(p),
-  updateJobcard: (p: Jobcard) => backend.updateJobcard(p),
-  deleteJobcard: (p: string) => backend.deleteJobcard(p),
+  insertWorkRequest: (p: WorkRequest) => backend.insertWorkRequest(p),
+  updateWorkRequest: (p: WorkRequest) => backend.updateWorkRequest(p),
+  deleteWorkRequest: (p: string) => backend.deleteWorkRequest(p),
   insertCrew: (p: Crew) => backend.insertCrew(p),
   updateCrew: (p: Crew) => backend.updateCrew(p),
   deleteCrew: (p: string) => backend.deleteCrew(p),
@@ -304,7 +323,7 @@ const OUTBOX_EXECUTORS = {
 
 /**
  * Ops that are bookkeeping rather than a change the worker made. Reading a
- * notification, or the notification a jobcard transition fires at the
+ * notification, or the notification a work request transition fires at the
  * schedulers, must not pop "Changes Saved" — the worker didn't save anything,
  * and a pill appearing next to an unrelated failure reads as a lie.
  */
@@ -567,7 +586,7 @@ function scheduleBackendRefresh(): void {
 
 /**
  * RFC4122-ish v4 id for new records in backend mode (DB columns are uuid).
- * Exported for callers that mint ids for embedded records (jobcard tasks).
+ * Exported for callers that mint ids for embedded records (work request tasks).
  */
 export function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -594,14 +613,14 @@ function loadDevSeed(): typeof import('@/data/mock') | null {
 }
 
 /**
- * Mapping key for a timecard's project: jobcards map by id, custom projects by
+ * Mapping key for a timecard's project: work requests map by id, custom projects by
  * lowercased name. Used both as the store key and the QBT jobcode lookup.
  */
 export function jobcodeKeyFor(ref: {
-  jobcardId?: string;
+  workRequestId?: string;
   customProjectName?: string;
 }): string | null {
-  if (ref.jobcardId) return `jobcard:${ref.jobcardId}`;
+  if (ref.workRequestId) return `workRequest:${ref.workRequestId}`;
   if (ref.customProjectName) return `custom:${ref.customProjectName.trim().toLowerCase()}`;
   return null;
 }
@@ -671,17 +690,17 @@ interface AppState {
   /** Jobsites/projects (Operator-owned, mapped to QBT). */
   jobs: Job[];
   /** Field work items (children of jobs). Formerly `jobs`. */
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   /** Permanent crews (installers only) — the default scheduling containers. */
   crews: Crew[];
   /** Date-specific crew overrides that win over permanent crews for one day. */
   dailyCrews: DailyCrew[];
-  /** Jobcard→crew→date links (single source of truth; never duplicates a card). */
+  /** Work Request→crew→date links (single source of truth; never duplicates a card). */
   assignments: ScheduleAssignment[];
   logs: TimesheetLog[];
   /** Jobsite photos hydrated from the backend (see also pendingPhotos). */
   jobPhotos: JobPhoto[];
-  /** Installer-raised field issues (children of jobs, linked to jobcards). */
+  /** Installer-raised field issues (children of jobs, linked to work requests). */
   jobIssues: JobIssue[];
   /** Documents attached to jobs (photo/pdf/text; created by non-installers). */
   jobDocuments: JobDocument[];
@@ -747,7 +766,7 @@ interface AppState {
   /**
    * Re-read the core collections from Supabase without touching the auth session
    * or the notifications channel. Driven by the realtime data subscription so a
-   * change another session makes (e.g. a Field Super creating a jobcard) streams into this
+   * change another session makes (e.g. a Field Super creating a work request) streams into this
    * session's lists.
    */
   refreshBackendData: () => Promise<void>;
@@ -791,39 +810,57 @@ interface AppState {
   updateJob: (id: string, changes: Partial<Job>) => void;
   /**
    * Delete a jobsite and everything hanging off it. Mirrors the DB's
-   * `on delete cascade`: locally drops the job's jobcards and any schedule
+   * `on delete cascade`: locally drops the job's work requests and any schedule
    * assignments referencing those cards so in-memory state stays consistent.
    */
   removeJob: (id: string) => void;
 
-  // --- Jobcards (field work items) ---
+  // --- Work Requests (field work items) ---
   /**
-   * Create a Jobcard. `flashingMaterial` defaults to the parent Job's value
+   * Create a Work Request. `flashingMaterial` defaults to the parent Job's value
    * when omitted, but the caller may pass a per-card override.
    */
-  addJobcard: (
-    card: Omit<Jobcard, 'id' | 'status' | 'priorityOrder'> & {
+  addWorkRequest: (
+    card: Omit<WorkRequest, 'id' | 'status' | 'priorityOrder'> & {
       id?: string;
-      status?: JobcardStatus;
+      status?: WorkRequestStatus;
       priorityOrder?: number;
     }
-  ) => Jobcard;
-  updateJobcard: (id: string, changes: Partial<Jobcard>) => void;
-  /** Delete a Jobcard and any schedule assignments pointing at it. */
-  deleteJobcard: (id: string) => void;
-  /** Installer-facing: append/replace shared field notes on a Jobcard. */
-  updateJobcardNotes: (id: string, fieldNotes: string) => void;
-  setJobcardStatus: (jobcardId: string, status: JobcardStatus) => void;
-  /** Installer-facing: check a jobcard task off (or un-check it). */
-  setJobcardTaskDone: (jobcardId: string, taskId: string, done: boolean) => void;
+  ) => WorkRequest;
+  updateWorkRequest: (id: string, changes: Partial<WorkRequest>) => void;
+  /** Delete a Work Request and any schedule assignments pointing at it. */
+  deleteWorkRequest: (id: string) => void;
+  /** Installer-facing: append/replace shared field notes on a Work Request. */
+  updateWorkRequestNotes: (id: string, fieldNotes: string) => void;
+  /**
+   * Report a work request's field status. `note` is required by the UI for
+   * 'Untouched' / 'False Start' (the typed reason) and 'Finished' (the
+   * completion note); other statuses clear any previous note. Also stamps
+   * who/when for the dashboards.
+   */
+  setWorkRequestStatus: (
+    workRequestId: string,
+    status: WorkRequestStatus,
+    note?: string
+  ) => void;
+  /** Installer-facing: check a work request task off (or un-check it). */
+  setWorkRequestTaskDone: (workRequestId: string, taskId: string, done: boolean) => void;
   /**
    * Escalate every card whose priority window has ended (and that isn't
-   * finished) to "Now" — persisted via updateJobcard, whose transition
+   * finished) to "Now" — persisted via updateWorkRequest, whose transition
    * notification pings the schedulers. Installer sessions skip the write (no
    * priority write access); they still SEE the escalated look immediately via
    * the effective-priority helpers.
    */
   escalateDuePriorities: () => void;
+  /**
+   * The 3:30 PM daily check: any work request scheduled today or yesterday
+   * whose status is still 'Undefined' pings the assigned crew's FOREMAN
+   * ("A work request status needs updating"). Runs in any signed-in session
+   * on a timer; the card's `undefinedReminderDate` stamp keeps it to one
+   * reminder per card per day across sessions.
+   */
+  sweepUndefinedStatusReminders: () => void;
 
   // --- Crews & scheduling (Scheduler) ---
   /** Create a permanent crew. Non-installer ids are dropped. Returns the record. */
@@ -834,32 +871,32 @@ interface AppState {
   addDailyCrew: (crew: Omit<DailyCrew, 'id'> & { id?: string }) => DailyCrew;
   updateDailyCrew: (id: string, changes: Partial<DailyCrew>) => void;
   removeDailyCrew: (id: string) => void;
-  /** Place a Jobcard on a crew for a date. Idempotent on (jobcard, crew, date). */
-  assignJobcard: (
-    jobcardId: string,
+  /** Place a Work Request on a crew for a date. Idempotent on (work request, crew, date). */
+  assignWorkRequest: (
+    workRequestId: string,
     crewId: string,
     date: string
   ) => ScheduleAssignment;
-  unassignJobcard: (assignmentId: string) => void;
+  unassignWorkRequest: (assignmentId: string) => void;
 
-  clockIn: (ref: { jobcardId?: string; customProjectName?: string }) => void;
+  clockIn: (ref: { workRequestId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
   clockOut: () => TimesheetLog | null;
   /** Adjusts the start time of the in-progress shift. */
   updateShiftStart: (startTime: string) => void;
-  /** Reassigns the project/jobcard of the in-progress shift. */
-  updateShiftProject: (ref: { jobcardId?: string; customProjectName?: string }) => void;
+  /** Reassigns the project/work request of the in-progress shift. */
+  updateShiftProject: (ref: { workRequestId?: string; customProjectName?: string }) => void;
   updateLog: (
     logId: string,
     changes: Pick<
       Partial<TimesheetLog>,
-      'date' | 'jobcardId' | 'customProjectName' | 'startTime' | 'endTime'
+      'date' | 'workRequestId' | 'customProjectName' | 'startTime' | 'endTime'
     >
   ) => void;
   deleteLog: (logId: string) => void;
   /** Creates a manual timecard from explicit start/end times. */
   addLog: (entry: {
-    jobcardId?: string;
+    workRequestId?: string;
     customProjectName?: string;
     startTime: string;
     endTime: string;
@@ -867,14 +904,14 @@ interface AppState {
 
   // --- Job photos ---
   /**
-   * Stage captured/picked images for a job (optionally linked to the jobcard
+   * Stage captured/picked images for a job (optionally linked to the work request
    * they were taken for) and start the upload queue. Files are moved into app
    * storage first so a queued upload survives an app restart. Returns the new
    * photo ids (in input order) so the caller can attach a note to one.
    */
   addJobPhotos: (input: {
     jobId: string;
-    jobcardId?: string;
+    workRequestId?: string;
     issueId?: string;
     taskId?: string;
     localUris: string[];
@@ -888,7 +925,7 @@ interface AppState {
   /**
    * Set/replace a job's Window Flashing Material reference photo. Uploads the
    * image immediately (no offline queue — it's a one-off reference shot taken
-   * by the Field Super) and stores its path on the job, so every jobcard of the
+   * by the Field Super) and stores its path on the job, so every work request of the
    * job shows it. Returns false when the upload failed.
    */
   setJobFlashingPhoto: (jobId: string, localUri: string) => Promise<boolean>;
@@ -921,13 +958,13 @@ interface AppState {
 
   // --- Job issues ---
   /**
-   * Raise a new (empty) issue on a job from a jobcard's screen. Returns the
+   * Raise a new (empty) issue on a job from a work request's screen. Returns the
    * created record so the UI can focus its description input, or null when
    * signed out.
    */
   addJobIssue: (input: {
     jobId: string;
-    jobcardId?: string;
+    workRequestId?: string;
     taskId?: string;
   }) => JobIssue | null;
   /** Set/replace an issue's description (creator-only in the UI). */
@@ -983,7 +1020,7 @@ interface AppState {
 let nextLogId = 100;
 let nextWorkerId = 100;
 let nextJobId = 100;
-let nextJobcardId = 100;
+let nextWorkRequestId = 100;
 let nextIssueId = 100;
 let nextCrewId = 100;
 let nextDailyCrewId = 100;
@@ -996,6 +1033,10 @@ let dataRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Hourly check for priority windows that have ended (see escalateDuePriorities).
 let escalationTimer: ReturnType<typeof setInterval> | null = null;
+
+// Recurring check for the 3:30 PM "status still Undefined" foreman reminders
+// (see sweepUndefinedStatusReminders).
+let statusReminderTimer: ReturnType<typeof setInterval> | null = null;
 
 // Task check-offs debounce their backend write: rapid toggles otherwise race
 // the realtime echo (each write triggers a refetch that briefly reverts the
@@ -1015,7 +1056,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   authWorker: null,
   viewAsUserId: null,
   jobs: [],
-  jobcards: [],
+  workRequests: [],
   crews: [],
   dailyCrews: [],
   assignments: [],
@@ -1106,7 +1147,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       workers: seed.mockWorkers,
       jobs: seed.mockJobs,
-      jobcards: seed.mockJobcards,
+      workRequests: seed.mockWorkRequests,
       crews: seed.mockCrews,
       dailyCrews: seed.mockDailyCrews,
       assignments: seed.mockAssignments,
@@ -1140,7 +1181,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           workers: cached.workers,
           jobs: cached.jobs,
-          jobcards: cached.jobcards,
+          workRequests: cached.workRequests,
           crews: cached.crews,
           dailyCrews: cached.dailyCrews,
           assignments: cached.assignments,
@@ -1161,7 +1202,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         workers: data.workers,
         jobs: data.jobs,
-        jobcards: data.jobcards,
+        workRequests: data.workRequests,
         crews: data.crews,
         dailyCrews: data.dailyCrews,
         assignments: data.assignments,
@@ -1229,6 +1270,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       () => get().escalateDuePriorities(),
       60 * 60 * 1000
     );
+    // The 3:30 PM "status still Undefined" foreman reminders: check now and
+    // every 5 minutes so an open session catches the 3:30 boundary the day it
+    // happens (the per-card date stamp keeps it to one ping per day).
+    get().sweepUndefinedStatusReminders();
+    if (statusReminderTimer) clearInterval(statusReminderTimer);
+    statusReminderTimer = setInterval(
+      () => get().sweepUndefinedStatusReminders(),
+      5 * 60 * 1000
+    );
   },
 
   refreshBackendData: async () => {
@@ -1238,12 +1288,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       jobs: data.jobs,
       // Cards with task check-offs still in their debounce window OR with a
       // queued write keep the LOCAL task list — fetched rows predate those.
-      jobcards: data.jobcards.map((card) =>
-        pendingTaskCardIds.has(card.id) || pendingJobcardTaskWrites.has(card.id)
+      workRequests: data.workRequests.map((card) =>
+        pendingTaskCardIds.has(card.id) || pendingWorkRequestTaskWrites.has(card.id)
           ? {
               ...card,
               tasks:
-                state.jobcards.find((c) => c.id === card.id)?.tasks ??
+                state.workRequests.find((c) => c.id === card.id)?.tasks ??
                 card.tasks,
             }
           : card
@@ -1314,7 +1364,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     pendingIssueUpserts.clear();
     pendingIssueDeletes.clear();
     pendingPhotoNotes.clear();
-    pendingJobcardTaskWrites.clear();
+    pendingWorkRequestTaskWrites.clear();
     // Park (don't drop) queued writes: the in-memory queue clears but the
     // persisted copy stays under the owner's key for their next sign-in.
     if (outboxRetryTimer) {
@@ -1328,6 +1378,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       clearInterval(escalationTimer);
       escalationTimer = null;
     }
+    if (statusReminderTimer) {
+      clearInterval(statusReminderTimer);
+      statusReminderTimer = null;
+    }
     if (photoRetryTimer) {
       clearTimeout(photoRetryTimer);
       photoRetryTimer = null;
@@ -1335,7 +1389,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       workers: [],
       jobs: [],
-      jobcards: [],
+      workRequests: [],
       crews: [],
       dailyCrews: [],
       assignments: [],
@@ -1536,7 +1590,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeJob: (id) => {
     set((state) => {
       // Cascade locally the way the DB does: drop the job's SUB-JOBS, every
-      // affected job's jobcards, then any schedule assignments pointing at
+      // affected job's work requests, then any schedule assignments pointing at
       // those (now-orphaned) cards.
       const removedJobIds = new Set([
         id,
@@ -1545,26 +1599,26 @@ export const useAppStore = create<AppState>((set, get) => ({
           .map((job) => job.id),
       ]);
       const orphanedCardIds = new Set(
-        state.jobcards
+        state.workRequests
           .filter((c) => c.jobId && removedJobIds.has(c.jobId))
           .map((c) => c.id)
       );
       return {
         jobs: state.jobs.filter((job) => !removedJobIds.has(job.id)),
-        jobcards: state.jobcards.filter(
+        workRequests: state.workRequests.filter(
           (c) => !(c.jobId && removedJobIds.has(c.jobId))
         ),
         assignments: state.assignments.filter(
-          (a) => !orphanedCardIds.has(a.jobcardId)
+          (a) => !orphanedCardIds.has(a.workRequestId)
         ),
       };
     });
-    // The DB cascade handles jobcards/assignments server-side; we only fire the
+    // The DB cascade handles work requests/assignments server-side; we only fire the
     // job delete.
     if (backendActive(get())) write('deleteJob', id);
   },
 
-  addJobcard: (card) => {
+  addWorkRequest: (card) => {
     const state = get();
     // Default the card's flashing material to the parent Job's value, snapshotted
     // at creation time (a later Job edit must not mutate existing cards). The
@@ -1573,14 +1627,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? state.jobs.find((job) => job.id === card.jobId)
       : undefined;
     // Default the intra-day sort key to one past the busiest card on that date.
-    const maxOrderOnDate = state.jobcards
+    const maxOrderOnDate = state.workRequests
       .filter((c) => c.date === card.date)
       .reduce((max, c) => Math.max(max, c.priorityOrder), 0);
     const isBackend = backendActive(state);
-    const created: Jobcard = {
+    const created: WorkRequest = {
       ...card,
-      id: card.id ?? (isBackend ? uuid() : `jc-${nextJobcardId++}`),
-      status: card.status ?? 'Untouched',
+      id: card.id ?? (isBackend ? uuid() : `jc-${nextWorkRequestId++}`),
+      status: card.status ?? 'Undefined',
       priority: card.priority ?? 'Medium',
       priorityOrder: card.priorityOrder ?? maxOrderOnDate + 1,
       flashingMaterial:
@@ -1591,30 +1645,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       // in-memory card (and offline mode) consistent until the next refetch.
       createdAt: card.createdAt ?? new Date().toISOString(),
     };
-    set({ jobcards: [created, ...state.jobcards] });
-    if (isBackend) write('insertJobcard', created);
+    set({ workRequests: [created, ...state.workRequests] });
+    if (isBackend) write('insertWorkRequest', created);
     // A brand-new "Now" card pings the schedulers right away.
-    if (created.priority === 'Now') notifyNowJobcard(get, created);
+    if (created.priority === 'Now') notifyNowWorkRequest(get, created);
     return created;
   },
 
-  updateJobcard: (id, changes) => {
-    const before = get().jobcards.find((c) => c.id === id);
-    let updated: Jobcard | undefined;
+  updateWorkRequest: (id, changes) => {
+    const before = get().workRequests.find((c) => c.id === id);
+    let updated: WorkRequest | undefined;
     let wasNow = false;
     set((state) => ({
-      jobcards: state.jobcards.map((card) => {
+      workRequests: state.workRequests.map((card) => {
         if (card.id !== id) return card;
         wasNow = card.priority === 'Now';
         updated = { ...card, ...changes };
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write('updateJobcard', updated);
+    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
     // Ping only on the transition INTO "Now" — re-saving an already-"Now" card
     // (or any other edit) must not re-notify.
     if (updated && updated.priority === 'Now' && !wasNow) {
-      notifyNowJobcard(get, updated);
+      notifyNowWorkRequest(get, updated);
     }
     // Ping installers who have this card on TODAY's board about the edit. A
     // priority change takes precedence over a generic content edit so we send
@@ -1643,47 +1697,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  deleteJobcard: (id) => {
+  deleteWorkRequest: (id) => {
     set((state) => ({
       // Mirror the DB cascade locally: drop the card, then any schedule
       // assignments that pointed at it.
-      jobcards: state.jobcards.filter((card) => card.id !== id),
-      assignments: state.assignments.filter((a) => a.jobcardId !== id),
+      workRequests: state.workRequests.filter((card) => card.id !== id),
+      assignments: state.assignments.filter((a) => a.workRequestId !== id),
     }));
     // The DB cascades assignments server-side; we only fire the card delete.
-    if (backendActive(get())) write('deleteJobcard', id);
+    if (backendActive(get())) write('deleteWorkRequest', id);
   },
 
-  updateJobcardNotes: (id, fieldNotes) => {
-    let updated: Jobcard | undefined;
+  updateWorkRequestNotes: (id, fieldNotes) => {
+    let updated: WorkRequest | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) => {
+      workRequests: state.workRequests.map((card) => {
         if (card.id !== id) return card;
         updated = { ...card, fieldNotes };
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write('updateJobcard', updated);
+    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
   },
 
-  setJobcardStatus: (jobcardId, status) => {
-    let updated: Jobcard | undefined;
+  setWorkRequestStatus: (workRequestId, status, note) => {
+    const me = currentWorkerOf(get());
+    let updated: WorkRequest | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) => {
-        if (card.id !== jobcardId) return card;
-        updated = { ...card, status };
+      workRequests: state.workRequests.map((card) => {
+        if (card.id !== workRequestId) return card;
+        updated = {
+          ...card,
+          status,
+          // The reason (Untouched / False Start) or completion note
+          // (Finished); statuses without one clear any stale note.
+          statusNote: note?.trim() || undefined,
+          statusChangedAt: new Date().toISOString(),
+          statusChangedById: me?.id,
+        };
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write('updateJobcard', updated);
+    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
   },
 
-  setJobcardTaskDone: (jobcardId, taskId, done) => {
+  setWorkRequestTaskDone: (workRequestId, taskId, done) => {
     const me = currentWorkerOf(get());
-    let updated: Jobcard | undefined;
+    let updated: WorkRequest | undefined;
     set((state) => ({
-      jobcards: state.jobcards.map((card) => {
-        if (card.id !== jobcardId || !card.tasks) return card;
+      workRequests: state.workRequests.map((card) => {
+        if (card.id !== workRequestId || !card.tasks) return card;
         updated = {
           ...card,
           tasks: card.tasks.map((task) =>
@@ -1701,23 +1764,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) {
-      pendingTaskCardIds.add(jobcardId);
-      const existing = taskPushTimers.get(jobcardId);
+      pendingTaskCardIds.add(workRequestId);
+      const existing = taskPushTimers.get(workRequestId);
       if (existing) clearTimeout(existing);
       taskPushTimers.set(
-        jobcardId,
+        workRequestId,
         setTimeout(() => {
-          taskPushTimers.delete(jobcardId);
-          const card = get().jobcards.find((c) => c.id === jobcardId);
+          taskPushTimers.delete(workRequestId);
+          const card = get().workRequests.find((c) => c.id === workRequestId);
           if (!card) {
-            pendingTaskCardIds.delete(jobcardId);
+            pendingTaskCardIds.delete(workRequestId);
             return;
           }
           // The queued-op guard takes over from the debounce-window Set.
-          pendingTaskCardIds.delete(jobcardId);
-          write('updateJobcard', card, {
-            map: 'jobcardTasks',
-            id: jobcardId,
+          pendingTaskCardIds.delete(workRequestId);
+          write('updateWorkRequest', card, {
+            map: 'workRequestTasks',
+            id: workRequestId,
           });
         }, TASK_PUSH_DELAY_MS)
       );
@@ -1726,30 +1789,80 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   escalateDuePriorities: () => {
     const state = get();
-    // Installers can't write jobcard priority; a privileged session (scheduler
+    // Installers can't write work request priority; a privileged session (scheduler
     // / field super / operator) — or local dev mode — persists the escalation.
     const me = currentWorkerOf(state);
     if (backendActive(state) && me?.role === 'installer') return;
     const today = todayStr();
-    const due = state.jobcards.filter(
+    const due = state.workRequests.filter(
       (card) =>
         card.priority !== 'Now' &&
         card.priorityEndDate != null &&
         card.priorityEndDate <= today &&
         card.status !== 'Finished'
     );
-    // updateJobcard handles the backend write AND the scheduler ping (it fires
+    // updateWorkRequest handles the backend write AND the scheduler ping (it fires
     // on every transition into "Now").
-    due.forEach((card) => get().updateJobcard(card.id, { priority: 'Now' }));
+    due.forEach((card) => get().updateWorkRequest(card.id, { priority: 'Now' }));
+  },
+
+  sweepUndefinedStatusReminders: () => {
+    const state = get();
+    const now = new Date();
+    // Only after 3:30 PM local time — the day's field reports should be in.
+    if (now.getHours() * 60 + now.getMinutes() < 15 * 60 + 30) return;
+    const today = todayStr();
+    const yesterday = format(subDays(now, 1), 'yyyy-MM-dd');
+    const dueDates = new Set([today, yesterday]);
+
+    // Which crews have each card on their board today/yesterday.
+    const crewsByCard = new Map<string, Set<string>>();
+    for (const a of state.assignments) {
+      if (!dueDates.has(a.date)) continue;
+      const set = crewsByCard.get(a.workRequestId) ?? new Set<string>();
+      set.add(a.crewId);
+      crewsByCard.set(a.workRequestId, set);
+    }
+
+    for (const [cardId, crewIds] of crewsByCard) {
+      const card = state.workRequests.find((c) => c.id === cardId);
+      if (!card || card.status !== 'Undefined') continue;
+      // Already reminded today (possibly by another session's sweep).
+      if (card.undefinedReminderDate === today) continue;
+      // Stamp before pinging so racing sessions can at most rarely double-send.
+      // (undefinedReminderDate isn't installer-visible, so no schedule ping.)
+      get().updateWorkRequest(cardId, { undefinedReminderDate: today });
+      const recipients = new Set<string>();
+      for (const crewId of crewIds) {
+        for (const id of foremenForCrew(state, crewId)) recipients.add(id);
+      }
+      if (recipients.size === 0) continue;
+      const jobName = card.jobId
+        ? jobDisplayNameById(card.jobId, state.jobs) || undefined
+        : undefined;
+      get().pushNotification({
+        recipientIds: [...recipients],
+        type: 'status_update_needed',
+        title: 'A work request status needs updating',
+        body: `${card.title}${jobName ? ` · ${jobName}` : ''}`,
+        data: { workRequestId: cardId },
+      });
+    }
   },
 
   addCrew: (crew) => {
     const state = get();
     const isBackend = backendActive(state);
+    const installerIds = onlyInstallerIds(state.workers, crew.installerIds);
     const created: Crew = {
       ...crew,
       id: crew.id ?? (isBackend ? uuid() : `crew-${nextCrewId++}`),
-      installerIds: onlyInstallerIds(state.workers, crew.installerIds),
+      installerIds,
+      // The foreman must be one of the crew's members (UI enforces exactly one).
+      foremanId:
+        crew.foremanId && installerIds.includes(crew.foremanId)
+          ? crew.foremanId
+          : undefined,
     };
     set({ crews: [...state.crews, created] });
     if (isBackend) write('insertCrew', created);
@@ -1761,13 +1874,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       crews: state.crews.map((crew) => {
         if (crew.id !== id) return crew;
-        updated = {
+        const merged: Crew = {
           ...crew,
           ...changes,
           installerIds: changes.installerIds
             ? onlyInstallerIds(state.workers, changes.installerIds)
             : crew.installerIds,
         };
+        // A foreman who leaves the crew loses the tag (the UI then demands a
+        // replacement — every permanent crew needs exactly one).
+        if (merged.foremanId && !merged.installerIds.includes(merged.foremanId)) {
+          merged.foremanId = undefined;
+        }
+        updated = merged;
         return updated;
       }),
     }));
@@ -1817,18 +1936,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get())) write('deleteDailyCrew', id);
   },
 
-  assignJobcard: (jobcardId, crewId, date) => {
+  assignWorkRequest: (workRequestId, crewId, date) => {
     const state = get();
     // Idempotent: a repeated drop of the same card onto the same crew/date must
     // not create a duplicate — keep the source of truth single.
     const existing = state.assignments.find(
-      (a) => a.jobcardId === jobcardId && a.crewId === crewId && a.date === date
+      (a) => a.workRequestId === workRequestId && a.crewId === crewId && a.date === date
     );
     if (existing) return existing;
     const isBackend = backendActive(state);
     const created: ScheduleAssignment = {
       id: isBackend ? uuid() : `asn-${nextAssignmentId++}`,
-      jobcardId,
+      workRequestId,
       crewId,
       date,
     };
@@ -1837,7 +1956,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A card joining TODAY's board pings that crew's installers. A future-dated
     // assignment is silent (only same-day changes notify).
     if (date === todayStr()) {
-      const card = state.jobcards.find((c) => c.id === jobcardId);
+      const card = state.workRequests.find((c) => c.id === workRequestId);
       if (card) {
         notifyScheduleChange(
           get,
@@ -1850,7 +1969,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return created;
   },
 
-  unassignJobcard: (assignmentId) => {
+  unassignWorkRequest: (assignmentId) => {
     const state = get();
     const removed = state.assignments.find((a) => a.id === assignmentId);
     set({
@@ -1860,7 +1979,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Removing a card from TODAY's board pings the affected installers. Resolve
     // the audience against pre-removal state (the assignment still exists there).
     if (removed && removed.date === todayStr()) {
-      const card = state.jobcards.find((c) => c.id === removed.jobcardId);
+      const card = state.workRequests.find((c) => c.id === removed.workRequestId);
       if (card) {
         notifyScheduleChange(
           get,
@@ -1892,7 +2011,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: isBackend ? uuid() : `t-${nextLogId++}`,
       workerId: me.id,
       date: format(new Date(state.activeShift.startTime), 'yyyy-MM-dd'),
-      jobcardId: state.activeShift.jobcardId,
+      workRequestId: state.activeShift.workRequestId,
       customProjectName: state.activeShift.customProjectName,
       startTime: state.activeShift.startTime,
       endTime: end.toISOString(),
@@ -1918,7 +2037,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? {
             activeShift: {
               ...state.activeShift,
-              jobcardId: ref.jobcardId,
+              workRequestId: ref.workRequestId,
               customProjectName: ref.customProjectName,
             },
           }
@@ -1987,7 +2106,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: isBackend ? uuid() : `t-${nextLogId++}`,
       workerId: me.id,
       date: format(new Date(entry.startTime), 'yyyy-MM-dd'),
-      jobcardId: entry.jobcardId,
+      workRequestId: entry.workRequestId,
       customProjectName: entry.customProjectName,
       startTime: entry.startTime,
       endTime: entry.endTime,
@@ -2019,7 +2138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const pending: PendingJobPhoto = {
           id,
           jobId: input.jobId,
-          jobcardId: input.jobcardId,
+          workRequestId: input.workRequestId,
           issueId: input.issueId,
           taskId: input.taskId,
           workerId: me.id,
@@ -2033,7 +2152,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const photo: JobPhoto = {
           id,
           jobId: input.jobId,
-          jobcardId: input.jobcardId,
+          workRequestId: input.workRequestId,
           issueId: input.issueId,
           taskId: input.taskId,
           workerId: me.id,
@@ -2211,7 +2330,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const created: JobIssue = {
       id: isBackend ? uuid() : `iss-${nextIssueId++}`,
       jobId: input.jobId,
-      jobcardId: input.jobcardId,
+      workRequestId: input.workRequestId,
       taskId: input.taskId,
       workerId: me.id,
       description: '',
@@ -2491,7 +2610,7 @@ async function processPhotoQueue(): Promise<void> {
         const photo: JobPhoto = {
           id: current.id,
           jobId: current.jobId,
-          jobcardId: current.jobcardId,
+          workRequestId: current.workRequestId,
           issueId: current.issueId,
           taskId: current.taskId,
           workerId: current.workerId,
@@ -2604,41 +2723,41 @@ export function activeCrewIdFor(
  * The jobs a Field Super may see: only those they're assigned to via
  * {@link Job.fieldSuperIds}. A job with no Field Supers is visible to nobody.
  * Used by both Field Super screens so "own jobs only" (and, transitively, "own
- * jobcards only") is enforced in one place.
+ * work requests only") is enforced in one place.
  */
 export function jobsForFieldSuper(jobs: Job[], fieldSuperId: string): Job[] {
   return jobs.filter((job) => job.fieldSuperIds?.includes(fieldSuperId));
 }
 
-/** Jobcard ids assigned to a given crew on a given date. */
-export function jobcardIdsForCrewOnDate(
+/** Work Request ids assigned to a given crew on a given date. */
+export function workRequestIdsForCrewOnDate(
   state: { assignments: ScheduleAssignment[] },
   crewId: string,
   date: string
 ): string[] {
   return state.assignments
     .filter((a) => a.crewId === crewId && a.date === date)
-    .map((a) => a.jobcardId);
+    .map((a) => a.workRequestId);
 }
 
 /**
- * Convenience: the Jobcards an installer should see on `date` = assignments to
+ * Convenience: the Work Requests an installer should see on `date` = assignments to
  * their active crew that day.
  */
-export function jobcardsForInstallerOnDate(
+export function workRequestsForInstallerOnDate(
   state: {
     crews: Crew[];
     dailyCrews: DailyCrew[];
     assignments: ScheduleAssignment[];
-    jobcards: Jobcard[];
+    workRequests: WorkRequest[];
   },
   installerId: string,
   date: string
-): Jobcard[] {
+): WorkRequest[] {
   const crewId = activeCrewIdFor(state, installerId, date);
   if (!crewId) return [];
-  const ids = jobcardIdsForCrewOnDate(state, crewId, date);
-  return state.jobcards.filter((card) => ids.includes(card.id));
+  const ids = workRequestIdsForCrewOnDate(state, crewId, date);
+  return state.workRequests.filter((card) => ids.includes(card.id));
 }
 
 /**
@@ -2667,33 +2786,33 @@ export function assignedDatesForInstaller(
 /**
  * The distinct parent Jobs a worker has clocked into, most recent first (the
  * currently running shift counts as most recent of all). Clock-ins reference
- * jobcards, so each log resolves jobcard → parent job; custom-project logs (no
- * jobcard) can't resolve to a job and are skipped.
+ * work requests, so each log resolves work request → parent job; custom-project logs (no
+ * work request) can't resolve to a job and are skipped.
  */
 export function recentClockedJobs(
   state: {
     logs: TimesheetLog[];
-    jobcards: Jobcard[];
+    workRequests: WorkRequest[];
     jobs: Job[];
     activeShift: ActiveShift | null;
   },
   workerId: string,
   limit = 10
 ): Job[] {
-  const jobcardIds: string[] = [];
-  if (state.activeShift?.jobcardId) {
-    jobcardIds.push(state.activeShift.jobcardId);
+  const workRequestIds: string[] = [];
+  if (state.activeShift?.workRequestId) {
+    workRequestIds.push(state.activeShift.workRequestId);
   }
   const logs = state.logs
-    .filter((l) => l.workerId === workerId && l.jobcardId)
+    .filter((l) => l.workerId === workerId && l.workRequestId)
     .sort((a, b) => b.startTime.localeCompare(a.startTime));
-  for (const log of logs) jobcardIds.push(log.jobcardId!);
+  for (const log of logs) workRequestIds.push(log.workRequestId!);
 
   const result: Job[] = [];
   const seen = new Set<string>();
-  for (const cardId of jobcardIds) {
+  for (const cardId of workRequestIds) {
     if (result.length >= limit) break;
-    const jobId = state.jobcards.find((c) => c.id === cardId)?.jobId;
+    const jobId = state.workRequests.find((c) => c.id === cardId)?.jobId;
     if (!jobId || seen.has(jobId)) continue;
     seen.add(jobId);
     const job = state.jobs.find((j) => j.id === jobId);

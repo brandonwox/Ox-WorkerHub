@@ -4,6 +4,64 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
+
+manage crews -> permanent crews: an installer can only be selected for one crew at a time, and must be deselected from their current crew if the scheduler wants to assign them to another crew.
+
+in the notifications section: i try to hover over a notification and click on the x button to dismiss the notification and delete it, but the x button disappears whenever i get close.
+
+scheduler:
+- the work requests calendar should show all work requests, even the ones not ready yet. (the work requests backlog has a "Not ready yet" section, those work requests should also be in the work requests calendar, not just the backlog list.)
+- allow the scheduler to drag work requests(formerly known as jobcards) anywhere. wherever the work request lands is where it should move. if they move it from the 17th of may to the work requests bin of unassigned work requests, it should land in there. if they drag a work request from the top of the 10th of june to the bottom of the stack on the 10th of june, it should move the the bottom. 
+- the scheduler also needs to be able to create "Events". Events are simple things that the scheduler can title and add a description to and assign to any day. when viewing the calendar an event looks just like a work request (rectangle with rounded corners with a title). but in the popup that normally shows all the work request details (formerly known as jobcard), the event only shows the data for the date, title, and description. (events also need to be drag and dropable.) (events are useful if the scheduler needs to say something like "Brandon off all day", now the crew knows that brandon will not be working.)
+Here's a better list of the functionality schedulers should have in the calendars:
+- ability to drag a work request between other work requests in a single day. (they could rearrange the daily schedule for a specific day by moving things around from top to middle to bottom or anywhere inbetween.)
+- ability to drag work requests to any day (and any location in that day) (and from any calendar to any calendar.)
+- when the work requests backlog is expanded, have it take up half the space, so that both the main scheduling calendar and the work requests backlog calendar get an equal width. (the scheduler should be able to drag work requests from and to any calendar and any location in those days.)
+
+right now we have a "Window Count". and i think we also have a mirror count. we need a count like this for all scopes: Showers, Mirrors, Windows, SGD's, IGU's, Swing Doors, Screens. 
+
+web users -> the settings page should not show up in the left sidebar. accessing the settings page is done by clicking the profile chip in the top right of the screen.
+
+add small radius drop shadow around popups in web view, such as when a scheduler opens a jobcard popup (there should be a box/drop shadow around the popup, just dont make it too big or too strong.)
+
+make sure the field super is shown on the jobcard. (installers don't see the field super for the jobcard.) (also make so field supers phone numbers are required for the field super to operate.) (the field super's phone number should be shown on the same line as the field supers name).
+
+Work requests (formerly known as jobcards):
+- when a photo is taken for a task, it should be shown in the task as well as the pictures section of the jobcard (right now any photo taken for a task only shows in the photos section of the jobcard, and not in the task.).
+
+photo taker:
+- allow the photo taker to take videos.
+- if taking photos for a jobcard with the "Windows" scope: when in the mobile photo taker -> if any videos have been taken -> and the user exits the photo taker: show a popup with all the videos that were taken and a title that says "Were any SGD videos taken?", the user can click to check any videos. if no videos have been clicked then the button at the bottom of the popup should say "No SGD videos taken" and if any videos have been clicked, then the button should say "Confirm". (the new "SGD Video" is a filter for the job details page photos section (this edit should be done at the same time as the edit below).)
+
+job details page (also subjobs) -> Pictures section -> the pictures section should have filters by scope. (jobcards have a scope field, so any picture for a jobcard can be sorted by the scope that jobcard has.) (there should also be a filter for "SGD videos" which is part of the new photo taker.)
+
+we need to add some scopes, we need to make sure we have: "Windows", "Mirrors", "Showers", "Swing Doors". <- those scopes are for jobs, subjobs, and jobcards. These scopes are only for jobcards, and not jobs: "Screens", "IGU's"
+
+job details page: rather than having the active section not show as a card, keep all section cards showing at all times, the active section should still remain as a card and also show its section, and rather than hiding the card, highlight it. which means Issues, Jobcards, Subjobs, documents, should all show no matter what, and whatever one is active shows with an active border. This should also work the same for subjob details pages: show each card "Documents", "Issues", and "Jobcards" at all times, don't hide the section card just because the section is showing, just add an active border.
+
+on job and subjob creation: there should be an input for "PO" (it should be on the same line as the name input field when creating the job.) This way the creator of the job has to type the name of the job and the PO of the job. (PO's can be used for search inputs any time the search is used for job names.) 
+
+jobs pages (the page that show the list of each job):
+- any time it shows a job that has the "this job has subjobs" activated: that job should have a label in front of the job name that says "Master Folder". the label should be a faded color, and possible a different font weight. (This is so our workers can differentiate fron jobs that operate alone, or jobs with subjobs.)
+- also show the PO for the job or subjob in the list.
+
+job details page:
+- show the job PO underneath the job name (make it smaller than the job name)
+- subjob detaials page: right now the parent job name is above the subjob name, can you put them on the same line and add a dot between them.
+
+Window Layout Plans: when selecting from the options "upload image", "choose from job images" and "choose from job documents", they should all have hover states so users know they're clickable.
+
+the "window layout plans not necessary" text needs to change color on hover so users know it can be clicked.
+
+documents should be editable, and deleteable. (if all window layout plans are deleted, show the warning again(unless the warning was dismissed in the first place(e.g. the "window layout plans not necessary" button)))
+
+got this message "Document upload failed — check your signal and retry" when trying to select an image for the window layout plans image.
+
+when choosing a job image for the window layout plans make the images larger, they're too small.
+
+the plus button on the right of the "The installers need an image of the window layout." warning is way too big, and get rid of the blue background, just add a neutral color border with rounded corners.
+
 make the speech to text work for mobile users. (add mic button in text sections, especially for image notes.) use lucide Mic icon.
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
@@ -33,6 +91,13 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 1 — Work Requests rename + readiness + status overhaul + crew foremen (REQUIRES: apply the new work-requests Supabase migration — the app now reads/writes the renamed work_requests table and the new status/foreman columns, so it will not run against the old schema):
+- jobcards are now "Work Requests" EVERYWHERE: all user-facing text, the web routes (/scheduler-work-requests, /field-super-work-requests, and the detail page moved from /job/<id> to /work-request/<id>), the codebase (components, store actions, types — WorkRequest*, workRequestId, …), and the DATABASE (public.jobcards → public.work_requests; every jobcard_id column, constraint, RLS policy, trigger, and guard function renamed; old notification rows remapped). Decision on renaming code identifiers: YES — the app is pre-production, so code, DB, and product language stay in lockstep; nothing legacy remains to confuse future work. (Old on-device caches/outboxes from before the rename are treated as a miss and refill on the next online open.)
+- "Ready for installers" options are now "Yes" / "No" / "Soon" (legacy Now → Yes, Over 2 Weeks → No — mapped on read and by the migration). Only "Yes" requests sit in the schedulers' backlog pool; the "Not ready yet" collapsed section keeps the rest visible, and the mobile scheduler backlog gained the same split.
+- statuses: new default "Undefined" until someone reports one (creation no longer starts at Untouched); "No progress" removed (legacy rows re-read as Undefined). Picking Untouched or False Start opens a required popup — "Why was this Work Request untouched / a false start?" — and the typed reason is saved on the request with who/when; both the scheduler and field super Overview dashboards got an "Untouched & false start reasons" review section (the reason also shows under the status in the web quick view). Marking Finished opens a popup: "Everything done, nothing left." / "Everything but sheetrock" (offered ONLY when the request has the Windows scope) / custom text.
+- crews: new Foreman tag — the scheduler must pick exactly ONE foreman per permanent crew (Manage crews enforces it on create, and flags existing crews that still need one; deselecting the foreman from the crew clears the tag and re-flags). Daily crews have no foreman. Stored on crew_members.is_foreman with a DB at-most-one guard.
+- 3:30 PM daily sweep: any work request scheduled today or yesterday whose status is still "Undefined" notifies ONLY the assigned crew's foreman ("A work request status needs updating" + the request name; for a daily crew, any member who is a permanent-crew foreman). One reminder per request per day across sessions (a date stamp on the row prevents re-pings). Separately, when an installer whose crew has such requests opens the app (yesterday's, or today's after 3:30), a catch-up popup lists them with an inline status selector per request — Untouched / False Start / Finished route through the same reason/completion popups.
 
 left sidebar restyle (web console):
 - the active page's blue highlight is gone — it's now a neutral gray rounded background, with the label/icon in the primary text color instead of blue.

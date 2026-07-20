@@ -19,12 +19,12 @@ import { formatMoney } from '@/utils/time';
  * The Finance Manager's Jobs screen (desktop page + mobile home tab): every
  * job with its QBT jobcode id and labor budget (both editable inline) and how
  * much of the budget has been paid out in wages (summed timesheet earnings on
- * the job's jobcards). A warning banner counts jobs still missing a jobcode —
+ * the job's work requests). A warning banner counts jobs still missing a jobcode —
  * mapping them is the Finance Manager's responsibility.
  */
 export function FinanceJobs() {
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const logs = useAppStore((s) => s.logs);
   const updateJob = useAppStore((s) => s.updateJob);
 
@@ -48,21 +48,21 @@ export function FinanceJobs() {
   );
 
   // Wages paid out per job: earnings of every timesheet logged on the job's
-  // jobcards (custom-project hours belong to no job and stay out).
+  // work requests (custom-project hours belong to no job and stay out).
   const paidByJob = useMemo(() => {
     const jobByCard = new Map<string, string>();
-    for (const card of jobcards) {
+    for (const card of workRequests) {
       if (card.jobId) jobByCard.set(card.id, card.jobId);
     }
     const paid = new Map<string, number>();
     for (const log of logs) {
-      if (!log.jobcardId) continue;
-      const jobId = jobByCard.get(log.jobcardId);
+      if (!log.workRequestId) continue;
+      const jobId = jobByCard.get(log.workRequestId);
       if (!jobId) continue;
       paid.set(jobId, (paid.get(jobId) ?? 0) + log.earnedAmount);
     }
     return paid;
-  }, [jobcards, logs]);
+  }, [workRequests, logs]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>

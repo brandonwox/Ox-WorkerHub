@@ -4,26 +4,26 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusPill } from '@/components/StatusPill';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
 
 interface Props {
-  jobcard: Jobcard;
+  workRequest: WorkRequest;
   onPress: () => void;
   /** Shows a highlight border indicating the card can be tapped to clock in. */
   selectable?: boolean;
-  /** The worker is currently clocked in on this jobcard — pulses the border. */
+  /** The worker is currently clocked in on this work request — pulses the border. */
   active?: boolean;
 }
 
-export function JobCard({ jobcard, onPress, selectable, active }: Props) {
+export function WorkRequestCard({ workRequest, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
-  const timeWindow = formatJobWindow(jobcard.startTime, jobcard.endTime);
+  const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
   // The parent job's name shows with the location. (No priority pill here —
-  // jobcard priority is office-side; installers don't need it.)
+  // work request priority is office-side; installers don't need it.)
   const parentJob = useAppStore((s) =>
-    s.jobs.find((j) => j.id === jobcard.jobId)
+    s.jobs.find((j) => j.id === workRequest.jobId)
   );
 
   return (
@@ -51,14 +51,14 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
       )}
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={1}>
-          {jobcard.title}
+          {workRequest.title}
         </Text>
-        <StatusPill status={jobcard.status} />
+        <StatusPill status={workRequest.status} />
       </View>
       <View style={styles.metaRow}>
         <Feather name="map-pin" size={14} color={colors.textSecondary} />
         <Text style={styles.metaText} numberOfLines={1}>
-          {parentJob ? `${parentJob.name} · ${jobcard.address}` : jobcard.address}
+          {parentJob ? `${parentJob.name} · ${workRequest.address}` : workRequest.address}
         </Text>
       </View>
       {timeWindow && (
@@ -67,11 +67,11 @@ export function JobCard({ jobcard, onPress, selectable, active }: Props) {
           <Text style={styles.metaText}>{timeWindow}</Text>
         </View>
       )}
-      {jobcard.flashingMaterial ? (
+      {workRequest.flashingMaterial ? (
         <View style={styles.metaRow}>
           <Feather name="layers" size={14} color={colors.textSecondary} />
           <Text style={styles.metaText} numberOfLines={1}>
-            {jobcard.flashingMaterial}
+            {workRequest.flashingMaterial}
           </Text>
         </View>
       ) : null}

@@ -81,7 +81,7 @@ interface WeekGroup {
  */
 export function InstallerTimesheets() {
   const logs = useAppStore((s) => s.logs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
   const currentUserId = useAppStore((s) => currentWorkerOf(s)?.id ?? '');
 
@@ -226,13 +226,13 @@ export function InstallerTimesheets() {
   }, [myLogs, today]);
 
   const projectNameFor = (log: TimesheetLog) =>
-    log.jobcardId
-      ? jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard'
+    log.workRequestId
+      ? workRequests.find((j) => j.id === log.workRequestId)?.title ?? 'Work Request'
       : log.customProjectName ?? 'Custom Project';
 
   const jobNameFor = (log: TimesheetLog) => {
-    if (!log.jobcardId) return undefined;
-    const jobId = jobcards.find((j) => j.id === log.jobcardId)?.jobId;
+    if (!log.workRequestId) return undefined;
+    const jobId = workRequests.find((j) => j.id === log.workRequestId)?.jobId;
     return jobId ? jobDisplayNameById(jobId, jobs) || undefined : undefined;
   };
 

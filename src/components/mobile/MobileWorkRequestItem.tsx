@@ -3,11 +3,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { effectivePriority } from '@/utils/priorityRange';
 
 interface Props {
-  jobcard: Jobcard;
+  workRequest: WorkRequest;
   jobName: string;
   /** Omit to hide the on/off-calendar chip (e.g. in an all-unscheduled list). */
   scheduled?: boolean;
@@ -15,20 +15,20 @@ interface Props {
 }
 
 /**
- * One jobcard as a stacked phone-width card: title + priority pill on top,
+ * One work request as a stacked phone-width card: title + priority pill on top,
  * job name below, optional calendar-status chip. The mobile counterpart of the
- * desktop JobcardRow, which lays the same info out in fixed-width columns.
+ * desktop WorkRequestRow, which lays the same info out in fixed-width columns.
  */
-export function MobileJobcardItem({ jobcard, jobName, scheduled, onPress }: Props) {
+export function MobileWorkRequestItem({ workRequest, jobName, scheduled, onPress }: Props) {
   // "Now" (incl. escalated windows) or the priority window's start date.
-  const priority = effectivePriority(jobcard);
+  const priority = effectivePriority(workRequest);
   const meta = priorityMeta(priority.label);
 
   const content = (
     <>
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={1}>
-          {jobcard.title}
+          {workRequest.title}
         </Text>
         <View style={[styles.priorityPill, { backgroundColor: meta.bg }]}>
           <Text style={[styles.priorityText, { color: meta.fg }]}>
@@ -38,8 +38,8 @@ export function MobileJobcardItem({ jobcard, jobName, scheduled, onPress }: Prop
       </View>
       <Text style={styles.sub} numberOfLines={1}>
         {jobName}
-        {jobcard.scopes && jobcard.scopes.length > 0
-          ? `  ·  ${jobcard.scopes.join(', ')}`
+        {workRequest.scopes && workRequest.scopes.length > 0
+          ? `  ·  ${workRequest.scopes.join(', ')}`
           : ''}
       </Text>
       {scheduled !== undefined && (

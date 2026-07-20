@@ -21,9 +21,13 @@ import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import {
   DisplayPhoto,
-  useJobcardPhotos,
+  useWorkRequestPhotos,
 } from '@/components/photos/useJobPhotos';
-import { jobcardStatusColors } from '@/components/StatusPill';
+import {
+  StatusChangeModal,
+  statusNeedsNote,
+} from '@/components/StatusChangeModal';
+import { workRequestStatusColors } from '@/components/StatusPill';
 import { CountEditModal } from '@/components/jobsite/CountEditModal';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import {
@@ -32,7 +36,7 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { JOBCARD_STATUSES } from '@/types';
+import { SELECTABLE_WORK_REQUEST_STATUSES, WorkRequestStatus } from '@/types';
 import { formatCount, JobCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
@@ -40,25 +44,25 @@ import { formatJobWindow } from '@/utils/time';
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const job = useAppStore((s) => s.jobcards.find((j) => j.id === id));
+  const job = useAppStore((s) => s.workRequests.find((j) => j.id === id));
   // Parent job — carries the Window Flashing Material reference photo.
   const parentJob = useAppStore((s) =>
     s.jobs.find((parent) => parent.id === job?.jobId)
   );
-  const setJobcardStatus = useAppStore((s) => s.setJobcardStatus);
-  const setJobcardTaskDone = useAppStore((s) => s.setJobcardTaskDone);
-  const updateJobcardNotes = useAppStore((s) => s.updateJobcardNotes);
+  const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
+  const setWorkRequestTaskDone = useAppStore((s) => s.setWorkRequestTaskDone);
+  const updateWorkRequestNotes = useAppStore((s) => s.updateWorkRequestNotes);
   const updateJob = useAppStore((s) => s.updateJob);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const addJobIssue = useAppStore((s) => s.addJobIssue);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const role = useCurrentRole();
-  const photos = useJobcardPhotos(job?.id);
+  const photos = useWorkRequestPhotos(job?.id);
   // This card's issues, newest first (right under the button that raised them).
   const issues = useMemo(
     () =>
       jobIssues
-        .filter((issue) => issue.jobcardId === job?.id)
+        .filter((issue) => issue.workRequestId === job?.id)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [jobIssues, job?.id]
   );
@@ -74,6 +78,10 @@ export default function JobDetailsScreen() {
     [issues, job?.tasks]
   );
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  // Status picks that need a typed note (Untouched / False Start / Finished)
+  // route through the StatusChangeModal before committing.
+  const [pendingNoteStatus, setPendingNoteStatus] =
+    useState<WorkRequestStatus | null>(null);
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
   const [picking, setPicking] = useState(false);
   // The parent JOB's scope counts ("Window Count 0/100") — tapping one opens
@@ -106,13 +114,13 @@ export default function JobDetailsScreen() {
   if (!job) {
     return (
       <View style={[styles.screen, styles.center]}>
-        <Text style={styles.notFound}>Jobcard not found.</Text>
+        <Text style={styles.notFound}>Work Request not found.</Text>
       </View>
     );
   }
 
   const palette =
-    jobcardStatusColors[job.status] ?? jobcardStatusColors.Untouched;
+    workRequestStatusColors[job.status] ?? workRequestStatusColors.Undefined;
   const timeWindow = formatJobWindow(job.startTime, job.endTime);
 
   const showPhotoHint = (taskId: string) => {
@@ -122,13 +130,13 @@ export default function JobDetailsScreen() {
   };
 
   // Capture photos FOR one task: the in-app camera on native, the image picker
-  // on web. Photos carry the task id (and the jobcard/job links as usual).
+  // on web. Photos carry the task id (and the work request/job links as usual).
   const takeTaskPhotos = async (taskId: string) => {
     if (!job.jobId) return;
     if (Platform.OS !== 'web') {
       router.push({
         pathname: '/camera/[jobId]',
-        params: { jobId: job.jobId, jobcardId: job.id, taskId },
+        params: { jobId: job.jobId, workRequestId: job.id, taskId },
       });
       return;
     }
@@ -139,7 +147,7 @@ export default function JobDetailsScreen() {
       if (uris.length) {
         await addJobPhotos({
           jobId: job.jobId,
-          jobcardId: job.id,
+          workRequestId: job.id,
           taskId,
           localUris: uris,
         });
@@ -190,7 +198,7 @@ export default function JobDetailsScreen() {
               minWidth={170}
             >
               <View style={styles.statusMenu}>
-                {JOBCARD_STATUSES.map((status) => {
+                {SELECTABLE_WORK_REQUEST_STATUSES.map((status) => {
                   const active = job.status === status;
                   return (
                     <Pressable
@@ -200,14 +208,19 @@ export default function JobDetailsScreen() {
                         pressed && styles.statusMenuItemPressed,
                       ]}
                       onPress={() => {
-                        setJobcardStatus(job.id, status);
                         setStatusMenuOpen(false);
+                        if (active) return;
+                        if (statusNeedsNote(status)) {
+                          setPendingNoteStatus(status);
+                          return;
+                        }
+                        setWorkRequestStatus(job.id, status);
                       }}
                     >
                       <View
                         style={[
                           styles.statusDot,
-                          { backgroundColor: jobcardStatusColors[status].fg },
+                          { backgroundColor: workRequestStatusColors[status].fg },
                         ]}
                       />
                       <Text
@@ -355,7 +368,7 @@ export default function JobDetailsScreen() {
                           showPhotoHint(task.id);
                           return;
                         }
-                        setJobcardTaskDone(job.id, task.id, !task.done);
+                        setWorkRequestTaskDone(job.id, task.id, !task.done);
                       }}
                     >
                       <Feather
@@ -396,7 +409,7 @@ export default function JobDetailsScreen() {
                         onPress={() =>
                           addJobIssue({
                             jobId: job.jobId!,
-                            jobcardId: job.id,
+                            workRequestId: job.id,
                             taskId: task.id,
                           })
                         }
@@ -443,7 +456,7 @@ export default function JobDetailsScreen() {
             <View style={styles.infoText}>
               <Text style={styles.infoLabel}>Field Notes</Text>
               <Text style={styles.notesCaption}>
-                Shared with every crew on this jobcard.
+                Shared with every crew on this work request.
               </Text>
             </View>
           </View>
@@ -451,7 +464,7 @@ export default function JobDetailsScreen() {
             style={styles.notesInput}
             value={notes}
             onChangeText={setNotes}
-            onBlur={() => updateJobcardNotes(job.id, notes)}
+            onBlur={() => updateWorkRequestNotes(job.id, notes)}
             placeholder="Add notes from the field…"
             placeholderTextColor={colors.textTertiary}
             multiline
@@ -459,7 +472,7 @@ export default function JobDetailsScreen() {
         </View>
 
         {/* Photos taken here land on the PARENT job's photo wall, each linked
-            back to this jobcard. Hidden for legacy cards with no parent job. */}
+            back to this work request. Hidden for legacy cards with no parent job. */}
         {job.jobId && (
           <View style={styles.section}>
             <View style={styles.infoRow}>
@@ -480,7 +493,7 @@ export default function JobDetailsScreen() {
                   onPress={() =>
                     router.push({
                       pathname: '/camera/[jobId]',
-                      params: { jobId: job.jobId!, jobcardId: job.id },
+                      params: { jobId: job.jobId!, workRequestId: job.id },
                     })
                   }
                 >
@@ -502,7 +515,7 @@ export default function JobDetailsScreen() {
                     if (uris.length) {
                       await addJobPhotos({
                         jobId: job.jobId!,
-                        jobcardId: job.id,
+                        workRequestId: job.id,
                         localUris: uris,
                       });
                     }
@@ -579,6 +592,19 @@ export default function JobDetailsScreen() {
         onSave={(doneField, done) => {
           if (parentJob) updateJob(parentJob.id, { [doneField]: done });
         }}
+      />
+
+      <StatusChangeModal
+        status={pendingNoteStatus}
+        workRequestTitle={job.title}
+        windowsScope={(job.scopes ?? []).includes('Windows')}
+        onConfirm={(note) => {
+          if (pendingNoteStatus) {
+            setWorkRequestStatus(job.id, pendingNoteStatus, note);
+          }
+          setPendingNoteStatus(null);
+        }}
+        onCancel={() => setPendingNoteStatus(null)}
       />
       </View>
     </View>

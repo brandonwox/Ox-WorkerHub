@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { MobileJobcardItem } from '@/components/mobile/MobileJobcardItem';
+import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem';
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Crew, DailyCrew, Jobcard } from '@/types';
+import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 import { jobDisplayNameById } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
@@ -30,18 +30,18 @@ interface Props {
 
 /**
  * Phone-sized crew calendar: month grid on top, the selected day's crews and
- * their assigned jobcards below. With `canAssign` the Scheduler can place a
- * backlog jobcard on a crew for the selected day (tap "Assign") and pull one
+ * their assigned work requests below. With `canAssign` the Scheduler can place a
+ * backlog work request on a crew for the selected day (tap "Assign") and pull one
  * off (tap the ×) — the phone counterpart of the desktop drag-drop board.
  */
 export function CrewCalendarMobile({ canAssign }: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
-  const assignJobcard = useAppStore((s) => s.assignJobcard);
-  const unassignJobcard = useAppStore((s) => s.unassignJobcard);
+  const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
+  const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -65,17 +65,17 @@ export function CrewCalendarMobile({ canAssign }: Props) {
     [dayCrews]
   );
 
-  const jobNameFor = (card: Jobcard) =>
+  const jobNameFor = (card: WorkRequest) =>
     jobDisplayNameById(card.jobId, jobs) || 'Unlinked job';
 
-  // Work Requests = jobcards with no assignment row anywhere (same rule as the
+  // Work Requests = work requests with no assignment row anywhere (same rule as the
   // desktop board's backlog).
   const backlog = useMemo(
     () =>
-      jobcards
-        .filter((c) => assignments.every((a) => a.jobcardId !== c.id))
+      workRequests
+        .filter((c) => assignments.every((a) => a.workRequestId !== c.id))
         .sort(comparePriority),
-    [jobcards, assignments]
+    [workRequests, assignments]
   );
 
   const confirmUnassign = (assignmentId: string, cardTitle: string) => {
@@ -84,7 +84,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => unassignJobcard(assignmentId),
+        onPress: () => unassignWorkRequest(assignmentId),
       },
     ]);
   };
@@ -145,15 +145,15 @@ export function CrewCalendarMobile({ canAssign }: Props) {
                   <Text style={styles.crewEmpty}>Nothing assigned this day.</Text>
                 ) : (
                   crewAssignments.map((assignment) => {
-                    const card = jobcards.find((c) => c.id === assignment.jobcardId);
+                    const card = workRequests.find((c) => c.id === assignment.workRequestId);
                     if (!card) return null;
                     return (
                       <View key={assignment.id} style={styles.assignedRow}>
                         <View style={styles.assignedCard}>
-                          <MobileJobcardItem
-                            jobcard={card}
+                          <MobileWorkRequestItem
+                            workRequest={card}
                             jobName={jobNameFor(card)}
-                            onPress={() => router.push(`/job/${card.id}`)}
+                            onPress={() => router.push(`/work-request/${card.id}`)}
                           />
                         </View>
                         {canAssign && (
@@ -179,7 +179,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
                     onPress={() => setAssignTarget(crew)}
                   >
                     <Feather name="plus" size={15} color={colors.primary} />
-                    <Text style={styles.assignBtnText}>Assign jobcard</Text>
+                    <Text style={styles.assignBtnText}>Assign work request</Text>
                   </Pressable>
                 )}
               </View>
@@ -188,7 +188,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
         )}
       </ScrollView>
 
-      {/* Backlog picker: tap a jobcard to place it on the chosen crew + day. */}
+      {/* Backlog picker: tap a work request to place it on the chosen crew + day. */}
       <Modal
         visible={assignTarget !== null}
         transparent
@@ -211,11 +211,11 @@ export function CrewCalendarMobile({ canAssign }: Props) {
               keyExtractor={(card) => card.id}
               contentContainerStyle={styles.sheetList}
               renderItem={({ item }) => (
-                <MobileJobcardItem
-                  jobcard={item}
+                <MobileWorkRequestItem
+                  workRequest={item}
                   jobName={jobNameFor(item)}
                   onPress={() => {
-                    if (assignTarget) assignJobcard(item.id, assignTarget.id, dateKey);
+                    if (assignTarget) assignWorkRequest(item.id, assignTarget.id, dateKey);
                     setAssignTarget(null);
                   }}
                 />
@@ -225,7 +225,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
                   <Feather name="inbox" size={28} color={colors.textTertiary} />
                   <Text style={styles.emptyTitle}>Backlog is empty</Text>
                   <Text style={styles.emptySubtitle}>
-                    Every jobcard is already on the calendar.
+                    Every work request is already on the calendar.
                   </Text>
                 </View>
               }

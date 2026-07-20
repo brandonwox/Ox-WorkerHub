@@ -33,7 +33,7 @@ interface Props {
 export function JobPicsList({ onSelectJob }: Props) {
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const logs = useAppStore((s) => s.logs);
   const activeShift = useAppStore((s) => s.activeShift);
   const jobPhotos = useAppStore((s) => s.jobPhotos);
@@ -45,7 +45,7 @@ export function JobPicsList({ onSelectJob }: Props) {
   const byRecency = useMemo(() => {
     const clocked = me
       ? recentClockedJobs(
-          { logs, jobcards, jobs, activeShift },
+          { logs, workRequests, jobs, activeShift },
           me.id,
           Number.MAX_SAFE_INTEGER
         )
@@ -67,7 +67,7 @@ export function JobPicsList({ onSelectJob }: Props) {
         return jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs));
       });
     return [...clocked, ...rest];
-  }, [me, logs, jobcards, jobs, activeShift, jobPhotos, pendingPhotos]);
+  }, [me, logs, workRequests, jobs, activeShift, jobPhotos, pendingPhotos]);
 
   // Sub-jobs are listed like any job, under their conjoined name ("Vista
   // Homes Lot 2") — searching either the parent's or the sub-job's name hits.

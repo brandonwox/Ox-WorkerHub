@@ -6,7 +6,7 @@ import { useCurrentRole } from '@/store/useAppStore';
 
 /**
  * The installer's schedule on the web console: the same agenda (week ribbon,
- * day's jobcards, clock in/out) in a centered phone-width column.
+ * day's work requests, clock in/out) in a centered phone-width column.
  */
 export default function InstallerSchedulePage() {
   const role = useCurrentRole();

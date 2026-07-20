@@ -25,14 +25,14 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * Field Super → Jobs: searchable list of their jobs; clicking one opens the
- * job dashboard sidebar (address, flashing material, jobcards, issues,
+ * job dashboard sidebar (address, flashing material, work requests, issues,
  * documents, pictures) on the right.
  */
 export default function FieldSuperJobsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const addJob = useAppStore((s) => s.addJob);
   const flash = useAppStore((s) => s.flash);
 
@@ -73,8 +73,8 @@ export default function FieldSuperJobsScreen() {
 
   if (role !== 'field_super') return <AccessDenied />;
 
-  const jobcardCountFor = (jobId: string) =>
-    jobcards.filter((c) => c.jobId === jobId).length;
+  const workRequestCountFor = (jobId: string) =>
+    workRequests.filter((c) => c.jobId === jobId).length;
 
   // No QBT jobcode here — the Finance Manager fills it in later. The creator
   // is auto-assigned to the job (store + DB trigger).
@@ -89,7 +89,7 @@ export default function FieldSuperJobsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionHint}>
           A card for every job — open one for its full dashboard: address,
-          flashing material, jobcards, issues, documents, and pictures.
+          flashing material, work requests, issues, documents, and pictures.
         </Text>
 
         <View style={styles.toolbar}>
@@ -130,7 +130,7 @@ export default function FieldSuperJobsScreen() {
         ) : (
           <View style={styles.cardStack}>
             {visibleJobs.map((job) => {
-              const count = jobcardCountFor(job.id);
+              const count = workRequestCountFor(job.id);
               const selected = job.id === selectedJobId;
               return (
                 <Pressable
@@ -159,8 +159,8 @@ export default function FieldSuperJobsScreen() {
                       {job.location || 'No location set'}
                     </Text>
                   </View>
-                  <Text style={styles.jobcardCount}>
-                    {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                  <Text style={styles.workRequestCount}>
+                    {count} {count === 1 ? 'work request' : 'work requests'}
                   </Text>
                   <Feather
                     name="chevron-right"
@@ -289,7 +289,7 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  jobcardCount: {
+  workRequestCount: {
     color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 12,

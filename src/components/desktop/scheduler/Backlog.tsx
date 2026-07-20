@@ -3,27 +3,28 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard } from '@/types';
+import { WorkRequest } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { comparePriority, effectivePriority } from '@/utils/priorityRange';
 
 /**
- * Whether a request is ready for installers — only these show in the main Work
- * Requests list/calendar. Legacy cards without a readiness stay visible; a
- * custom readiness string counts as not-ready until it's flipped to 'Now'.
+ * Whether a request is ready for installers — only readiness 'Yes' shows in
+ * the main Work Requests list/calendar. Legacy cards without a readiness stay
+ * visible; a custom readiness string counts as not-ready until it's flipped
+ * to 'Yes'.
  */
-export function isReadyNow(card: Jobcard): boolean {
-  return card.readiness == null || card.readiness === 'Now';
+export function isReadyNow(card: WorkRequest): boolean {
+  return card.readiness == null || card.readiness === 'Yes';
 }
 
 interface Props {
-  /** Unassigned jobcards (no row in `assignments`). */
-  cards: Jobcard[];
+  /** Unassigned work requests (no row in `assignments`). */
+  cards: WorkRequest[];
   jobNameFor: (jobId?: string) => string;
   placingCardId: string | null;
   onTogglePlacing: (cardId: string) => void;
-  /** Open the jobcard to view / edit its details. */
-  onOpenCard: (card: Jobcard) => void;
+  /** Open the work request to view / edit its details. */
+  onOpenCard: (card: WorkRequest) => void;
   /** Expand the pool into the large month-calendar view. */
   onExpandCalendar?: () => void;
   /**
@@ -39,7 +40,7 @@ interface Props {
   activeCrews?: { id: string; name: string; color: string }[];
 }
 
-/** Right-column pool of unassigned jobcards waiting for a crew + date. */
+/** Right-column pool of unassigned work requests waiting for a crew + date. */
 export function Backlog({
   cards,
   jobNameFor,
@@ -73,7 +74,7 @@ export function Backlog({
   const ready = useMemo(() => sorted.filter(isReadyNow), [sorted]);
   const notReady = useMemo(() => sorted.filter((c) => !isReadyNow(c)), [sorted]);
 
-  const renderCard = (card: Jobcard, showReadiness = false) => {
+  const renderCard = (card: WorkRequest, showReadiness = false) => {
     const selected = placingCardId === card.id;
     return (
       <View
@@ -239,7 +240,7 @@ export function Backlog({
  * The priority badge on a request card: "Now" or the window's start date,
  * colored by urgency. Hovering a dated card reveals the full start–end range.
  */
-function PriorityBadge({ card }: { card: Jobcard }) {
+function PriorityBadge({ card }: { card: WorkRequest }) {
   const [hovered, setHovered] = useState(false);
   const ep = effectivePriority(card);
   return (

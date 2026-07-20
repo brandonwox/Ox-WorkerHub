@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * Issue list that stays short when a job/jobcard accumulates many issues:
+ * Issue list that stays short when a job/work request accumulates many issues:
  * the first few render as usual, the rest sit behind a "View all n issues"
  * toggle that expands them in place (scrolling with the page).
  */

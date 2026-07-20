@@ -7,7 +7,7 @@ import {
   Crew,
   DailyCrew,
   Job,
-  Jobcard,
+  WorkRequest,
   JobDocument,
   JobIssue,
   ScheduleAssignment,
@@ -37,7 +37,7 @@ const LOG_CACHE_DAYS = 90;
 export interface CachedCollections {
   workers: Worker[];
   jobs: Job[];
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   crews: Crew[];
   dailyCrews: DailyCrew[];
   assignments: ScheduleAssignment[];
@@ -63,7 +63,7 @@ export function persistDataCache(
   const payload: CachedCollections = {
     workers: data.workers,
     jobs: data.jobs,
-    jobcards: data.jobcards,
+    workRequests: data.workRequests,
     crews: data.crews,
     dailyCrews: data.dailyCrews,
     assignments: data.assignments,
@@ -86,7 +86,13 @@ export async function loadDataCache(
 ): Promise<CachedCollections | null> {
   try {
     const raw = await AsyncStorage.getItem(DATA_CACHE_PREFIX + workerId);
-    return raw ? (JSON.parse(raw) as CachedCollections) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedCollections;
+    // A cache written before the jobcards → work requests rename has the old
+    // shape — treat it as a miss (the next live fetch rewrites it) rather
+    // than hydrating undefined collections.
+    if (!Array.isArray(parsed.workRequests)) return null;
+    return parsed;
   } catch {
     return null;
   }

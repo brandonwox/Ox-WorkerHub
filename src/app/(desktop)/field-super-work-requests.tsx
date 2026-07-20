@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
-import { JobcardsScreen } from '@/components/desktop/JobcardsScreen';
+import { WorkRequestsScreen } from '@/components/desktop/WorkRequestsScreen';
 import {
   jobsForFieldSuper,
   useAppStore,
@@ -10,15 +10,15 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 
-/** Field Super → Jobcards: every jobcard on their own jobs, and creation. */
-export default function FieldSuperJobcardsScreen() {
+/** Field Super → Work Requests: every work request on their own jobs, and creation. */
+export default function FieldSuperWorkRequestsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const allJobs = useAppStore((s) => s.jobs);
   const router = useRouter();
 
   // A Field Super works only within their own jobs — and, transitively, only
-  // the jobcards that hang off those jobs. Scoping here means the shared
+  // the work requests that hang off those jobs. Scoping here means the shared
   // screen only ever sees this Field Super's slice.
   const jobs = useMemo(
     () => (me ? jobsForFieldSuper(allJobs, me.id) : []),
@@ -28,7 +28,7 @@ export default function FieldSuperJobcardsScreen() {
   if (role !== 'field_super') return <AccessDenied />;
 
   return (
-    <JobcardsScreen
+    <WorkRequestsScreen
       jobs={jobs}
       showFalseStarts
       onViewCalendar={(date) =>

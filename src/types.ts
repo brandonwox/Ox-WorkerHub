@@ -56,7 +56,7 @@ export type User = Worker;
 
 /**
  * A Job is a jobsite / project the company works on (the parent entity the
- * Operator creates and maps to QuickBooks Time). Jobcards hang off a Job.
+ * Operator creates and maps to QuickBooks Time). Work Requests hang off a Job.
  */
 // 'Finished' replaced the old 'Archived' value — legacy DB rows are mapped on
 // read (see supabase/data.ts) and a migration renames the stored value.
@@ -75,7 +75,7 @@ export interface Job {
   status: JobStatus;
   /**
    * Set when this job is a SUB-JOB: a piece of the referenced parent job.
-   * Sub-jobs behave exactly like jobs (own QBT jobcode, jobcards, photos,
+   * Sub-jobs behave exactly like jobs (own QBT jobcode, work requests, photos,
    * issues, documents) but: one level only, Field Supers are inherited from
    * the parent (mirrored server-side, never set directly), and office job
    * lists show them only inside their parent's Sub-Jobs section.
@@ -94,7 +94,7 @@ export interface Job {
   qbtJobcodeId?: string;
   /**
    * Site-wide flashing material spec. Set by the Operator on create and editable
-   * by the Field Super (their one writable Job field). Jobcards snapshot this
+   * by the Field Super (their one writable Job field). Work Requests snapshot this
    * value at creation time. Optional until specified.
    */
   flashingMaterial?: string;
@@ -102,7 +102,7 @@ export interface Job {
    * Reference photo of the Window Flashing Material, taken/uploaded by the
    * Field Super. Object path inside the job-photos bucket
    * ("<jobId>/flashing-<uuid>.jpg"). Shown wherever the flashing material text
-   * appears — including every jobcard of this job.
+   * appears — including every work request of this job.
    */
   flashingPhotoPath?: string;
   /** Renderable URL of the flashing photo (public bucket URL; local uri in dev). */
@@ -117,15 +117,15 @@ export interface Job {
   /**
    * Total labor budget assigned to the job, in dollars. Set by the Finance
    * Manager; their jobs tab compares it against wages paid out (the summed
-   * earnings of timesheets on this job's jobcards).
+   * earnings of timesheets on this job's work requests).
    */
   laborBudget?: number;
   /**
    * Scope-driven done/total counts, displayed as "0/100" on the job details
-   * page and every jobcard of the job. Window + SGD pairs belong to the
+   * page and every work request of the job. Window + SGD pairs belong to the
    * Windows scope, Mirror to the Mirrors scope. Totals are office-set (the
    * Operator / Field Supers); installers update only the done numbers (from
-   * the jobcard count popup; RLS matches). A count shows once its total is
+   * the work request count popup; RLS matches). A count shows once its total is
    * set.
    */
   windowCountDone?: number;
@@ -146,7 +146,7 @@ export interface Job {
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field
    * Super sees ONLY the jobs they're in here — and, transitively, only those
-   * jobs' jobcards. Empty/unset means no Field Super is assigned yet (nobody can
+   * jobs' work requests. Empty/unset means no Field Super is assigned yet (nobody can
    * see it).
    */
   fieldSuperIds?: string[];
@@ -154,37 +154,53 @@ export interface Job {
    * Trade scopes this job covers (Windows, Mirrors, …). Picked by the Operator
    * at creation and editable later. When the set excludes 'Windows', the Window
    * Opening Flashing Material is hidden everywhere for this job and its
-   * jobcards. Unset (legacy jobs) means "not narrowed" — every scope allowed.
+   * work requests. Unset (legacy jobs) means "not narrowed" — every scope allowed.
    */
   scopes?: JobScope[];
 }
 
 /**
- * Status of a unit of work (a Jobcard) as the crew reports it from the field.
- * 'Untouched' is the default until installers touch the card.
+ * Status of a unit of work (a Work Request) as the crew reports it from the
+ * field. 'Undefined' is the default — it means "nobody has reported yet" and
+ * is never chosen by hand. Reporting 'Untouched' or 'False Start' requires a
+ * typed reason, and 'Finished' carries a completion note (both stored in
+ * {@link WorkRequest.statusNote}).
  */
-export type JobcardStatus =
+export type WorkRequestStatus =
+  | 'Undefined'
   | 'Untouched'
   | 'False Start'
-  | 'No Progress'
   | 'Made Progress'
   | 'Finished';
 
-/** All jobcard statuses, in display order. */
-export const JOBCARD_STATUSES: JobcardStatus[] = [
+/** All work request statuses, in display order. */
+export const WORK_REQUEST_STATUSES: WorkRequestStatus[] = [
+  'Undefined',
   'Untouched',
   'False Start',
-  'No Progress',
   'Made Progress',
   'Finished',
 ];
 
 /**
- * Field-Super-assigned importance of a Jobcard. Distinct from `priorityOrder` (sort).
+ * The statuses a worker can PICK in a status menu — everything except
+ * 'Undefined', which only exists as the not-yet-reported default.
+ */
+export const SELECTABLE_WORK_REQUEST_STATUSES: WorkRequestStatus[] =
+  WORK_REQUEST_STATUSES.filter((s) => s !== 'Undefined');
+
+/** Statuses that require the worker to type why they chose them. */
+export const STATUSES_REQUIRING_REASON: WorkRequestStatus[] = [
+  'Untouched',
+  'False Start',
+];
+
+/**
+ * Field-Super-assigned importance of a Work Request. Distinct from `priorityOrder` (sort).
  * Free text so the Field Super can pick a preset ({@link PRIORITY_PRESETS}) or type a
  * custom value — older cards may still carry legacy 'Low' | 'Medium' | 'High'.
  */
-export type JobcardPriority = string;
+export type WorkRequestPriority = string;
 
 /** The preset priorities the Field Super picks from (a custom string is also allowed). */
 export const PRIORITY_PRESETS = [
@@ -196,8 +212,8 @@ export const PRIORITY_PRESETS = [
 
 /**
  * The choices in the range-based priority selector. Each resolves to a
- * start→end date window ({@link Jobcard.priorityStartDate} /
- * {@link Jobcard.priorityEndDate}); "Set dates" means the Field Super picks
+ * start→end date window ({@link WorkRequest.priorityStartDate} /
+ * {@link WorkRequest.priorityEndDate}); "Set dates" means the Field Super picks
  * both dates manually.
  */
 export const PRIORITY_CHOICES = [
@@ -208,7 +224,7 @@ export const PRIORITY_CHOICES = [
 ] as const;
 export type PriorityChoice = (typeof PRIORITY_CHOICES)[number];
 
-/** Trade scope a Jobcard covers. At least one is chosen at creation time. */
+/** Trade scope a Work Request covers. At least one is chosen at creation time. */
 export type JobScope =
   | 'Windows'
   | 'Mirrors'
@@ -225,16 +241,21 @@ export const JOB_SCOPES: JobScope[] = [
   'Showerglass Door',
 ];
 
-/** Preset answers to "when is this jobcard ready for installers?". */
-export const READINESS_PRESETS = ['Now', 'Soon', 'Over 2 Weeks'] as const;
+/**
+ * Preset answers to "is this work request ready for installers?". Only 'Yes'
+ * requests enter the schedulers' backlog pool; everything else waits in the
+ * "Not ready yet" section. (Legacy values 'Now' / 'Over 2 Weeks' are mapped to
+ * 'Yes' / 'No' on read and by migration.)
+ */
+export const READINESS_PRESETS = ['Yes', 'No', 'Soon'] as const;
 
 /**
- * One discrete task on a Jobcard. Authored by the Field Super / Scheduler;
+ * One discrete task on a Work Request. Authored by the Field Super / Scheduler;
  * installers check tasks off from their phone as the work completes. The id is
  * stable across text edits so check-offs and per-task issues never mis-link
  * when the task list is edited.
  */
-export interface JobcardTask {
+export interface WorkRequestTask {
   id: string;
   /** What must be done (Field-Super-authored). */
   text: string;
@@ -247,12 +268,12 @@ export interface JobcardTask {
 }
 
 /**
- * A Jobcard is a ticket/task to be done on a {@link Job} (its parent). The
+ * A Work Request is a ticket/task to be done on a {@link Job} (its parent). The
  * Field Super creates them; the Scheduler assigns them to crews; installers
  * perform the work. (Formerly the app's `Job` type — it has always been the
  * field work item.)
  */
-export interface Jobcard {
+export interface WorkRequest {
   id: string;
   /** Parent Job (jobsite). Optional only while legacy/seed data is migrated. */
   jobId?: string;
@@ -268,10 +289,28 @@ export interface Jobcard {
   startTime?: string;
   /** ISO datetime string. Set together with startTime. */
   endTime?: string;
-  status: JobcardStatus;
+  status: WorkRequestStatus;
+  /**
+   * Why the current status was chosen: the required reason for 'Untouched' /
+   * 'False Start' (reviewed on the field super + scheduler dashboards) or the
+   * completion note for 'Finished' ("Everything done, nothing left." /
+   * "Everything but sheetrock" / custom text). Cleared when the status
+   * changes to one that carries no note.
+   */
+  statusNote?: string;
+  /** ISO datetime of the last status change (set alongside `status`). */
+  statusChangedAt?: string;
+  /** Worker who made the last status change. */
+  statusChangedById?: string;
+  /**
+   * The day (yyyy-MM-dd) the 3:30 PM "status needs updating" reminder last
+   * went out for this card — stops other sessions from re-pinging the foreman
+   * the same day.
+   */
+  undefinedReminderDate?: string;
   priorityOrder: number;
   /** Field-Super-assigned priority. A {@link PRIORITY_PRESETS} value or a custom string. */
-  priority: JobcardPriority;
+  priority: WorkRequestPriority;
   /**
    * Priority window start (yyyy-MM-dd). Set by the range-based priority
    * selector; absent on legacy cards created when priority was label-only.
@@ -293,7 +332,7 @@ export interface Jobcard {
    * phone). A card cannot be created without at least one.
    * Field-Super-authored; installers only toggle `done`.
    */
-  tasks?: JobcardTask[];
+  tasks?: WorkRequestTask[];
   /**
    * When the card is ready for installers to arrive — a {@link READINESS_PRESETS}
    * value ('Now' | 'Soon' | 'Over 2 Weeks') or a custom string.
@@ -320,7 +359,7 @@ export interface Jobcard {
   /** @deprecated Superseded by {@link scopes} + {@link tasks}. Kept for legacy data. */
   scopeOfWork?: string;
   /**
-   * Shared field notes updated by installers on site. Because a Jobcard is a
+   * Shared field notes updated by installers on site. Because a Work Request is a
    * single shared record, a note added by one crew is visible to every crew the
    * card is assigned to.
    */
@@ -350,6 +389,14 @@ export interface Crew {
   name: string;
   /** Members — MUST all be workers with role 'installer'. */
   installerIds: string[];
+  /**
+   * The crew's foreman — the scheduler must pick exactly one per permanent
+   * crew (no more, no less; always one of {@link installerIds}). Only the
+   * foreman receives the 3:30 PM "status needs updating" notification.
+   * Optional in the type only because crews created before the tag existed
+   * may not have one yet. Daily crews have no foreman.
+   */
+  foremanId?: string;
 }
 
 /**
@@ -367,13 +414,13 @@ export interface DailyCrew {
 }
 
 /**
- * Single-source-of-truth link: a Jobcard placed on a crew for a date. The
- * Jobcard itself is never duplicated; multiple assignments fan it out to
+ * Single-source-of-truth link: a Work Request placed on a crew for a date. The
+ * Work Request itself is never duplicated; multiple assignments fan it out to
  * multiple crews/dates.
  */
 export interface ScheduleAssignment {
   id: string;
-  jobcardId: string;
+  workRequestId: string;
   /** References a Crew.id OR a DailyCrew.id. */
   crewId: string;
   /** yyyy-MM-dd the work is scheduled for. */
@@ -396,7 +443,7 @@ export interface TimesheetLog {
   workerId: string;
   /** ISO date string (yyyy-MM-dd) */
   date: string;
-  jobcardId?: string;
+  workRequestId?: string;
   customProjectName?: string;
   /** ISO datetime string */
   startTime: string;
@@ -409,7 +456,7 @@ export interface TimesheetLog {
 }
 
 export interface ActiveShift {
-  jobcardId?: string;
+  workRequestId?: string;
   customProjectName?: string;
   /** ISO datetime string */
   startTime: string;
@@ -420,7 +467,7 @@ export interface ActiveShift {
 /**
  * A photo of the work on a jobsite. Always attached to the parent {@link Job}
  * (that's where crews and the office browse them); optionally linked to the
- * {@link Jobcard} it was taken for when captured from a jobcard's screen. The
+ * {@link WorkRequest} it was taken for when captured from a work request's screen. The
  * image bytes live in the `job-photos` Supabase Storage bucket; this record is
  * the metadata.
  */
@@ -428,16 +475,16 @@ export interface JobPhoto {
   id: string;
   /** Parent Job (jobsite) the photo documents. */
   jobId: string;
-  /** The jobcard the photo was taken for, when captured from its screen. */
-  jobcardId?: string;
+  /** The work request the photo was taken for, when captured from its screen. */
+  workRequestId?: string;
   /**
    * The issue the photo documents, when captured from an issue's photo
-   * buttons. Issue photos render inside their issue (on the jobcard and the
+   * buttons. Issue photos render inside their issue (on the work request and the
    * parent job) instead of the general photo grids.
    */
   issueId?: string;
   /**
-   * The jobcard task ({@link JobcardTask.id}) the photo documents, when
+   * The work request task ({@link WorkRequestTask.id}) the photo documents, when
    * captured from a task's camera button. Installers must attach at least one
    * photo to a task before they can check it off.
    */
@@ -465,10 +512,10 @@ export type PendingPhotoState = 'queued' | 'uploading' | 'failed';
 export interface PendingJobPhoto {
   id: string;
   jobId: string;
-  jobcardId?: string;
+  workRequestId?: string;
   /** The issue the photo documents (see {@link JobPhoto.issueId}). */
   issueId?: string;
-  /** The jobcard task the photo documents (see {@link JobPhoto.taskId}). */
+  /** The work request task the photo documents (see {@link JobPhoto.taskId}). */
   taskId?: string;
   workerId: string;
   /** Local file uri (native) or blob uri (web) of the compressed image. */
@@ -485,19 +532,19 @@ export interface PendingJobPhoto {
 export type JobIssueStatus = 'open' | 'resolved';
 
 /**
- * A problem an installer flags from a jobcard's screen (missing material, site
+ * A problem an installer flags from a work request's screen (missing material, site
  * not ready, damage, …). Always attached to the parent {@link Job} — the job's
- * page lists every issue with a link back to the jobcard it was raised on —
- * and linked to the {@link Jobcard} it was created from. Photos documenting the
+ * page lists every issue with a link back to the work request it was raised on —
+ * and linked to the {@link WorkRequest} it was created from. Photos documenting the
  * issue are {@link JobPhoto}s carrying this issue's id.
  */
 export interface JobIssue {
   id: string;
   /** Parent Job (jobsite) the issue belongs to. */
   jobId: string;
-  /** The jobcard the issue was raised on (cleared if that card is deleted). */
-  jobcardId?: string;
-  /** The jobcard task ({@link JobcardTask.id}) the issue was raised for. */
+  /** The work request the issue was raised on (cleared if that card is deleted). */
+  workRequestId?: string;
+  /** The work request task ({@link WorkRequestTask.id}) the issue was raised for. */
   taskId?: string;
   /** Installer who raised the issue. */
   workerId: string;
@@ -621,18 +668,27 @@ export interface QbtConfig {
 /**
  * Kind of a notification — drives the icon/copy and lets recipients filter.
  * Add a new member here as more ping triggers are built (the system is generic).
- *  - `jobcard_now`: a Field Super marks a jobcard "Now" → ping schedulers.
+ *  - `work_request_now`: a Field Super marks a work request "Now" → ping schedulers.
  *  - `schedule_change`: an installer's schedule for TODAY changed (a card added,
  *    removed, re-prioritized, or edited) → ping that installer.
  *  - `save_failed`: one of this worker's queued changes was rejected by the
  *    server and dropped. Device-local only (never written to the DB — it's
  *    about THIS device's sync queue).
  */
-export type NotificationType = 'jobcard_now' | 'schedule_change' | 'save_failed';
+/**
+ *  - `status_update_needed`: the 3:30 PM sweep found a work request scheduled
+ *    today/yesterday whose status is still 'Undefined' → ping the assigned
+ *    crew's FOREMAN (only the foreman is notified).
+ */
+export type NotificationType =
+  | 'work_request_now'
+  | 'schedule_change'
+  | 'save_failed'
+  | 'status_update_needed';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it
- * (e.g. the store dispatches one to every scheduler when a jobcard becomes
+ * (e.g. the store dispatches one to every scheduler when a work request becomes
  * "Now") and delivered to the recipient's session — live via Supabase realtime
  * in production, or straight through the in-memory store in local dev.
  */
@@ -645,7 +701,7 @@ export interface AppNotification {
   title: string;
   /** Supporting line with the relevant details. */
   body: string;
-  /** Type-specific payload, e.g. `{ jobcardId }` for a 'jobcard_now'. */
+  /** Type-specific payload, e.g. `{ workRequestId }` for a 'work_request_now'. */
   data?: Record<string, unknown>;
   /** False until the recipient opens/acknowledges it (drives the unread badge). */
   read: boolean;

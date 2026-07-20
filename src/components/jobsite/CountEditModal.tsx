@@ -23,7 +23,7 @@ interface Props {
 /**
  * The "amount done" popup for a job count: the current done number sits
  * pre-filled as grayed placeholder text, the total on the right. Installers
- * update these from the jobcard; office roles from the job details page.
+ * update these from the work request; office roles from the job details page.
  */
 export function CountEditModal({ count, onClose, onSave }: Props) {
   const [text, setText] = useState('');

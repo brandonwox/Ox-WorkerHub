@@ -28,7 +28,7 @@ import { jobAllowsWindows } from '@/utils/jobScopes';
 export function FieldSuperJobsMobile() {
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
   const updateJob = useAppStore((s) => s.updateJob);
   const addJob = useAppStore((s) => s.addJob);
@@ -37,7 +37,7 @@ export function FieldSuperJobsMobile() {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Sub-jobs stay out of this office list — they're managed from the web job
-  // details sidebar (their jobcards still show on the Jobcards tab).
+  // details sidebar (their work requests still show on the Work Requests tab).
   const myJobs = useMemo(
     () =>
       (me ? jobsForFieldSuper(jobs, me.id) : []).filter(
@@ -47,12 +47,12 @@ export function FieldSuperJobsMobile() {
   );
 
   const scheduledIds = useMemo(
-    () => new Set(assignments.map((a) => a.jobcardId)),
+    () => new Set(assignments.map((a) => a.workRequestId)),
     [assignments]
   );
 
   const countsFor = (job: Job) => {
-    const cards = jobcards.filter((c) => c.jobId === job.id);
+    const cards = workRequests.filter((c) => c.jobId === job.id);
     const scheduled = cards.filter((c) => scheduledIds.has(c.id)).length;
     return { total: cards.length, scheduled };
   };
@@ -348,7 +348,7 @@ function JobRow({
             {job.name}
           </Text>
           <Text style={styles.cardSub} numberOfLines={1}>
-            {counts.total} {counts.total === 1 ? 'jobcard' : 'jobcards'} ·{' '}
+            {counts.total} {counts.total === 1 ? 'work request' : 'work requests'} ·{' '}
             {counts.scheduled} on calendar
             {archived ? ' · Finished' : ''}
           </Text>

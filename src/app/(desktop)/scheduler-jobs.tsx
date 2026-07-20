@@ -27,7 +27,7 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 export default function SchedulerJobsScreen() {
   const role = useCurrentRole();
   const jobs = useAppStore((s) => s.jobs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const addJob = useAppStore((s) => s.addJob);
   const flash = useAppStore((s) => s.flash);
 
@@ -66,8 +66,8 @@ export default function SchedulerJobsScreen() {
 
   if (role !== 'scheduler') return <AccessDenied />;
 
-  const jobcardCountFor = (jobId: string) =>
-    jobcards.filter((c) => c.jobId === jobId).length;
+  const workRequestCountFor = (jobId: string) =>
+    workRequests.filter((c) => c.jobId === jobId).length;
 
   const handleCreate = (input: NewJobInput) => {
     const created = addJob(input);
@@ -79,7 +79,7 @@ export default function SchedulerJobsScreen() {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionHint}>
-          A card for every job — open one for its dashboard: jobcards, issues,
+          A card for every job — open one for its dashboard: work requests, issues,
           documents, sub-jobs, and pictures.
         </Text>
 
@@ -118,7 +118,7 @@ export default function SchedulerJobsScreen() {
         ) : (
           <View style={styles.cardStack}>
             {visibleJobs.map((job) => {
-              const count = jobcardCountFor(job.id);
+              const count = workRequestCountFor(job.id);
               const selected = job.id === selectedJobId;
               return (
                 <Pressable
@@ -147,8 +147,8 @@ export default function SchedulerJobsScreen() {
                       {job.location || 'No location set'}
                     </Text>
                   </View>
-                  <Text style={styles.jobcardCount}>
-                    {count} {count === 1 ? 'jobcard' : 'jobcards'}
+                  <Text style={styles.workRequestCount}>
+                    {count} {count === 1 ? 'work request' : 'work requests'}
                   </Text>
                   <Feather
                     name="chevron-right"
@@ -278,7 +278,7 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
   },
-  jobcardCount: {
+  workRequestCount: {
     color: colors.textSecondary,
     fontFamily: fonts.medium,
     fontSize: 12,

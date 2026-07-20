@@ -19,7 +19,7 @@ interface Props {
    * (the installer's activity log).
    */
   hideDate?: boolean;
-  /** Parent job's name, shown under the jobcard name when provided. */
+  /** Parent job's name, shown under the work request name when provided. */
   jobName?: string;
   /** Show the money earned on this timecard next to the hours. */
   showEarned?: boolean;

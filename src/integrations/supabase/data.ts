@@ -6,10 +6,10 @@ import {
   Crew,
   DailyCrew,
   Job,
-  Jobcard,
-  JobcardPriority,
-  JobcardStatus,
-  JobcardTask,
+  WorkRequest,
+  WorkRequestPriority,
+  WorkRequestStatus,
+  WorkRequestTask,
   JobDocument,
   JobDocumentKind,
   JobDocumentType,
@@ -64,7 +64,7 @@ interface JobFieldSuperRow {
   field_super_id: string;
 }
 
-interface JobcardRow {
+interface WorkRequestRow {
   id: string;
   job_id: string | null;
   title: string;
@@ -78,8 +78,8 @@ interface JobcardRow {
   priority_start_date: string | null;
   priority_end_date: string | null;
   scopes: string[] | null;
-  /** jsonb array of JobcardTask objects (plain strings only pre-migration). */
-  tasks: (JobcardTask | string)[] | null;
+  /** jsonb array of WorkRequestTask objects (plain strings only pre-migration). */
+  tasks: (WorkRequestTask | string)[] | null;
   readiness: string | null;
   flashing_material: string | null;
   materials: string | null;
@@ -88,6 +88,10 @@ interface JobcardRow {
   field_notes: string | null;
   pickup_required: boolean | null;
   pickup_location: string | null;
+  status_note: string | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
+  undefined_reminder_date: string | null;
   details: {
     generalContractor?: string;
     managerName?: string;
@@ -103,6 +107,8 @@ interface CrewRow {
 interface CrewMemberRow {
   crew_id: string;
   installer_id: string;
+  /** Exactly one member per permanent crew carries the foreman tag. */
+  is_foreman: boolean | null;
 }
 interface DailyCrewRow {
   id: string;
@@ -116,7 +122,7 @@ interface DailyCrewMemberRow {
 
 interface AssignmentRow {
   id: string;
-  jobcard_id: string;
+  work_request_id: string;
   crew_id: string;
   date: string;
 }
@@ -125,7 +131,7 @@ interface TimesheetRow {
   id: string;
   worker_id: string;
   date: string;
-  jobcard_id: string | null;
+  work_request_id: string | null;
   custom_project_name: string | null;
   start_time: string;
   end_time: string;
@@ -137,7 +143,7 @@ interface TimesheetRow {
 interface JobPhotoRow {
   id: string;
   job_id: string;
-  jobcard_id: string | null;
+  work_request_id: string | null;
   issue_id: string | null;
   task_id: string | null;
   worker_id: string;
@@ -149,7 +155,7 @@ interface JobPhotoRow {
 interface JobIssueRow {
   id: string;
   job_id: string;
-  jobcard_id: string | null;
+  work_request_id: string | null;
   task_id: string | null;
   worker_id: string;
   description: string;
@@ -208,15 +214,38 @@ function rowToJob(r: JobRow): Job {
  * server-side until the migration lands).
  */
 function normalizeTasks(
-  raw: (JobcardTask | string)[] | null
-): JobcardTask[] | undefined {
+  raw: (WorkRequestTask | string)[] | null
+): WorkRequestTask[] | undefined {
   if (!raw || raw.length === 0) return undefined;
   return raw.map((t, i) =>
     typeof t === 'string' ? { id: `legacy-${i}`, text: t, done: false } : t
   );
 }
 
-function rowToJobcard(r: JobcardRow): Jobcard {
+/**
+ * Map pre-rename readiness values onto the Yes/No/Soon presets (rows read
+ * before the work-requests migration ran still carry the old labels).
+ */
+function normalizeReadiness(readiness: string | null): string | undefined {
+  if (readiness == null) return undefined;
+  if (readiness === 'Now') return 'Yes';
+  if (readiness === 'Over 2 Weeks') return 'No';
+  return readiness;
+}
+
+/**
+ * Map pre-rename statuses onto the new set (rows read before the
+ * work-requests migration ran): the retired 'No Progress' — and an
+ * 'Untouched' that was only ever the old default (it has no typed reason) —
+ * both read as 'Undefined'.
+ */
+function normalizeStatus(status: string, note: string | null): WorkRequestStatus {
+  if (status === 'No Progress') return 'Undefined';
+  if (status === 'Untouched' && !note) return 'Undefined';
+  return status as WorkRequestStatus;
+}
+
+function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
   return {
     id: r.id,
     jobId: r.job_id ?? undefined,
@@ -225,14 +254,18 @@ function rowToJobcard(r: JobcardRow): Jobcard {
     date: r.date,
     startTime: r.start_time ?? undefined,
     endTime: r.end_time ?? undefined,
-    status: r.status as JobcardStatus,
-    priority: r.priority as JobcardPriority,
+    status: normalizeStatus(r.status, r.status_note),
+    statusNote: r.status_note ?? undefined,
+    statusChangedAt: r.status_changed_at ?? undefined,
+    statusChangedById: r.status_changed_by ?? undefined,
+    undefinedReminderDate: r.undefined_reminder_date ?? undefined,
+    priority: r.priority as WorkRequestPriority,
     priorityOrder: r.priority_order,
     priorityStartDate: r.priority_start_date ?? undefined,
     priorityEndDate: r.priority_end_date ?? undefined,
     scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
     tasks: normalizeTasks(r.tasks),
-    readiness: r.readiness ?? undefined,
+    readiness: normalizeReadiness(r.readiness),
     flashingMaterial: r.flashing_material ?? undefined,
     materials: r.materials ?? undefined,
     notes: r.notes ?? undefined,
@@ -250,7 +283,7 @@ function rowToJobcard(r: JobcardRow): Jobcard {
 }
 
 function rowToAssignment(r: AssignmentRow): ScheduleAssignment {
-  return { id: r.id, jobcardId: r.jobcard_id, crewId: r.crew_id, date: r.date };
+  return { id: r.id, workRequestId: r.work_request_id, crewId: r.crew_id, date: r.date };
 }
 
 function rowToTimesheet(r: TimesheetRow): TimesheetLog {
@@ -258,7 +291,7 @@ function rowToTimesheet(r: TimesheetRow): TimesheetLog {
     id: r.id,
     workerId: r.worker_id,
     date: r.date,
-    jobcardId: r.jobcard_id ?? undefined,
+    workRequestId: r.work_request_id ?? undefined,
     customProjectName: r.custom_project_name ?? undefined,
     startTime: r.start_time,
     endTime: r.end_time,
@@ -281,7 +314,7 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
   return {
     id: r.id,
     jobId: r.job_id,
-    jobcardId: r.jobcard_id ?? undefined,
+    workRequestId: r.work_request_id ?? undefined,
     issueId: r.issue_id ?? undefined,
     taskId: r.task_id ?? undefined,
     workerId: r.worker_id,
@@ -321,7 +354,7 @@ function rowToJobIssue(r: JobIssueRow): JobIssue {
   return {
     id: r.id,
     jobId: r.job_id,
-    jobcardId: r.jobcard_id ?? undefined,
+    workRequestId: r.work_request_id ?? undefined,
     taskId: r.task_id ?? undefined,
     workerId: r.worker_id,
     description: r.description,
@@ -337,7 +370,7 @@ function rowToJobIssue(r: JobIssueRow): JobIssue {
 export interface BackendData {
   workers: Worker[];
   jobs: Job[];
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   crews: Crew[];
   dailyCrews: DailyCrew[];
   assignments: ScheduleAssignment[];
@@ -355,7 +388,7 @@ export async function fetchAllData(): Promise<BackendData> {
     workersR,
     jobsR,
     jobFieldSupersR,
-    jobcardsR,
+    workRequestsR,
     crewsR,
     crewMembersR,
     dailyCrewsR,
@@ -369,7 +402,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
     sb.from('job_field_supers').select('*'),
-    sb.from('jobcards').select('*'),
+    sb.from('work_requests').select('*'),
     sb.from('crews').select('*'),
     sb.from('crew_members').select('*'),
     sb.from('daily_crews').select('*'),
@@ -385,7 +418,7 @@ export async function fetchAllData(): Promise<BackendData> {
     workersR.error ??
     jobsR.error ??
     jobFieldSupersR.error ??
-    jobcardsR.error ??
+    workRequestsR.error ??
     crewsR.error ??
     crewMembersR.error ??
     dailyCrewsR.error ??
@@ -427,6 +460,8 @@ export async function fetchAllData(): Promise<BackendData> {
     installerIds: crewMembers
       .filter((m) => m.crew_id === c.id)
       .map((m) => m.installer_id),
+    foremanId: crewMembers.find((m) => m.crew_id === c.id && m.is_foreman)
+      ?.installer_id,
   }));
 
   const dailyMembers = (dailyCrewMembersR.data ?? []) as DailyCrewMemberRow[];
@@ -449,7 +484,7 @@ export async function fetchAllData(): Promise<BackendData> {
       ...rowToJob(r),
       fieldSuperIds: fieldSuperIdsByJob.get(r.id) ?? [],
     })),
-    jobcards: ((jobcardsR.data ?? []) as JobcardRow[]).map(rowToJobcard),
+    workRequests: ((workRequestsR.data ?? []) as WorkRequestRow[]).map(rowToWorkRequest),
     crews,
     dailyCrews,
     assignments: ((assignmentsR.data ?? []) as AssignmentRow[]).map(
@@ -564,7 +599,7 @@ export async function setJobFieldSupers(
   }
 }
 
-function jobcardToRow(card: Jobcard) {
+function workRequestToRow(card: WorkRequest) {
   return {
     id: card.id,
     job_id: card.jobId ?? null,
@@ -574,6 +609,10 @@ function jobcardToRow(card: Jobcard) {
     start_time: card.startTime ?? null,
     end_time: card.endTime ?? null,
     status: card.status,
+    status_note: card.statusNote ?? null,
+    status_changed_at: card.statusChangedAt ?? null,
+    status_changed_by: card.statusChangedById ?? null,
+    undefined_reminder_date: card.undefinedReminderDate ?? null,
     priority: card.priority,
     priority_order: card.priorityOrder,
     priority_start_date: card.priorityStartDate ?? null,
@@ -593,21 +632,21 @@ function jobcardToRow(card: Jobcard) {
   };
 }
 
-export async function insertJobcard(card: Jobcard): Promise<void> {
-  check((await getSupabase().from('jobcards').insert(jobcardToRow(card))).error);
+export async function insertWorkRequest(card: WorkRequest): Promise<void> {
+  check((await getSupabase().from('work_requests').insert(workRequestToRow(card))).error);
 }
-export async function updateJobcard(card: Jobcard): Promise<void> {
+export async function updateWorkRequest(card: WorkRequest): Promise<void> {
   check(
     (
       await getSupabase()
-        .from('jobcards')
-        .update(jobcardToRow(card))
+        .from('work_requests')
+        .update(workRequestToRow(card))
         .eq('id', card.id)
     ).error
   );
 }
-export async function deleteJobcard(id: string): Promise<void> {
-  check((await getSupabase().from('jobcards').delete().eq('id', id)).error);
+export async function deleteWorkRequest(id: string): Promise<void> {
+  check((await getSupabase().from('work_requests').delete().eq('id', id)).error);
 }
 
 /**
@@ -670,16 +709,25 @@ async function replaceMembers(
   table: 'crew_members' | 'daily_crew_members',
   fkColumn: 'crew_id' | 'daily_crew_id',
   parentId: string,
-  installerIds: string[]
+  installerIds: string[],
+  /** Permanent crews only: the member row that carries the foreman tag. */
+  foremanId?: string
 ): Promise<void> {
   const sb = getSupabase();
   check((await sb.from(table).delete().eq(fkColumn, parentId)).error);
   if (installerIds.length) {
     check(
       (
-        await sb
-          .from(table)
-          .insert(installerIds.map((installer_id) => ({ [fkColumn]: parentId, installer_id })))
+        await sb.from(table).insert(
+          installerIds.map((installer_id) => ({
+            [fkColumn]: parentId,
+            installer_id,
+            // Daily crews have no foreman (nor the column).
+            ...(table === 'crew_members'
+              ? { is_foreman: installer_id === foremanId }
+              : {}),
+          }))
+        )
       ).error
     );
   }
@@ -687,13 +735,25 @@ async function replaceMembers(
 
 export async function insertCrew(crew: Crew): Promise<void> {
   check((await getSupabase().from('crews').insert({ id: crew.id, name: crew.name })).error);
-  await replaceMembers('crew_members', 'crew_id', crew.id, crew.installerIds);
+  await replaceMembers(
+    'crew_members',
+    'crew_id',
+    crew.id,
+    crew.installerIds,
+    crew.foremanId
+  );
 }
 export async function updateCrew(crew: Crew): Promise<void> {
   check(
     (await getSupabase().from('crews').update({ name: crew.name }).eq('id', crew.id)).error
   );
-  await replaceMembers('crew_members', 'crew_id', crew.id, crew.installerIds);
+  await replaceMembers(
+    'crew_members',
+    'crew_id',
+    crew.id,
+    crew.installerIds,
+    crew.foremanId
+  );
 }
 export async function deleteCrew(id: string): Promise<void> {
   check((await getSupabase().from('crews').delete().eq('id', id)).error);
@@ -726,7 +786,7 @@ export async function insertAssignment(a: ScheduleAssignment): Promise<void> {
     (
       await getSupabase()
         .from('schedule_assignments')
-        .insert({ id: a.id, jobcard_id: a.jobcardId, crew_id: a.crewId, date: a.date })
+        .insert({ id: a.id, work_request_id: a.workRequestId, crew_id: a.crewId, date: a.date })
     ).error
   );
 }
@@ -739,7 +799,7 @@ function timesheetToRow(log: TimesheetLog) {
     id: log.id,
     worker_id: log.workerId,
     date: log.date,
-    jobcard_id: log.jobcardId ?? null,
+    work_request_id: log.workRequestId ?? null,
     custom_project_name: log.customProjectName ?? null,
     start_time: log.startTime,
     end_time: log.endTime,
@@ -827,7 +887,7 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
       await getSupabase().from('job_photos').insert({
         id: photo.id,
         job_id: photo.jobId,
-        jobcard_id: photo.jobcardId ?? null,
+        work_request_id: photo.workRequestId ?? null,
         issue_id: photo.issueId ?? null,
         task_id: photo.taskId ?? null,
         worker_id: photo.workerId,
@@ -941,7 +1001,7 @@ function jobIssueToRow(issue: JobIssue) {
   return {
     id: issue.id,
     job_id: issue.jobId,
-    jobcard_id: issue.jobcardId ?? null,
+    work_request_id: issue.workRequestId ?? null,
     task_id: issue.taskId ?? null,
     worker_id: issue.workerId,
     description: issue.description,
@@ -1021,7 +1081,7 @@ export async function deleteJobPhoto(
 
 /**
  * The collaborative tables whose changes any session needs to see live. When a
- * Field Super creates a jobcard or the Operator adds a worker, every other signed-in
+ * Field Super creates a work request or the Operator adds a worker, every other signed-in
  * session should reflect it without a manual refresh. (Notifications have their
  * own recipient-scoped channel in ./notifications and are intentionally omitted
  * here.) These tables must also be members of the `supabase_realtime`
@@ -1031,7 +1091,7 @@ const REALTIME_TABLES = [
   'workers',
   'jobs',
   'job_field_supers',
-  'jobcards',
+  'work_requests',
   'crews',
   'crew_members',
   'daily_crews',

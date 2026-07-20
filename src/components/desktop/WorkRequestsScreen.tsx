@@ -5,14 +5,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import {
-  JobcardQuickView,
-  NewJobcardInput,
-} from '@/components/desktop/JobcardQuickView';
+  WorkRequestQuickView,
+  NewWorkRequestInput,
+} from '@/components/desktop/WorkRequestQuickView';
 import {
-  JobcardFilters,
+  WorkRequestFilters,
   ScheduleFilter,
-} from '@/components/desktop/JobcardFilters';
-import { JobcardRow } from '@/components/desktop/JobcardRow';
+} from '@/components/desktop/WorkRequestFilters';
+import { WorkRequestRow } from '@/components/desktop/WorkRequestRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -21,11 +21,11 @@ import { jobDisplayName } from '@/utils/jobName';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
-interface JobcardsScreenProps {
+interface WorkRequestsScreenProps {
   /**
    * The jobs this viewer may work within — the route decides the scope (a
    * Field Super sees only their own jobs, the Scheduler sees every job) and
-   * the screen shows just the jobcards hanging off them.
+   * the screen shows just the work requests hanging off them.
    */
   jobs: Job[];
   /** Show the false-starts-this-week counter (the Field Super's page). */
@@ -37,24 +37,24 @@ interface JobcardsScreenProps {
   onViewCalendar?: (date: string) => void;
 }
 
-/** Desktop jobcards workspace: every jobcard in scope, its calendar status, and creation. */
-export function JobcardsScreen({
+/** Desktop work requests workspace: every work request in scope, its calendar status, and creation. */
+export function WorkRequestsScreen({
   jobs,
   showFalseStarts = false,
   onViewCalendar,
-}: JobcardsScreenProps) {
-  const allJobcards = useAppStore((s) => s.jobcards);
+}: WorkRequestsScreenProps) {
+  const allWorkRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
-  const addJobcard = useAppStore((s) => s.addJobcard);
-  const deleteJobcard = useAppStore((s) => s.deleteJobcard);
+  const addWorkRequest = useAppStore((s) => s.addWorkRequest);
+  const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
 
-  // The right sidebar shows either one jobcard or the creation draft —
+  // The right sidebar shows either one work request or the creation draft —
   // opening one closes the other.
   const [createOpen, setCreateOpen] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
-  // A jobcard's parent-job link opens the job dashboard ON TOP of the jobcard
+  // A work request's parent-job link opens the job dashboard ON TOP of the work request
   // sidebar; its back arrow returns here.
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [photosJob, setPhotosJob] = useState<Job | null>(null);
@@ -82,9 +82,9 @@ export function JobcardsScreen({
   const [groupByJob, setGroupByJob] = useState(false);
 
   const myJobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
-  const jobcards = useMemo(
-    () => allJobcards.filter((c) => c.jobId != null && myJobIds.has(c.jobId)),
-    [allJobcards, myJobIds]
+  const workRequests = useMemo(
+    () => allWorkRequests.filter((c) => c.jobId != null && myJobIds.has(c.jobId)),
+    [allWorkRequests, myJobIds]
   );
 
   const activeJobs = useMemo(
@@ -92,14 +92,14 @@ export function JobcardsScreen({
     [jobs]
   );
 
-  // "On the calendar" = the jobcard has a row in `assignments` (Scheduler placed it).
+  // "On the calendar" = the work request has a row in `assignments` (Scheduler placed it).
   const scheduledIds = useMemo(
-    () => new Set(assignments.map((a) => a.jobcardId)),
+    () => new Set(assignments.map((a) => a.workRequestId)),
     [assignments]
   );
   const unscheduledCount = useMemo(
-    () => jobcards.filter((c) => !scheduledIds.has(c.id)).length,
-    [jobcards, scheduledIds]
+    () => workRequests.filter((c) => !scheduledIds.has(c.id)).length,
+    [workRequests, scheduledIds]
   );
 
   // The day each scheduled card shows in its status pill: its next upcoming
@@ -109,9 +109,9 @@ export function JobcardsScreen({
     const map = new Map<string, string>();
     const byCard = new Map<string, string[]>();
     for (const a of assignments) {
-      const dates = byCard.get(a.jobcardId) ?? [];
+      const dates = byCard.get(a.workRequestId) ?? [];
       dates.push(a.date);
-      byCard.set(a.jobcardId, dates);
+      byCard.set(a.workRequestId, dates);
     }
     for (const [cardId, dates] of byCard) {
       dates.sort();
@@ -129,14 +129,14 @@ export function JobcardsScreen({
     const weekStart = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     const weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     const inWeek = (d: string) => d >= weekStart && d <= weekEnd;
-    return jobcards.filter((card) => {
+    return workRequests.filter((card) => {
       if (card.status !== 'False Start') return false;
       const dates = assignments
-        .filter((a) => a.jobcardId === card.id)
+        .filter((a) => a.workRequestId === card.id)
         .map((a) => a.date);
       return dates.length > 0 ? dates.some(inWeek) : inWeek(card.date);
     }).length;
-  }, [showFalseStarts, jobcards, assignments]);
+  }, [showFalseStarts, workRequests, assignments]);
 
   // Sub-jobs display conjoined with their parent's name ("Vista Homes Lot 2").
   const nameById = useMemo(() => {
@@ -149,7 +149,7 @@ export function JobcardsScreen({
 
   // Distinct priorities present, ordered presets-first then alphabetical.
   const priorities = useMemo(() => {
-    const distinct = [...new Set(jobcards.map((c) => c.priority))];
+    const distinct = [...new Set(workRequests.map((c) => c.priority))];
     return distinct.sort((a, b) => {
       const ia = PRESET_ORDER.indexOf(a);
       const ib = PRESET_ORDER.indexOf(b);
@@ -158,12 +158,12 @@ export function JobcardsScreen({
       if (ib !== -1) return 1;
       return a.localeCompare(b);
     });
-  }, [jobcards]);
+  }, [workRequests]);
 
   // Apply search + priority + schedule filters (stacking).
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return jobcards.filter((card) => {
+    return workRequests.filter((card) => {
       if (q) {
         const hay = `${card.title} ${jobNameFor(card.jobId)}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -179,7 +179,7 @@ export function JobcardsScreen({
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobcards, search, selectedPriorities, schedule, scheduledIds, nameById]);
+  }, [workRequests, search, selectedPriorities, schedule, scheduledIds, nameById]);
 
   // Group the filtered cards by parent job (only when toggled on).
   const groups = useMemo(() => {
@@ -206,9 +206,9 @@ export function JobcardsScreen({
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
     );
 
-  const handleCreate = (input: NewJobcardInput) => {
+  const handleCreate = (input: NewWorkRequestInput) => {
     const parent = jobs.find((j) => j.id === input.jobId);
-    addJobcard({
+    addWorkRequest({
       jobId: input.jobId,
       title: input.title,
       address: parent?.location ?? '',
@@ -229,13 +229,13 @@ export function JobcardsScreen({
       notes: input.notes,
       details: { generalContractor: '', managerName: '', managerPhone: '' },
     });
-    flash(`Jobcard "${input.title}" created`, 'success');
+    flash(`Work Request "${input.title}" created`, 'success');
   };
 
   const handleDelete = (id: string) => {
-    const title = allJobcards.find((c) => c.id === id)?.title;
-    deleteJobcard(id);
-    flash(title ? `Jobcard "${title}" deleted` : 'Jobcard deleted', 'success');
+    const title = allWorkRequests.find((c) => c.id === id)?.title;
+    deleteWorkRequest(id);
+    flash(title ? `Work Request "${title}" deleted` : 'Work Request deleted', 'success');
   };
 
   return (
@@ -243,7 +243,7 @@ export function JobcardsScreen({
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.subtitleRow}>
           <Text style={styles.subtitle}>
-            {jobcards.length} {jobcards.length === 1 ? 'jobcard' : 'jobcards'} ·{' '}
+            {workRequests.length} {workRequests.length === 1 ? 'work request' : 'work requests'} ·{' '}
             {unscheduledCount} not on calendar
           </Text>
           {showFalseStarts && (
@@ -275,8 +275,8 @@ export function JobcardsScreen({
 
         {/* Single-row toolbar: filters (when there are cards) + Create button. */}
         <View style={styles.toolbar}>
-          {jobcards.length > 0 ? (
-            <JobcardFilters
+          {workRequests.length > 0 ? (
+            <WorkRequestFilters
               search={search}
               onSearch={setSearch}
               priorities={priorities}
@@ -300,14 +300,14 @@ export function JobcardsScreen({
             disabled={activeJobs.length === 0}
           >
             <Feather name="plus" size={16} color={colors.textOnAccent} />
-            <Text style={styles.addButtonText}>Create jobcard</Text>
+            <Text style={styles.addButtonText}>Create work request</Text>
           </Pressable>
         </View>
 
-        {jobcards.length === 0 ? (
-          <Text style={styles.emptyText}>No jobcards yet.</Text>
+        {workRequests.length === 0 ? (
+          <Text style={styles.emptyText}>No work requests yet.</Text>
         ) : filtered.length === 0 ? (
-          <Text style={styles.emptyText}>No jobcards match these filters.</Text>
+          <Text style={styles.emptyText}>No work requests match these filters.</Text>
         ) : groups ? (
           <View style={styles.groupStack}>
             {groups.map((group) => {
@@ -339,9 +339,9 @@ export function JobcardsScreen({
                   {group.cards.map((card) => {
                     const date = scheduledDateById.get(card.id);
                     return (
-                      <JobcardRow
+                      <WorkRequestRow
                         key={card.id}
-                        jobcard={card}
+                        workRequest={card}
                         jobName={group.name}
                         scheduled={scheduledIds.has(card.id)}
                         scheduledDate={date}
@@ -364,9 +364,9 @@ export function JobcardsScreen({
             {filtered.map((card) => {
               const date = scheduledDateById.get(card.id);
               return (
-                <JobcardRow
+                <WorkRequestRow
                   key={card.id}
-                  jobcard={card}
+                  workRequest={card}
                   jobName={jobNameFor(card.jobId)}
                   scheduled={scheduledIds.has(card.id)}
                   scheduledDate={date}
@@ -383,11 +383,11 @@ export function JobcardsScreen({
         )}
       </ScrollView>
 
-      {/* Viewing and creating share the same right sidebar (the jobcard
-          layout; creation adds Cancel / Create Jobcard at the bottom). */}
-      <JobcardQuickView
+      {/* Viewing and creating share the same right sidebar (the work request
+          layout; creation adds Cancel / Create Work Request at the bottom). */}
+      <WorkRequestQuickView
         variant="sidebar"
-        jobcardId={viewingId}
+        workRequestId={viewingId}
         creating={createOpen}
         jobs={jobs}
         onClose={closeSidebar}
@@ -396,8 +396,8 @@ export function JobcardsScreen({
         onOpenJob={setOpenJobId}
       />
 
-      {/* The jobcard's parent-job link opens the job dashboard over the
-          jobcard sidebar (rendered after = stacked on top); back returns. */}
+      {/* The work request's parent-job link opens the job dashboard over the
+          work request sidebar (rendered after = stacked on top); back returns. */}
       <JobDashboardSidebar
         job={jobs.find((j) => j.id === openJobId) ?? null}
         onClose={closeSidebar}
@@ -427,7 +427,7 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     // Lift the whole toolbar above the card list so open dropdown menus
-    // (priority / calendar) render over the jobcards instead of under them.
+    // (priority / calendar) render over the work requests instead of under them.
     zIndex: 20,
   },
   toolbarSpacer: {

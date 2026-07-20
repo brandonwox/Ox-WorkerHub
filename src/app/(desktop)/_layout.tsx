@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { SidebarShell } from '@/components/desktop/SidebarShell';
 import { NotificationToaster } from '@/components/NotificationToaster';
+import { UndefinedStatusCatchUp } from '@/components/UndefinedStatusCatchUp';
 import { DESKTOP_NAV, roleCanAccessPath, roleHomeHref } from '@/roles';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 
@@ -44,6 +45,7 @@ export default function DesktopLayout() {
     <SidebarShell navItems={DESKTOP_NAV[role]}>
       <Slot />
       <NotificationToaster />
+      <UndefinedStatusCatchUp />
     </SidebarShell>
   );
 }

@@ -39,7 +39,7 @@ const SEND_META: Record<
 export default function ReviewScreen() {
   const role = useCurrentRole();
   const logs = useAppStore((s) => s.logs);
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const workers = useAppStore((s) => s.workers);
 
   const [filter, setFilter] = useState<Filter>('All');
@@ -50,8 +50,8 @@ export default function ReviewScreen() {
   const nextPush = nextMonday(new Date());
 
   const projectNameFor = (log: TimesheetLog) =>
-    log.jobcardId
-      ? jobcards.find((j) => j.id === log.jobcardId)?.title ?? 'Jobcard'
+    log.workRequestId
+      ? workRequests.find((j) => j.id === log.workRequestId)?.title ?? 'Work Request'
       : log.customProjectName ?? 'Custom Project';
 
   // Show this week's hours, plus anything not yet delivered (unsent/failed) from

@@ -17,7 +17,7 @@ const SCHEDULE_OPTIONS: { value: ScheduleFilter; label: string }[] = [
 interface Props {
   search: string;
   onSearch: (value: string) => void;
-  /** Distinct priorities present across the jobcards. */
+  /** Distinct priorities present across the work requests. */
   priorities: string[];
   selectedPriorities: string[];
   onTogglePriority: (priority: string) => void;
@@ -27,8 +27,8 @@ interface Props {
   onToggleGroup: () => void;
 }
 
-/** Single-row filter/sort toolbar for the Field Super Jobcards view (desktop). */
-export function JobcardFilters({
+/** Single-row filter/sort toolbar for the Field Super Work Requests view (desktop). */
+export function WorkRequestFilters({
   search,
   onSearch,
   priorities,
@@ -41,14 +41,14 @@ export function JobcardFilters({
 }: Props) {
   return (
     <View style={styles.row}>
-      {/* Search by jobcard title or parent job title */}
+      {/* Search by work request title or parent job title */}
       <View style={styles.searchRow}>
         <Feather name="search" size={16} color={colors.textTertiary} />
         <TextInput
           style={styles.searchInput}
           value={search}
           onChangeText={onSearch}
-          placeholder="Search jobcards or jobs…"
+          placeholder="Search work requests or jobs…"
           placeholderTextColor={colors.textTertiary}
         />
         {search.length > 0 && (

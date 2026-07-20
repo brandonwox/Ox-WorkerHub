@@ -29,7 +29,7 @@ interface Props {
  * type a custom name) and enter the date plus start and end times.
  */
 export function AddTimecardSheet({ visible, onClose }: Props) {
-  const jobcards = useAppStore((s) => s.jobcards);
+  const workRequests = useAppStore((s) => s.workRequests);
   const addLog = useAppStore((s) => s.addLog);
 
   const [query, setQuery] = useState('');
@@ -53,7 +53,7 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
   const trimmed = query.trim();
   const matches =
     trimmed && !selectedJobId
-      ? jobcards.filter((j) =>
+      ? workRequests.filter((j) =>
           j.title.toLowerCase().includes(trimmed.toLowerCase())
         )
       : [];
@@ -85,7 +85,7 @@ export function AddTimecardSheet({ visible, onClose }: Props) {
       return;
     }
     addLog({
-      jobcardId: selectedJobId ?? undefined,
+      workRequestId: selectedJobId ?? undefined,
       customProjectName: selectedJobId ? undefined : trimmed,
       startTime: start.toISOString(),
       endTime: end.toISOString(),

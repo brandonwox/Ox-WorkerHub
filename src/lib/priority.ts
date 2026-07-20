@@ -1,6 +1,6 @@
 import { colors, themed } from '@/theme';
 
-/** Pill colors for a Jobcard priority. */
+/** Pill colors for a Work Request priority. */
 export interface PriorityMeta {
   bg: string;
   fg: string;

@@ -30,14 +30,14 @@ import { jobDisplayName } from '@/utils/jobName';
  * In-app camera for job photos. Stays open across shots so an installer can
  * document a whole site in one go: every capture saves instantly (into the
  * upload queue), the latest shot shows as a thumbnail bottom-left with a note
- * input beside it, and X closes the camera. `jobcardId` / `issueId` / `taskId`
- * (optional) link every photo taken in this session to that jobcard / issue /
- * jobcard task.
+ * input beside it, and X closes the camera. `workRequestId` / `issueId` / `taskId`
+ * (optional) link every photo taken in this session to that work request / issue /
+ * work request task.
  */
 export default function JobCameraScreen() {
-  const { jobId, jobcardId, issueId, taskId } = useLocalSearchParams<{
+  const { jobId, workRequestId, issueId, taskId } = useLocalSearchParams<{
     jobId: string;
-    jobcardId?: string;
+    workRequestId?: string;
     issueId?: string;
     taskId?: string;
   }>();
@@ -113,7 +113,7 @@ export default function JobCameraScreen() {
       const compressed = await compressJobPhoto(shot.uri, shot.width);
       const [photoId] = await addJobPhotos({
         jobId,
-        jobcardId: jobcardId || undefined,
+        workRequestId: workRequestId || undefined,
         issueId: issueId || undefined,
         taskId: taskId || undefined,
         localUris: [compressed],

@@ -23,7 +23,7 @@ interface Props {
   job: Job | undefined;
   /**
    * Whether this viewer may take/upload/replace the photo (Field Supers).
-   * Read-only surfaces (installer jobcard view) just show the thumbnail.
+   * Read-only surfaces (installer work request view) just show the thumbnail.
    */
   editable?: boolean;
 }
@@ -31,7 +31,7 @@ interface Props {
 /**
  * The Window Flashing Material reference photo, shown beside the flashing
  * material text input/value. One image per JOB: a Field Super takes (native)
- * or uploads it once and it appears on every jobcard of that job. Tapping the
+ * or uploads it once and it appears on every work request of that job. Tapping the
  * thumbnail opens it full-screen.
  */
 export function FlashingPhotoField({ job, editable = false }: Props) {

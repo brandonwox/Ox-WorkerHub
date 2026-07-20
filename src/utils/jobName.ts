@@ -15,7 +15,7 @@ export function parentJobOf(
  * A job's display name with the parent conjoined for sub-jobs:
  * "Vista Homes Lot 2". Sub-job names are STORED without the parent's name;
  * use this everywhere a sub-job must be identifiable outside its parent's
- * context (jobcard headers, the installer jobs tab, the finance manager list,
+ * context (work request headers, the installer jobs tab, the finance manager list,
  * job pickers). Inside the parent's own Sub-Jobs section, render `job.name`
  * plain instead.
  */
@@ -27,7 +27,7 @@ export function jobDisplayName(job: Job | undefined, jobs: Job[]): string {
 
 /**
  * {@link jobDisplayName} looked up by id — for call sites that only hold a
- * jobId (e.g. a jobcard's parent reference).
+ * jobId (e.g. a work request's parent reference).
  */
 export function jobDisplayNameById(
   jobId: string | undefined,

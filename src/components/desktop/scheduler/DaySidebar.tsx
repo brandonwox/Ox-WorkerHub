@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Jobcard, ScheduleAssignment } from '@/types';
+import { WorkRequest, ScheduleAssignment } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -12,40 +12,40 @@ interface Props {
   date: string;
   /** Assignments for `date`, already filtered to the visible crews. */
   assignments: ScheduleAssignment[];
-  jobcards: Jobcard[];
+  workRequests: WorkRequest[];
   jobNameFor: (jobId?: string) => string;
   colorForCrew: (crewId: string) => string;
   /** Crew display name (a single letter). */
   crewNameFor: (crewId: string) => string;
-  onOpenCard: (jobcardId: string) => void;
+  onOpenCard: (workRequestId: string) => void;
   onClose: () => void;
 }
 
 /**
  * A day's schedule, opened by clicking that day in the month calendar. Sits
- * between the calendar and the Work Requests column; clicking a jobcard on the
+ * between the calendar and the Work Requests column; clicking a work request on the
  * main calendar closes it.
  */
 export function DaySidebar({
   date,
   assignments,
-  jobcards,
+  workRequests,
   jobNameFor,
   colorForCrew,
   crewNameFor,
   onOpenCard,
   onClose,
 }: Props) {
-  // One row per jobcard even when several visible crews share it — the crew
+  // One row per work request even when several visible crews share it — the crew
   // letters on the row say who it belongs to (same grouping as the calendar).
-  const dayCards: { card: Jobcard; group: ScheduleAssignment[] }[] = [];
+  const dayCards: { card: WorkRequest; group: ScheduleAssignment[] }[] = [];
   for (const a of assignments) {
-    const entry = dayCards.find((e) => e.card.id === a.jobcardId);
+    const entry = dayCards.find((e) => e.card.id === a.workRequestId);
     if (entry) {
       entry.group.push(a);
       continue;
     }
-    const card = jobcards.find((c) => c.id === a.jobcardId);
+    const card = workRequests.find((c) => c.id === a.workRequestId);
     if (card) dayCards.push({ card, group: [a] });
   }
 
