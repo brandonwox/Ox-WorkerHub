@@ -8,7 +8,10 @@ import { StatusPill } from '@/components/StatusPill';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, WorkRequest } from '@/types';
-import { jobDisplayName } from '@/utils/jobName';
+import {
+  workRequestJobIds,
+  workRequestJobsLabel,
+} from '@/utils/workRequestJobs';
 import { effectivePriority } from '@/utils/priorityRange';
 
 interface Props {
@@ -41,18 +44,19 @@ export function OverviewContent({
   const jobIssues = useAppStore((s) => s.jobIssues);
 
   const jobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
+  // In scope: cards linked to any of the viewer's jobs, plus standalone cards
+  // (no parent job at all).
   const workRequests = useMemo(
-    () => allWorkRequests.filter((c) => c.jobId != null && jobIds.has(c.jobId)),
+    () =>
+      allWorkRequests.filter((c) => {
+        const linked = workRequestJobIds(c);
+        return linked.length === 0 || linked.some((id) => jobIds.has(id));
+      }),
     [allWorkRequests, jobIds]
   );
 
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
-    jobs.forEach((j) => map.set(j.id, jobDisplayName(j, jobs)));
-    return map;
-  }, [jobs]);
-  const jobNameFor = (jobId?: string) =>
-    (jobId && nameById.get(jobId)) || 'Unlinked job';
+  const jobNameFor = (card: WorkRequest) =>
+    workRequestJobsLabel(card, jobs) || 'No parent job';
 
   // Whether a card's scheduled day (assignment dates, else its target date)
   // falls inside the current Mon–Sun week.
@@ -226,7 +230,7 @@ export function OverviewContent({
           {card.title}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {jobNameFor(card.jobId)}
+          {jobNameFor(card)}
           {extra ? ` · ${extra}` : ''}
         </Text>
       </View>
@@ -321,7 +325,7 @@ export function OverviewContent({
                       {card.title}
                     </Text>
                     <Text style={styles.rowMeta} numberOfLines={1}>
-                      {jobNameFor(card.jobId)} ·{' '}
+                      {jobNameFor(card)} ·{' '}
                       {format(parseISO(latestAt), 'MMM d')}
                     </Text>
                     {!!latest && (
@@ -376,7 +380,7 @@ export function OverviewContent({
                   {card.title}
                 </Text>
                 <Text style={styles.rowMeta} numberOfLines={1}>
-                  {jobNameFor(card.jobId)}
+                  {jobNameFor(card)}
                   {card.statusChangedAt
                     ? ` · ${format(parseISO(card.statusChangedAt), 'MMM d')}`
                     : ''}

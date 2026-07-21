@@ -10,6 +10,10 @@ import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useApp
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { jobDisplayName } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
+import {
+  workRequestJobIds,
+  workRequestJobsLabel,
+} from '@/utils/workRequestJobs';
 
 const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
 type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number];
@@ -53,12 +57,17 @@ export function FieldSuperWorkRequestsMobile() {
     const query = search.trim().toLowerCase();
     return allWorkRequests
       .filter((card) => {
-        if (!card.jobId || !jobNameById.has(card.jobId)) return false;
+        // In scope: cards linked to any of my jobs, plus standalone cards
+        // (no parent job at all — they belong to no one's job list).
+        const linked = workRequestJobIds(card);
+        if (linked.length > 0 && !linked.some((id) => jobNameById.has(id))) {
+          return false;
+        }
         if (schedule === 'Scheduled' && !scheduledIds.has(card.id)) return false;
         if (schedule === 'Unscheduled' && scheduledIds.has(card.id)) return false;
         if (!query) return true;
-        const jobName = jobNameById.get(card.jobId) ?? '';
-        const jobPo = jobPoById.get(card.jobId) ?? '';
+        const jobName = workRequestJobsLabel(card, jobs);
+        const jobPo = linked.map((id) => jobPoById.get(id) ?? '').join(' ');
         return (
           card.title.toLowerCase().includes(query) ||
           jobName.toLowerCase().includes(query) ||
@@ -66,7 +75,7 @@ export function FieldSuperWorkRequestsMobile() {
         );
       })
       .sort(comparePriority);
-  }, [allWorkRequests, jobNameById, jobPoById, schedule, scheduledIds, search]);
+  }, [allWorkRequests, jobs, jobNameById, jobPoById, schedule, scheduledIds, search]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -103,7 +112,7 @@ export function FieldSuperWorkRequestsMobile() {
         renderItem={({ item }) => (
           <MobileWorkRequestItem
             workRequest={item}
-            jobName={jobNameById.get(item.jobId ?? '') ?? 'Unlinked job'}
+            jobName={workRequestJobsLabel(item, jobs) || 'No parent job'}
             scheduled={scheduledIds.has(item.id)}
             onPress={() => router.push(`/work-request/${item.id}`)}
           />

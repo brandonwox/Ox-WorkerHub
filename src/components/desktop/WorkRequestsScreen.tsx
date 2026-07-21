@@ -18,6 +18,10 @@ import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
+import {
+  workRequestJobIds,
+  workRequestJobsLabel,
+} from '@/utils/workRequestJobs';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
 
@@ -82,14 +86,16 @@ export function WorkRequestsScreen({
   const [groupByJob, setGroupByJob] = useState(false);
 
   const myJobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
+  // In scope: cards linked to any of the viewer's jobs, plus STANDALONE cards
+  // (no parent job at all — they belong to no one's job list, so every
+  // work-requests page shows them; RLS matches).
   const workRequests = useMemo(
-    () => allWorkRequests.filter((c) => c.jobId != null && myJobIds.has(c.jobId)),
+    () =>
+      allWorkRequests.filter((c) => {
+        const linked = workRequestJobIds(c);
+        return linked.length === 0 || linked.some((id) => myJobIds.has(id));
+      }),
     [allWorkRequests, myJobIds]
-  );
-
-  const activeJobs = useMemo(
-    () => jobs.filter((j) => j.status === 'Active'),
-    [jobs]
   );
 
   // "On the calendar" = the work request has a row in `assignments` (Scheduler placed it).
@@ -138,14 +144,17 @@ export function WorkRequestsScreen({
     }).length;
   }, [showFalseStarts, workRequests, assignments]);
 
-  // Sub-jobs display conjoined with their parent's name ("Vista Homes Lot 2").
+  // Sub-jobs display conjoined with their parent's name ("Vista Homes Lot 2");
+  // multi-linked cards list every sibling ("Vista Homes Lot 2, Lot 5").
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
     jobs.forEach((j) => map.set(j.id, jobDisplayName(j, jobs)));
     return map;
   }, [jobs]);
   const jobNameFor = (jobId?: string) =>
-    (jobId && nameById.get(jobId)) || 'Unlinked job';
+    (jobId && nameById.get(jobId)) || 'No parent job';
+  const cardJobLabel = (card: (typeof allWorkRequests)[number]) =>
+    workRequestJobsLabel(card, jobs) || 'No parent job';
   // Job POs match the search too (anywhere job names do).
   const poById = useMemo(() => {
     const map = new Map<string, string>();
@@ -171,8 +180,10 @@ export function WorkRequestsScreen({
     const q = search.trim().toLowerCase();
     return workRequests.filter((card) => {
       if (q) {
-        const po = (card.jobId && poById.get(card.jobId)) || '';
-        const hay = `${card.title} ${jobNameFor(card.jobId)} ${po}`.toLowerCase();
+        const pos = workRequestJobIds(card)
+          .map((id) => poById.get(id) ?? '')
+          .join(' ');
+        const hay = `${card.title} ${cardJobLabel(card)} ${pos}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (
@@ -214,11 +225,16 @@ export function WorkRequestsScreen({
     );
 
   const handleCreate = (input: NewWorkRequestInput) => {
-    const parent = jobs.find((j) => j.id === input.jobId);
+    const parent = input.jobId
+      ? jobs.find((j) => j.id === input.jobId)
+      : undefined;
     addWorkRequest({
       jobId: input.jobId,
+      jobIds: input.jobIds,
       title: input.title,
-      address: parent?.location ?? '',
+      // Standalone requests carry their hand-typed address; linked ones
+      // inherit the primary job's location.
+      address: input.jobId ? (parent?.location ?? '') : (input.address ?? ''),
       // No calendar date at creation — the Scheduler places it later.
       date: format(new Date(), 'yyyy-MM-dd'),
       priority: input.priority,
@@ -297,14 +313,14 @@ export function WorkRequestsScreen({
           ) : (
             <View style={styles.toolbarSpacer} />
           )}
+          {/* Always enabled — with no active jobs a standalone (no-parent-job)
+              work request can still be created. */}
           <Pressable
             style={({ pressed }) => [
               styles.addButton,
-              activeJobs.length === 0 && styles.addButtonDisabled,
-              pressed && activeJobs.length > 0 && styles.pressed,
+              pressed && styles.pressed,
             ]}
             onPress={openCreate}
-            disabled={activeJobs.length === 0}
           >
             <Feather name="plus" size={16} color={colors.textOnAccent} />
             <Text style={styles.addButtonText}>Create work request</Text>
@@ -374,7 +390,7 @@ export function WorkRequestsScreen({
                 <WorkRequestRow
                   key={card.id}
                   workRequest={card}
-                  jobName={jobNameFor(card.jobId)}
+                  jobName={cardJobLabel(card)}
                   scheduled={scheduledIds.has(card.id)}
                   scheduledDate={date}
                   onViewCalendar={
@@ -410,6 +426,10 @@ export function WorkRequestsScreen({
         onClose={closeSidebar}
         onBack={() => setOpenJobId(null)}
         editable={role === 'field_super'}
+        // Only the Scheduler and Field Supers render this screen — both may
+        // manage sub-jobs and delete jobs (RLS matches).
+        canManageSubJobs
+        canDelete
         quickViewJobs={jobs}
         onOpenJob={setOpenJobId}
       />
@@ -482,10 +502,6 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.pill,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm + 2,
-  },
-  addButtonDisabled: {
-    backgroundColor: colors.surfaceLight,
-    opacity: 0.6,
   },
   pressed: {
     opacity: 0.85,

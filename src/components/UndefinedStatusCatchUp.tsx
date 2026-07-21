@@ -21,7 +21,7 @@ import {
   WorkRequest,
   WorkRequestStatus,
 } from '@/types';
-import { jobDisplayNameById } from '@/utils/jobName';
+import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
 /**
  * The undefined-status catch-up popup. When an installer opens the app and
@@ -110,7 +110,7 @@ export function UndefinedStatusCatchUp() {
                     {card.title}
                   </Text>
                   <Text style={styles.rowMeta} numberOfLines={1}>
-                    {jobDisplayNameById(card.jobId, jobs) || 'Unlinked job'} ·{' '}
+                    {workRequestJobsLabel(card, jobs) || 'No parent job'} ·{' '}
                     {card.date}
                   </Text>
                   <View style={styles.statusChips}>

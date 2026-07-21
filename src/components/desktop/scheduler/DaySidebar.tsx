@@ -22,7 +22,7 @@ interface Props {
   workRequests: WorkRequest[];
   /** This day's events (rendered in the same ordered stack). */
   calendarEvents: CalendarEvent[];
-  jobNameFor: (jobId?: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   colorForCrew: (crewId: string) => string;
   /** Crew display name (a single letter). */
   crewNameFor: (crewId: string) => string;
@@ -139,7 +139,7 @@ export function DaySidebar({
                         {item.card.title}
                       </Text>
                       <Text style={styles.rowJob} numberOfLines={1}>
-                        {jobNameFor(item.card.jobId)}
+                        {jobNameFor(item.card)}
                       </Text>
                     </View>
                     <Text style={styles.rowCrews}>

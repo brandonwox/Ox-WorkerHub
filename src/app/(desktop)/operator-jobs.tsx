@@ -148,6 +148,7 @@ export default function JobsScreen() {
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
         editable
+        canDelete
         quickViewJobs={jobs}
         onOpenJob={setSelectedJobId}
       />

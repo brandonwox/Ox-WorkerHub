@@ -1650,9 +1650,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       return {
         jobs: state.jobs.filter((job) => !removedJobIds.has(job.id)),
-        workRequests: state.workRequests.filter(
-          (c) => !(c.jobId && removedJobIds.has(c.jobId))
-        ),
+        workRequests: state.workRequests
+          // A card dies with its PRIMARY job (the DB's job_id FK cascade)...
+          .filter((c) => !(c.jobId && removedJobIds.has(c.jobId)))
+          // ...but a multi-linked card merely sheds a removed SECONDARY
+          // sub-job from its link list (the job_ids array has no FK).
+          .map((c) =>
+            c.jobIds?.some((id) => removedJobIds.has(id))
+              ? {
+                  ...c,
+                  jobIds: (() => {
+                    const kept = c.jobIds.filter(
+                      (jid) => !removedJobIds.has(jid)
+                    );
+                    return kept.length > 1 ? kept : undefined;
+                  })(),
+                }
+              : c
+          ),
         assignments: state.assignments.filter(
           (a) => !orphanedCardIds.has(a.workRequestId)
         ),

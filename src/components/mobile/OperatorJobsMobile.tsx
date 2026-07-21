@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
  * The Operator's jobs on the phone: a read-only monitor of every jobsite —
@@ -32,7 +33,7 @@ export function OperatorJobsMobile() {
   );
 
   const cardCountFor = (job: Job) =>
-    workRequests.filter((c) => c.jobId === job.id).length;
+    workRequests.filter((c) => workRequestLinksJob(c, job.id)).length;
 
   const superNamesFor = (job: Job) =>
     (job.fieldSuperIds ?? [])

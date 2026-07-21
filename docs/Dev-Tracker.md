@@ -4,9 +4,33 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-"Service" should not be a role.
+when the scheduler clicks and drags to move work requests it selects stuff all over (can we fix that?)
 
-scheduler role and field super role should both be able to delete or create jobs, subjobs, and work requests. For jobs (and subjobs) the delete button should be in the options popup.  
+work requests cant be created if the window opening flashing material isn't set. (e.g. "Work Requests can't be created for this job until its Window Opening Flashing Material is set — do that on the Jobs tab."). However, if the user typed something into the "Window Opening Flashing Material" field in the work request, then that warning should go away and the user should be able to create the work request. the warning should not appear until the user clicks the create button. it should appear and tell the user to define the window opening flashing material, and the warning should also remind them it can be set in the parent job details.
+
+on the job details page -> issues section -> add a "+ Issue" button on the right side of the "Issues" title, so that issues can be created for the job, without having to be created and assigned to a work request.
+
+when viewing a job details page dont display "PO" before the PO, simply show the PO by itself. (same with the column list of jobs, get rid of "PO" and just show the PO.)
+
+field-super-work-requests page -> the column of work requests -> right now the text directly below the work request name shows the parent job name + the subjob name, instead: just display the PO. (if its a subjob, only show the subjob PO) (same for inside the work request: directly above the work request name, just show the po).
+
+the first task of a work request should automatically be created when the user types the title of the work request (on work request creation.)
+
+job details page -> The additional info section that is only accessible from the edit button on the top right (it holds the flashing material, counts, etc.) -> there should be another input field for "Builder". the input field when clicked should show a dropdown of every builder that has ever been applied to a job in the past. The user can type to search builders. or can simply type and enter to create new builder if no match is found. Also, the 3 dots button should be removed, the "This job has Sub-Jobs" option should just be shown in the job details page if editing is active. (e.g. move the "This job has Sub-Jobs" option to the edit button.)
+
+if window flashing material has not been set for a job it should show a warning on the job details page. (the window flashing material should only even exist for jobs with the window scope, just in case that wasn't already the case.)
+
+web (field supers and scheduler workers) -> job details page -> work request section: add a + Work Request button so they can create new work requests for the job they're on without having to go to their work requests page.
+
+we have a problem: when a scheduler creates a job, they can't assign it to a field super. (allow them to assign field supers.) (this is also part of a bigger problem where sometimes a field super will need to see a jobcard for a job they're not assigned to. I'm thinking we should have a toggle in the field-super-jobs page that allows them to view all jobs. viewing a job they're not assigned to there should be a button to allow them to assign themselves. and the list of jobs on the field-super-jobs page should show the field supers assigned to that job (if that toggle is on.)) (this changes our old rule against having only one field super per job. The first field super assigned to a job should be the name that appears in the job details, unless that field super is no longer assigned to the job, then it should be the runner up.)
+
+give the scheduler the edit button at the top right of the job details page that field supers have. so the scheduler can edit important details like flashing material.
+
+- When enabling "This job has Sub-Jobs" the user must also choose from "Lots", "Phases, "Bldgs", or custom. (this will be used in subjob name creation, see next step to this edit)
+- When creating a subjob: it should show the parent job name (same as it does), then it should show the subjob type that was saved (e.g. "Lot", "Phase", "Bldg", or the custom entry.), then it should show the input field to type the subjob name. The subjob name becomes the subjob type + the entered subjob name. if the type was "Lots" and they entered "159", then the subjob name becomes "Lot 159" (remove the "s" from "Lots" and the other terms.)
+- change the fake "Lot 2, Phase 3, Building B..." text accordingly. (shown in the input field until the user starts typing): it should say something like "Which lot is this?" or "Which phase is this?"
+
+"Service" should not be a scope.
 
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
 
@@ -63,6 +87,12 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 5 — Job/sub-job deletion + work request creation overhaul (REQUIRES: apply the new wr-multi-jobs-standalone-job-delete Supabase migration — adds work_requests.job_ids, opens jobs DELETE to schedulers + assigned field supers, and lets field supers see/write standalone (null-job) work requests):
+- DELETE JOBS/SUB-JOBS: the job details sidebar's options (…) popup now has a "Delete this Job/Sub-Job…" entry with a confirm step (copy spells out the cascade: sub-jobs + their work requests go too). Available to schedulers (any job), field supers (their jobs), and the operator (who also keeps the type-to-confirm delete in the Edit job popup). The popup now opens on sub-jobs too (delete only — the Sub-Jobs toggle stays parent-only). Both roles could already create jobs/sub-jobs/work requests; deletion was the missing piece.
+- STANDALONE WORK REQUESTS: creation has a "No parent job — standalone work request" checkbox; with it on, the job picker hides and the address line becomes a typed field (required). Standalone cards show "No parent job" where the parent name would be and appear on every work-requests surface (they belong to no one's job list).
+- PO-FIRST JOB PICKER: the creation job picker lists jobs as "PO <po>" (name shown only for legacy jobs without one) and searching matches PO or job name.
+- MULTI-SUB-JOB LINKS: the job picker is now a multi-select. Either one job, or several members of ONE family — sibling sub-jobs of the same parent, optionally that parent itself; after the first pick the dropdown only offers the rest of that family, so two different parents are impossible. Stored as work_requests.job_ids with job_id staying the primary link (parent first when included) — FK cascade, Field Super scoping, and legacy cards all keep working. Multi-linked cards read "Parent Lot 2, Lot 5" everywhere (work request lists, quick view, scheduler backlog/calendar/day sidebar, mobile lists), count toward every linked sub-job's work-request counts, and appear on each linked job's details page. Deleting a linked sub-job only unlinks it from the card; deleting the primary job still deletes the card.
 
 Pass 4 — PO numbers + job pages overhaul (REQUIRES: apply the new job-po Supabase migration — the app reads/writes the new jobs.po column):
 - PO ON CREATION: every job and sub-job creation form (operator create, scheduler/field-super web create, field-super mobile create sheet, and the New Sub-Job modal) has a required "PO" input on the same line as the name — creation is blocked until both are typed. The Operator's Edit job popup can fix a PO afterwards (name + PO share the line there too). DB guards: installers, schedulers, and finance managers can't change a PO after creation (schedulers still create jobs WITH one); Operators and Field Supers can.

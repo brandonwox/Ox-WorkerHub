@@ -9,7 +9,7 @@ import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
-import { jobDisplayNameById } from '@/utils/jobName';
+import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 import { comparePriority } from '@/utils/priorityRange';
 
 /**
@@ -40,7 +40,7 @@ export function SchedulerBacklogMobile() {
   );
 
   const jobNameFor = (card: WorkRequest) =>
-    jobDisplayNameById(card.jobId, jobs) || 'Unlinked job';
+    workRequestJobsLabel(card, jobs) || 'No parent job';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>

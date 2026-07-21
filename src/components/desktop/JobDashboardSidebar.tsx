@@ -37,6 +37,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { editableCountDefs, formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
 
@@ -59,6 +60,13 @@ interface Props {
    * `editable`.
    */
   canManageSubJobs?: boolean;
+  /**
+   * Whether the viewer may DELETE this job / sub-job from the options popup
+   * (Schedulers and Field Supers — and the Operator, who also keeps the
+   * type-to-confirm flow in EditJobModal; RLS matches). Deleting a parent job
+   * cascades its sub-jobs and every affected work request.
+   */
+  canDelete?: boolean;
   /** Jobs passed through to the work request quick view (the viewer's scope). */
   quickViewJobs: Job[];
   /**
@@ -88,6 +96,7 @@ export function JobDashboardSidebar({
   onClose,
   editable = false,
   canManageSubJobs = editable,
+  canDelete = false,
   quickViewJobs,
   onOpenJob,
   onBack,
@@ -99,6 +108,7 @@ export function JobDashboardSidebar({
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const updateJob = useAppStore((s) => s.updateJob);
   const addSubJob = useAppStore((s) => s.addSubJob);
+  const removeJob = useAppStore((s) => s.removeJob);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
@@ -127,9 +137,10 @@ export function JobDashboardSidebar({
   const [mapsOpen, setMapsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [picking, setPicking] = useState(false);
-  // Options popup; 'confirm-hide' is the deactivation confirmation step.
+  // Options popup; 'confirm-hide' is the deactivation confirmation step,
+  // 'confirm-delete' the job/sub-job deletion one.
   const [optionsOpen, setOptionsOpen] = useState<
-    'menu' | 'confirm-hide' | null
+    'menu' | 'confirm-hide' | 'confirm-delete' | null
   >(null);
   const [subJobModalOpen, setSubJobModalOpen] = useState(false);
 
@@ -165,12 +176,14 @@ export function JobDashboardSidebar({
     [jobs, job?.parentJobId]
   );
 
+  // Cards linked to this job — including multi-sub-job cards that list it
+  // among their links, not just as the primary jobId.
   const jobWorkRequests = useMemo(
     () =>
       workRequests
-        .filter((card) => card.jobId === job?.id)
+        .filter((card) => (job ? workRequestLinksJob(card, job.id) : false))
         .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
-    [workRequests, job?.id]
+    [workRequests, job]
   );
 
   const issues = useMemo(
@@ -325,7 +338,7 @@ export function JobDashboardSidebar({
               color={colors.textPrimary}
             />
           </Pressable>
-          {(editable || canManageSubJobs) && (
+          {(editable || canManageSubJobs || canDelete) && (
             <View style={styles.topRowActions}>
               {editable && (
                 <Pressable
@@ -346,7 +359,7 @@ export function JobDashboardSidebar({
                   />
                 </Pressable>
               )}
-              {canManageSubJobs && !job.parentJobId && (
+              {((canManageSubJobs && !job.parentJobId) || canDelete) && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.optionsButton,
@@ -667,8 +680,8 @@ export function JobDashboardSidebar({
             ) : (
               <>
                 {visibleSubJobs.map((sub) => {
-                  const count = workRequests.filter(
-                    (c) => c.jobId === sub.id
+                  const count = workRequests.filter((c) =>
+                    workRequestLinksJob(c, sub.id)
                   ).length;
                   return (
                     <Pressable
@@ -887,8 +900,10 @@ export function JobDashboardSidebar({
         </View>
       </Modal>
 
-      {/* Options popup: the "This job has Sub-Jobs" toggle. Deactivating asks
-          for confirmation — it hides the section, the sub-jobs live on. */}
+      {/* Options popup: the "This job has Sub-Jobs" toggle (parent jobs) and
+          Delete (jobs and sub-jobs alike). Deactivating sub-jobs asks for
+          confirmation — it hides the section, the sub-jobs live on; deleting
+          confirms too — it cascades sub-jobs and work requests. */}
       <Modal
         visible={optionsOpen != null}
         transparent
@@ -901,7 +916,59 @@ export function JobDashboardSidebar({
             onPress={() => setOptionsOpen(null)}
           />
           <View style={styles.mapsCard}>
-            {optionsOpen === 'confirm-hide' ? (
+            {optionsOpen === 'confirm-delete' ? (
+              <>
+                <Text style={styles.optionsTitle}>
+                  Delete “{job.name}”?
+                </Text>
+                <Text style={styles.optionsHint}>
+                  {job.parentJobId
+                    ? 'This permanently deletes the sub-job and every work request on it.'
+                    : subJobs.length > 0
+                      ? `This permanently deletes the job, its ${
+                          subJobs.length === 1
+                            ? 'sub-job'
+                            : `${subJobs.length} sub-jobs`
+                        }, and every work request on them.`
+                      : 'This permanently deletes the job and every work request on it.'}{' '}
+                  This can&apos;t be undone.
+                </Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.mapsButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setOptionsOpen('menu')}
+                >
+                  <Text style={styles.mapsButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.mapsButton,
+                    styles.deleteButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    removeJob(job.id);
+                    flash(
+                      `${job.parentJobId ? 'Sub-job' : 'Job'} "${job.name}" deleted`,
+                      'success'
+                    );
+                    setOptionsOpen(null);
+                    onClose();
+                  }}
+                >
+                  <Feather
+                    name="trash-2"
+                    size={15}
+                    color={colors.textOnAccent}
+                  />
+                  <Text style={styles.deleteButtonText}>
+                    Delete {job.parentJobId ? 'Sub-Job' : 'Job'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : optionsOpen === 'confirm-hide' ? (
               <>
                 <Text style={styles.optionsTitle}>Hide Sub-Jobs?</Text>
                 <Text style={styles.optionsHint}>
@@ -939,33 +1006,53 @@ export function JobDashboardSidebar({
             ) : (
               <>
                 <Text style={styles.optionsTitle}>Options</Text>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.optionRow,
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => {
-                    if (job.hasSubJobs) {
-                      setOptionsOpen('confirm-hide');
-                    } else {
-                      updateJob(job.id, { hasSubJobs: true });
-                      setOptionsOpen(null);
-                    }
-                  }}
-                >
-                  <Feather
-                    name={job.hasSubJobs ? 'check-square' : 'square'}
-                    size={18}
-                    color={job.hasSubJobs ? colors.primary : colors.textSecondary}
-                  />
-                  <Text style={styles.optionRowText}>
-                    This job has Sub-Jobs
-                  </Text>
-                </Pressable>
-                <Text style={styles.optionsHint}>
-                  Adds a Sub-Jobs section to this job&apos;s page, where the
-                  job can be broken into pieces that work exactly like jobs.
-                </Text>
+                {canManageSubJobs && !job.parentJobId && (
+                  <>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.optionRow,
+                        pressed && styles.pressed,
+                      ]}
+                      onPress={() => {
+                        if (job.hasSubJobs) {
+                          setOptionsOpen('confirm-hide');
+                        } else {
+                          updateJob(job.id, { hasSubJobs: true });
+                          setOptionsOpen(null);
+                        }
+                      }}
+                    >
+                      <Feather
+                        name={job.hasSubJobs ? 'check-square' : 'square'}
+                        size={18}
+                        color={
+                          job.hasSubJobs ? colors.primary : colors.textSecondary
+                        }
+                      />
+                      <Text style={styles.optionRowText}>
+                        This job has Sub-Jobs
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.optionsHint}>
+                      Adds a Sub-Jobs section to this job&apos;s page, where the
+                      job can be broken into pieces that work exactly like jobs.
+                    </Text>
+                  </>
+                )}
+                {canDelete && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.optionRow,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setOptionsOpen('confirm-delete')}
+                  >
+                    <Feather name="trash-2" size={18} color={colors.danger} />
+                    <Text style={[styles.optionRowText, styles.optionRowDanger]}>
+                      Delete this {job.parentJobId ? 'Sub-Job' : 'Job'}…
+                    </Text>
+                  </Pressable>
+                )}
               </>
             )}
           </View>
@@ -1197,6 +1284,9 @@ const styles = themed(() =>
       color: colors.textPrimary,
       fontFamily: fonts.semiBold,
       fontSize: 14,
+    },
+    optionRowDanger: {
+      color: colors.danger,
     },
     optionsHint: {
       color: colors.textTertiary,
@@ -1544,6 +1634,15 @@ const styles = themed(() =>
       backgroundColor: colors.primary,
     },
     mapsButtonPrimaryText: {
+      color: colors.textOnAccent,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+    },
+    deleteButton: {
+      backgroundColor: colors.danger,
+      borderColor: colors.danger,
+    },
+    deleteButtonText: {
       color: colors.textOnAccent,
       fontFamily: fonts.bold,
       fontSize: 14,

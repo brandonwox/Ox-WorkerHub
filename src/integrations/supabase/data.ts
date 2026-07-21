@@ -77,6 +77,8 @@ interface JobFieldSuperRow {
 interface WorkRequestRow {
   id: string;
   job_id: string | null;
+  /** All linked job ids (multi-sub-job cards); null/short means job_id alone. */
+  job_ids: string[] | null;
   title: string;
   address: string;
   date: string;
@@ -281,6 +283,7 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
   return {
     id: r.id,
     jobId: r.job_id ?? undefined,
+    jobIds: r.job_ids && r.job_ids.length > 1 ? r.job_ids : undefined,
     title: r.title,
     address: r.address,
     date: r.date,
@@ -681,6 +684,7 @@ function workRequestToRow(card: WorkRequest) {
   return {
     id: card.id,
     job_id: card.jobId ?? null,
+    job_ids: card.jobIds ?? null,
     title: card.title,
     address: card.address,
     date: card.date,

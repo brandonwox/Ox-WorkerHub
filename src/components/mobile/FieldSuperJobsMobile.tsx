@@ -20,6 +20,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope } from '@/types';
 import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
  * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap
@@ -53,7 +54,7 @@ export function FieldSuperJobsMobile() {
   );
 
   const countsFor = (job: Job) => {
-    const cards = workRequests.filter((c) => c.jobId === job.id);
+    const cards = workRequests.filter((c) => workRequestLinksJob(c, job.id));
     const scheduled = cards.filter((c) => scheduledIds.has(c.id)).length;
     return { total: cards.length, scheduled };
   };

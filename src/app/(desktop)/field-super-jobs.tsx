@@ -22,6 +22,7 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
  * Field Super → Jobs: searchable list of their jobs; clicking one opens the
@@ -75,7 +76,7 @@ export default function FieldSuperJobsScreen() {
   if (role !== 'field_super') return <AccessDenied />;
 
   const workRequestCountFor = (jobId: string) =>
-    workRequests.filter((c) => c.jobId === jobId).length;
+    workRequests.filter((c) => workRequestLinksJob(c, jobId)).length;
 
   // No QBT jobcode here — the Finance Manager fills it in later. The creator
   // is auto-assigned to the job (store + DB trigger).
@@ -196,6 +197,7 @@ export default function FieldSuperJobsScreen() {
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
         editable
+        canDelete
         quickViewJobs={myJobs}
         onOpenJob={setSelectedJobId}
       />

@@ -7,6 +7,7 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
+import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
 interface Props {
   workRequest: WorkRequest;
@@ -20,11 +21,11 @@ interface Props {
 export function WorkRequestCard({ workRequest, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
   const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
-  // The parent job's name shows with the location. (No priority pill here —
-  // work request priority is office-side; installers don't need it.)
-  const parentJob = useAppStore((s) =>
-    s.jobs.find((j) => j.id === workRequest.jobId)
-  );
+  // The linked job(s) name shows with the location ("Vista Homes Lot 2,
+  // Lot 5" for multi-sub-job cards). (No priority pill here — work request
+  // priority is office-side; installers don't need it.)
+  const jobs = useAppStore((s) => s.jobs);
+  const jobLabel = workRequestJobsLabel(workRequest, jobs);
 
   return (
     <Pressable
@@ -58,7 +59,7 @@ export function WorkRequestCard({ workRequest, onPress, selectable, active }: Pr
       <View style={styles.metaRow}>
         <Feather name="map-pin" size={14} color={colors.textSecondary} />
         <Text style={styles.metaText} numberOfLines={1}>
-          {parentJob ? `${parentJob.name} · ${workRequest.address}` : workRequest.address}
+          {jobLabel ? `${jobLabel} · ${workRequest.address}` : workRequest.address}
         </Text>
       </View>
       {timeWindow && (

@@ -31,7 +31,7 @@ interface Props {
    * ones muted with a "Not ready" tag so schedulers see what's coming.
    */
   cards: WorkRequest[];
-  jobNameFor: (jobId?: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   /** Open a request's details (the same quick view the board uses). */
   onOpenCard: (card: WorkRequest) => void;
   /** Collapse back to the Work Requests list. */
@@ -170,7 +170,7 @@ function BacklogDayCell({
   date: string;
   today: boolean;
   cards: WorkRequest[];
-  jobNameFor: (jobId?: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   onOpenCard: (card: WorkRequest) => void;
 }) {
   const { ref, hovered } = useDropZone(`bcal:${date}`, {
@@ -212,7 +212,7 @@ function BacklogDayCell({
                   {card.title}
                 </Text>
                 <Text style={styles.requestJob} numberOfLines={1}>
-                  {jobNameFor(card.jobId)}
+                  {jobNameFor(card)}
                 </Text>
               </View>
               {!ready && (

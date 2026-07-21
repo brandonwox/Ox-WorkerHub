@@ -47,6 +47,10 @@ import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
 import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import {
+  workRequestJobIds,
+  workRequestJobsLabel,
+} from '@/utils/workRequestJobs';
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
 import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
@@ -59,7 +63,12 @@ const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }))
  * (Moved here from the retired CreateWorkRequestModal.)
  */
 export interface NewWorkRequestInput {
-  jobId: string;
+  /** Primary linked job. Unset on a standalone (no-parent-job) request. */
+  jobId?: string;
+  /** Every linked job (parent first) — set only when more than one. */
+  jobIds?: string[];
+  /** Hand-typed jobsite address — standalone requests only (no job to inherit from). */
+  address?: string;
   title: string;
   scopes: JobScope[];
   tasks: string[];
@@ -94,6 +103,7 @@ const emptyDraft = (): WorkRequest => ({
 /** Which field is being edited inline. Only one edits at a time. */
 type EditField =
   | 'title'
+  | 'address'
   | 'scopes'
   | 'readiness'
   | 'priority'
@@ -187,6 +197,8 @@ export function WorkRequestQuickView({
   const [pendingNoteStatus, setPendingNoteStatus] =
     useState<WorkRequestStatus | null>(null);
   const [pendingReadinessNow, setPendingReadinessNow] = useState(false);
+  // Create mode: "No parent job" — a standalone request with a typed address.
+  const [noJob, setNoJob] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
   const [crewSquareHovered, setCrewSquareHovered] = useState(false);
@@ -240,6 +252,7 @@ export function WorkRequestQuickView({
     setStatusMenuOpen(false);
     setPendingStatus(null);
     setPendingReadinessNow(false);
+    setNoJob(false);
     setConfirmDelete(false);
     setCrewMenuOpen(false);
     setCrewSquareHovered(false);
@@ -262,14 +275,32 @@ export function WorkRequestQuickView({
 
   const palette =
     workRequestStatusColors[workRequest.status] ?? workRequestStatusColors.Undefined;
+  // The PRIMARY linked job (the parent when it's linked, else the first
+  // linked sub-job) — drives address, scopes, counts, and flashing defaults.
   const parentJob = jobs.find((j) => j.id === workRequest.jobId);
   const activeJobs = jobs.filter((j) => j.status === 'Active');
-  // Parent-job options for the create draft (the parent is fixed once a card
-  // exists). Sub-jobs are listed with their parent's name conjoined ("Vista
-  // Homes Lot 2") so they're identifiable in the picker.
-  const jobOptions = activeJobs.map((j) => ({
+  // Job options for the create draft (links are fixed once a card exists).
+  // A card links either one job or several jobs of ONE family (sibling
+  // sub-jobs ± their parent) — once something is selected, the picker offers
+  // only the rest of that family. Options are labeled by PO (the office's
+  // handle for a job); typing a job name still finds it via keywords.
+  const selectedJobIds = workRequestJobIds(workRequest);
+  const selectedJobs = selectedJobIds
+    .map((id) => jobs.find((j) => j.id === id))
+    .filter((j): j is Job => j != null);
+  const familyAnchorId = selectedJobs[0]
+    ? (selectedJobs[0].parentJobId ?? selectedJobs[0].id)
+    : null;
+  const pickableJobs =
+    familyAnchorId == null
+      ? activeJobs
+      : activeJobs.filter(
+          (j) => j.id === familyAnchorId || j.parentJobId === familyAnchorId
+        );
+  const jobOptions = pickableJobs.map((j) => ({
     value: j.id,
-    label: jobDisplayName(j, jobs),
+    label: j.po ? `PO ${j.po}` : jobDisplayName(j, jobs),
+    keywords: [jobDisplayName(j, jobs)],
   }));
   // A card can't be created until the parent job has a jobsite address — and
   // flashing material, when the job covers windows (mirrors the DB guard).
@@ -342,18 +373,29 @@ export function WorkRequestQuickView({
     if (t !== workRequest.title) applyChange({ title: t });
   };
 
-  // Create mode only — the parent job is fixed once a card exists.
-  const changeJob = (nextId: string) => {
-    const next = jobs.find((j) => j.id === nextId);
-    if (!next || next.id === workRequest.jobId) return;
-    // A job without the Windows scope drops the draft's Windows scope (and
-    // its flashing material) — those never show for such jobs.
+  // Create mode only — the linked jobs are fixed once a card exists.
+  const changeJobs = (nextIds: string[]) => {
+    const linked = nextIds
+      .map((id) => jobs.find((j) => j.id === id))
+      .filter((j): j is Job => j != null);
+    // The parent (when itself linked) leads the list, so the primary jobId —
+    // and the DB row's FK — always points at the top-level job if one is in.
+    const ordered = [
+      ...linked.filter((j) => !j.parentJobId),
+      ...linked.filter((j) => j.parentJobId),
+    ];
+    const primary = ordered[0];
+    // A primary job without the Windows scope drops the draft's Windows scope
+    // (and its flashing material) — those never show for such jobs.
     const dropWindows =
-      !jobAllowsWindows(next) && scopes.includes('Windows');
-    // The address follows the parent job.
+      primary != null &&
+      !jobAllowsWindows(primary) &&
+      scopes.includes('Windows');
+    // The address follows the primary job.
     applyChange({
-      jobId: next.id,
-      address: next.location ?? workRequest.address,
+      jobId: primary?.id,
+      jobIds: ordered.length > 1 ? ordered.map((j) => j.id) : undefined,
+      address: primary ? (primary.location ?? '') : workRequest.address,
       ...(dropWindows
         ? {
             scopes: scopes.filter((s) => s !== 'Windows'),
@@ -361,6 +403,19 @@ export function WorkRequestQuickView({
           }
         : {}),
     });
+  };
+
+  // "No parent job": clears any picked jobs and opens the address for typing.
+  const toggleNoJob = () => {
+    const on = !noJob;
+    setNoJob(on);
+    if (on) applyChange({ jobId: undefined, jobIds: undefined, address: '' });
+  };
+
+  const commitAddress = () => {
+    setEditing(null);
+    const v = draft.trim();
+    if (v !== workRequest.address) applyChange({ address: v });
   };
 
   const changeScopes = (vals: string[]) => {
@@ -550,8 +605,14 @@ export function WorkRequestQuickView({
   /** Validate the create draft; hand it up only when every requirement holds. */
   const submitCreate = () => {
     if (!onCreate) return;
-    if (!parentJob) {
-      setCreateError('Pick a parent job for this work request.');
+    if (!noJob && !parentJob) {
+      setCreateError(
+        'Pick a parent job — or mark this request as having no parent job.'
+      );
+      return;
+    }
+    if (noJob && !workRequest.address.trim()) {
+      setCreateError('Type the jobsite address for this work request.');
       return;
     }
     if (missingAddress) {
@@ -609,7 +670,9 @@ export function WorkRequestQuickView({
       return;
     }
     onCreate({
-      jobId: parentJob.id,
+      jobId: parentJob?.id,
+      jobIds: workRequest.jobIds,
+      address: noJob ? workRequest.address.trim() : undefined,
       title: workRequest.title.trim(),
       scopes,
       tasks: cleanTasks,
@@ -621,7 +684,7 @@ export function WorkRequestQuickView({
       // An untouched flashing field falls back to the parent job's material,
       // exactly what the read view displays as the default.
       flashingMaterial: includesWindows
-        ? (workRequest.flashingMaterial ?? parentJob.flashingMaterial)?.trim() ||
+        ? (workRequest.flashingMaterial ?? parentJob?.flashingMaterial)?.trim() ||
           undefined
         : undefined,
       pickupRequired: workRequest.pickupRequired,
@@ -687,18 +750,41 @@ export function WorkRequestQuickView({
         <View style={styles.header}>
           {creating ? (
             <View style={styles.parentJobPicker}>
-              {jobOptions.length > 0 ? (
-                <Combobox
-                  value={workRequest.jobId ?? ''}
-                  options={jobOptions}
-                  onChange={changeJob}
-                  placeholder="Search jobs…"
+              {!noJob &&
+                (jobOptions.length > 0 || selectedJobIds.length > 0 ? (
+                  <MultiCombobox
+                    values={selectedJobIds}
+                    options={jobOptions}
+                    onChange={changeJobs}
+                    placeholder="Search jobs by PO or name…"
+                  />
+                ) : (
+                  <Text style={styles.mutedText}>
+                    No active jobs available — create one first, or make this a
+                    standalone work request below.
+                  </Text>
+                ))}
+              {/* Standalone: a request that hangs off no job (rarely needed).
+                  The address is typed by hand since there's no job to
+                  inherit it from. */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.noJobToggle,
+                  pressed && styles.pressed,
+                ]}
+                onPress={toggleNoJob}
+              >
+                <Feather
+                  name={noJob ? 'check-square' : 'square'}
+                  size={16}
+                  color={noJob ? colors.primary : colors.textSecondary}
                 />
-              ) : (
-                <Text style={styles.mutedText}>
-                  No active jobs available. The Operator must create one first.
+                <Text
+                  style={[styles.noJobText, noJob && styles.noJobTextOn]}
+                >
+                  No parent job — standalone work request
                 </Text>
-              )}
+              </Pressable>
               {(missingAddress || missingFlashing) && (
                 <View style={styles.prereqWarning}>
                   <Feather
@@ -728,12 +814,14 @@ export function WorkRequestQuickView({
               onPress={() => onOpenJob(parentJob.id)}
             >
               <Text style={styles.parentJobText}>
-                {jobDisplayName(parentJob, jobs)}
+                {workRequestJobsLabel(workRequest, jobs)}
               </Text>
             </Pressable>
           ) : (
             <Text style={styles.parentJobText}>
-              {parentJob ? jobDisplayName(parentJob, jobs) : 'Unlinked job'}
+              {parentJob
+                ? workRequestJobsLabel(workRequest, jobs)
+                : 'No parent job'}
             </Text>
           )}
 
@@ -842,11 +930,41 @@ export function WorkRequestQuickView({
           </View>
         </View>
 
-        {/* Address + date + optional time window (read-only). */}
+        {/* Address + date + optional time window. The address is read-only
+            (it follows the linked job) — except on a standalone create draft,
+            where it must be typed by hand. */}
         <Row icon="map-pin">
-          <Text style={styles.mutedText}>
-            {workRequest.address || 'No address'}
-          </Text>
+          {creating && noJob ? (
+            editing === 'address' ? (
+              <TextInput
+                style={styles.textEditor}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitAddress}
+                placeholder="Type the jobsite address…"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            ) : (
+              <Editable
+                onPress={() => startEdit('address', workRequest.address)}
+              >
+                <Text
+                  style={
+                    workRequest.address
+                      ? styles.valueText
+                      : styles.placeholderText
+                  }
+                >
+                  {workRequest.address || 'Add the jobsite address…'}
+                </Text>
+              </Editable>
+            )
+          ) : (
+            <Text style={styles.mutedText}>
+              {workRequest.address || 'No address'}
+            </Text>
+          )}
         </Row>
         <Row icon="calendar">
           <Text style={styles.mutedText}>
@@ -1633,6 +1751,23 @@ const styles = themed(() => StyleSheet.create({
   parentJobPicker: {
     gap: spacing.sm,
     marginBottom: spacing.xs,
+  },
+  noJobToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  noJobText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  noJobTextOn: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
   },
   prereqWarning: {
     flexDirection: 'row',

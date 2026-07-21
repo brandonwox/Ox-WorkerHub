@@ -302,8 +302,21 @@ export interface WorkRequestTask {
  */
 export interface WorkRequest {
   id: string;
-  /** Parent Job (jobsite). Optional only while legacy/seed data is migrated. */
+  /**
+   * Primary linked Job (jobsite) — the row the DB foreign key points at.
+   * Unset on a STANDALONE work request (created with "No parent job"; its
+   * address is typed by hand instead of inherited) and on unmigrated legacy
+   * data. When {@link jobIds} is set this is always its first entry.
+   */
   jobId?: string;
+  /**
+   * Every linked job, in selection order — set only when the card is linked
+   * to MORE than one. Multi-links are constrained to one family: sibling
+   * sub-jobs of a single parent, optionally including that parent itself
+   * (never two different parent jobs). {@link jobId} mirrors the first entry;
+   * use utils/workRequestJobs.ts helpers instead of reading either directly.
+   */
+  jobIds?: string[];
   title: string;
   address: string;
   /** Scheduled calendar day (yyyy-MM-dd). Always set. */

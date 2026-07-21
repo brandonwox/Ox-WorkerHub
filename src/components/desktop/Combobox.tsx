@@ -7,10 +7,19 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 export interface ComboOption {
   value: string;
   label: string;
+  /**
+   * Extra search terms beyond the label — typing any of them also matches
+   * this option (e.g. a job's name when the label shows its PO).
+   */
+  keywords?: string[];
 }
 
 function matches(option: ComboOption, query: string): boolean {
-  return option.label.toLowerCase().includes(query.trim().toLowerCase());
+  const q = query.trim().toLowerCase();
+  return (
+    option.label.toLowerCase().includes(q) ||
+    (option.keywords ?? []).some((k) => k.toLowerCase().includes(q))
+  );
 }
 
 interface ComboboxProps {

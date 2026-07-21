@@ -30,10 +30,10 @@ import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModa
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Crew, DailyCrew } from '@/types';
+import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 import { buildDayItems } from '@/utils/daySchedule';
-import { jobDisplayNameById } from '@/utils/jobName';
+import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
 interface Props {
   /**
@@ -283,8 +283,8 @@ export function CalendarBoard({
     });
   };
 
-  const jobNameFor = (jobId?: string) =>
-    jobDisplayNameById(jobId, jobs) || 'Unlinked job';
+  const jobNameFor = (card: WorkRequest) =>
+    workRequestJobsLabel(card, jobs) || 'No parent job';
 
   // Work Requests = work requests with no assignment row anywhere.
   const unassigned = useMemo(

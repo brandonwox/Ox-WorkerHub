@@ -17,6 +17,7 @@ import {
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
  * Scheduler → Jobs: searchable list of every job; clicking one opens the job
@@ -68,7 +69,7 @@ export default function SchedulerJobsScreen() {
   if (role !== 'scheduler') return <AccessDenied />;
 
   const workRequestCountFor = (jobId: string) =>
-    workRequests.filter((c) => c.jobId === jobId).length;
+    workRequests.filter((c) => workRequestLinksJob(c, jobId)).length;
 
   const handleCreate = (input: NewJobInput) => {
     const created = addJob(input);
@@ -185,6 +186,7 @@ export default function SchedulerJobsScreen() {
         onClose={() => setSelectedJobId(null)}
         editable={false}
         canManageSubJobs
+        canDelete
         quickViewJobs={jobs}
         onOpenJob={setSelectedJobId}
       />

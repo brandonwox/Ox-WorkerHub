@@ -21,7 +21,7 @@ export function isReadyNow(card: WorkRequest): boolean {
 interface Props {
   /** Unassigned work requests (no row in `assignments`). */
   cards: WorkRequest[];
-  jobNameFor: (jobId?: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   placingCardId: string | null;
   onTogglePlacing: (cardId: string) => void;
   /** Open the work request to view / edit its details. */
@@ -101,7 +101,7 @@ export function Backlog({
           <PriorityBadge card={card} />
         </View>
         <Text style={styles.cardJob} numberOfLines={1}>
-          {jobNameFor(card.jobId)}
+          {jobNameFor(card)}
         </Text>
         {showReadiness && card.readiness ? (
           <Text style={styles.readinessNote} numberOfLines={1}>
