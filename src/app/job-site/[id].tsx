@@ -22,6 +22,7 @@ import {
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import {
@@ -374,6 +375,9 @@ export default function JobSiteScreen() {
           {/* Field-Super-only layout-plan warnings (component gates itself). */}
           <LayoutPlanBanner job={job} kind="window" />
           <LayoutPlanBanner job={job} kind="mirror" />
+          {/* Missing flashing material blocks work request creation — warn
+              the roles that can fix it (component gates itself). */}
+          <FlashingMaterialBanner job={job} />
         </View>
 
         {/* Section cards — every card stays visible; the active one is

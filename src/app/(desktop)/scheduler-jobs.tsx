@@ -185,6 +185,10 @@ export default function SchedulerJobsScreen() {
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
         editable={false}
+        // Schedulers may set the flashing material (their DB guard allows
+        // exactly that) and create work requests from the job's page.
+        canEditFlashing
+        canCreateWorkRequests
         canManageSubJobs
         canDelete
         quickViewJobs={jobs}

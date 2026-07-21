@@ -15,13 +15,17 @@ import {
 
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
+import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import {
   CreateSubJobModal,
   NewSubJobInput,
 } from '@/components/desktop/CreateSubJobModal';
-import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
+import {
+  NewWorkRequestInput,
+  WorkRequestQuickView,
+} from '@/components/desktop/WorkRequestQuickView';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import {
@@ -37,6 +41,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { editableCountDefs, formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
@@ -54,6 +59,18 @@ interface Props {
    * (Field Supers and the Operator; RLS matches). Gates the Edit pencil.
    */
   editable?: boolean;
+  /**
+   * Whether the viewer may edit ONLY the flashing material (+ its photo) via
+   * the same Edit pencil — Schedulers, whose DB guard allows exactly that.
+   * Defaults to `editable` (full editors already cover it).
+   */
+  canEditFlashing?: boolean;
+  /**
+   * Whether the Work Requests section shows a "+ Work Request" button that
+   * opens the creation popup pre-linked to this job (web Field Supers and
+   * Schedulers).
+   */
+  canCreateWorkRequests?: boolean;
   /**
    * Whether the viewer may toggle "This job has Sub-Jobs" and create sub-jobs
    * (schedulers may, despite not being `editable`; RLS matches). Defaults to
@@ -95,6 +112,8 @@ export function JobDashboardSidebar({
   job,
   onClose,
   editable = false,
+  canEditFlashing = editable,
+  canCreateWorkRequests = false,
   canManageSubJobs = editable,
   canDelete = false,
   quickViewJobs,
@@ -109,6 +128,7 @@ export function JobDashboardSidebar({
   const updateJob = useAppStore((s) => s.updateJob);
   const addSubJob = useAppStore((s) => s.addSubJob);
   const removeJob = useAppStore((s) => s.removeJob);
+  const addWorkRequest = useAppStore((s) => s.addWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
@@ -117,6 +137,9 @@ export function JobDashboardSidebar({
   const photoFilter = usePhotoScopeFilter(photos);
 
   const [viewingCardId, setViewingCardId] = useState<string | null>(null);
+  // "+ Work Request": the creation popup, pre-linked to this job (rendered
+  // shifted left so the job sidebar stays visible beside it).
+  const [creatingWorkRequest, setCreatingWorkRequest] = useState(false);
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
     index: number;
@@ -157,6 +180,7 @@ export function JobDashboardSidebar({
     setMapsOpen(false);
     setOptionsOpen(null);
     setSubJobModalOpen(false);
+    setCreatingWorkRequest(false);
   }
 
   // This job's sub-jobs (for the Sub-Jobs section) and — when the job IS a
@@ -256,6 +280,9 @@ export function JobDashboardSidebar({
   const counts = jobCounts(job);
   const windowsAllowed = jobAllowsWindows(job);
   const editCounts = editableCountDefs(job);
+  // Flashing-only editors (Schedulers) get the pencil just on windows jobs —
+  // on any other job their edit mode would have nothing to edit.
+  const showEditPencil = editable || (canEditFlashing && windowsAllowed);
 
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
@@ -338,9 +365,9 @@ export function JobDashboardSidebar({
               color={colors.textPrimary}
             />
           </Pressable>
-          {(editable || canManageSubJobs || canDelete) && (
+          {(showEditPencil || canManageSubJobs || canDelete) && (
             <View style={styles.topRowActions}>
-              {editable && (
+              {showEditPencil && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.optionsButton,
@@ -429,8 +456,9 @@ export function JobDashboardSidebar({
           {/* The job's PO, right under the name (smaller than the name). */}
           {job.po ? <Text style={styles.poLine}>PO {job.po}</Text> : null}
           {/* The one jobsite address: a tappable maps link, or an inline
-              editor while Edit mode is on (no duplicate field below). */}
-          {editMode ? (
+              editor while Edit mode is on (no duplicate field below).
+              Flashing-only editors (Schedulers) keep the read-only link. */}
+          {editMode && editable ? (
             <View style={styles.headerEditRow}>
               <Feather name="map-pin" size={14} color={colors.textSecondary} />
               <AddressInput
@@ -476,14 +504,20 @@ export function JobDashboardSidebar({
           {/* Field-Super-only layout-plan warnings (component gates itself). */}
           <LayoutPlanBanner job={job} kind="window" />
           <LayoutPlanBanner job={job} kind="mirror" />
+          {/* Missing flashing material blocks work request creation — warn
+              the roles that can fix it (component gates itself). */}
+          <FlashingMaterialBanner job={job} />
         </View>
 
         {/* Edit mode extras: flashing material (window jobs) and the scope
             counts' done/total numbers. The address is edited up in the
-            header. */}
-        {editable && editMode && (windowsAllowed || editCounts.length > 0) && (
+            header. Flashing-only editors (Schedulers) see just the flashing
+            field here. */}
+        {editMode &&
+          ((canEditFlashing && windowsAllowed) ||
+            (editable && editCounts.length > 0)) && (
           <View style={styles.editBlock}>
-            {windowsAllowed && (
+            {canEditFlashing && windowsAllowed && (
               <>
                 <Text style={styles.fieldLabel}>
                   Window Opening Flashing Material
@@ -502,7 +536,8 @@ export function JobDashboardSidebar({
             )}
             {/* One done/total editor per count pair the job's scopes cover.
                 The wrapper keeps the label/editor spacing of the parent's gap. */}
-            {editCounts.map((def) => (
+            {editable &&
+              editCounts.map((def) => (
               <View key={`${def.doneField}-${job.id}`} style={styles.countPair}>
                 <Text style={styles.fieldLabel}>
                   {def.label} (done / total)
@@ -601,7 +636,21 @@ export function JobDashboardSidebar({
 
         {section === 'work requests' && (
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Work Requests</Text>
+            <View style={styles.picturesHeader}>
+              <Text style={styles.sectionHeader}>Work Requests</Text>
+              {canCreateWorkRequests && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.uploadButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setCreatingWorkRequest(true)}
+                >
+                  <Feather name="plus" size={13} color={colors.primary} />
+                  <Text style={styles.uploadText}>Work Request</Text>
+                </Pressable>
+              )}
+            </View>
             {jobWorkRequests.length === 0 ? (
               <Text style={styles.emptyText}>No work requests yet.</Text>
             ) : (
@@ -1070,10 +1119,19 @@ export function JobDashboardSidebar({
         }}
       />
 
+      {/* Viewing opens the centered popup; "+ Work Request" reuses it in
+          create mode, shifted left so this sidebar stays visible beside it
+          and pre-linked to this job. */}
       <WorkRequestQuickView
         workRequestId={viewingCardId}
+        creating={creatingWorkRequest}
+        initialJobId={job.id}
+        popupShifted={creatingWorkRequest}
         jobs={quickViewJobs}
-        onClose={() => setViewingCardId(null)}
+        onClose={() => {
+          setViewingCardId(null);
+          setCreatingWorkRequest(false);
+        }}
         onDelete={(id) => {
           const title = jobWorkRequests.find((c) => c.id === id)?.title;
           deleteWorkRequest(id);
@@ -1082,6 +1140,10 @@ export function JobDashboardSidebar({
             title ? `Work Request "${title}" deleted` : 'Work Request deleted',
             'success'
           );
+        }}
+        onCreate={(input: NewWorkRequestInput) => {
+          addWorkRequest(newWorkRequestPayload(input, jobs));
+          flash(`Work Request "${input.title}" created`, 'success');
         }}
       />
 

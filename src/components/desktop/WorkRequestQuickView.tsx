@@ -126,6 +126,11 @@ interface Props {
    * the bottom. Takes precedence over `workRequestId`.
    */
   creating?: boolean;
+  /**
+   * Pre-link this job on the create draft (the job details pages' "+ Work
+   * Request" button) — the picker still allows adding family members.
+   */
+  initialJobId?: string;
   /** Jobs in the viewer's scope — parent-job options and lookups. */
   jobs: Job[];
   /**
@@ -133,6 +138,11 @@ interface Props {
    * the same size as the job dashboard sidebar (the work requests pages).
    */
   variant?: 'popup' | 'sidebar';
+  /**
+   * Popup variant only: center the card in the space LEFT of the job dashboard
+   * sidebar instead of the whole screen (creation opened from that sidebar).
+   */
+  popupShifted?: boolean;
   onClose: () => void;
   onDelete: (id: string) => void;
   /** Receives the validated draft when `creating`; required in that mode. */
@@ -158,8 +168,10 @@ interface Props {
 export function WorkRequestQuickView({
   workRequestId,
   creating = false,
+  initialJobId,
   jobs,
   variant = 'popup',
+  popupShifted = false,
   onClose,
   onDelete,
   onCreate,
@@ -199,6 +211,9 @@ export function WorkRequestQuickView({
   const [pendingReadinessNow, setPendingReadinessNow] = useState(false);
   // Create mode: "No parent job" — a standalone request with a typed address.
   const [noJob, setNoJob] = useState(false);
+  // Create mode: the missing-flashing-material warning stays hidden until the
+  // Create button is actually clicked (then clears itself once satisfied).
+  const [flashingWarned, setFlashingWarned] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
   const [crewSquareHovered, setCrewSquareHovered] = useState(false);
@@ -244,7 +259,17 @@ export function WorkRequestQuickView({
   // Reset every transient state (and the create draft) when a different card
   // is opened or create mode is entered/left.
   useEffect(() => {
-    setDraftCard(emptyDraft());
+    const seed = emptyDraft();
+    // Creation launched from a job details page pre-links that job (the
+    // picker still allows adding the rest of its family).
+    if (creating && initialJobId) {
+      const initialJob = jobs.find((j) => j.id === initialJobId);
+      if (initialJob) {
+        seed.jobId = initialJob.id;
+        seed.address = initialJob.location ?? '';
+      }
+    }
+    setDraftCard(seed);
     setCreateError(null);
     setEditing(null);
     setDraft('');
@@ -253,10 +278,14 @@ export function WorkRequestQuickView({
     setPendingStatus(null);
     setPendingReadinessNow(false);
     setNoJob(false);
+    setFlashingWarned(false);
     setConfirmDelete(false);
     setCrewMenuOpen(false);
     setCrewSquareHovered(false);
-  }, [workRequestId, creating]);
+    // `jobs` is deliberately not a dep — a background refresh must not wipe an
+    // in-progress draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workRequestId, creating, initialJobId]);
 
   // An armed delete disarms itself after 4s if the second click never comes.
   useEffect(() => {
@@ -303,14 +332,17 @@ export function WorkRequestQuickView({
     keywords: [jobDisplayName(j, jobs)],
   }));
   // A card can't be created until the parent job has a jobsite address — and
-  // flashing material, when the job covers windows (mirrors the DB guard).
+  // flashing material, when the job covers windows. Typing a flashing material
+  // into THIS work request satisfies the flashing requirement too; its warning
+  // only shows after a blocked Create click (see submitCreate).
   const missingAddress =
     creating && parentJob != null && !parentJob.location.trim();
   const missingFlashing =
     creating &&
     parentJob != null &&
     jobAllowsWindows(parentJob) &&
-    !parentJob.flashingMaterial?.trim();
+    !parentJob.flashingMaterial?.trim() &&
+    !workRequest?.flashingMaterial?.trim();
   const tasks = workRequest.tasks ?? [];
   const scopes = workRequest.scopes ?? [];
   // Installer-raised issues on this card, newest first — nested under the task
@@ -370,7 +402,20 @@ export function WorkRequestQuickView({
       if (!creating) flash('Title is required — change discarded.', 'warning');
       return;
     }
-    if (t !== workRequest.title) applyChange({ title: t });
+    if (t === workRequest.title) return;
+    // On creation, typing the title auto-authors the first task from it (and
+    // keeps following title retypes until the task is edited or others exist).
+    const autoFirstTask = creating
+      ? tasks.length === 0
+        ? [{ id: uuid(), text: t, done: false }]
+        : tasks.length === 1 && tasks[0].text === workRequest.title
+          ? [{ ...tasks[0], text: t }]
+          : null
+      : null;
+    applyChange({
+      title: t,
+      ...(autoFirstTask ? { tasks: autoFirstTask } : {}),
+    });
   };
 
   // Create mode only — the linked jobs are fixed once a card exists.
@@ -622,9 +667,10 @@ export function WorkRequestQuickView({
       return;
     }
     if (missingFlashing) {
-      setCreateError(
-        'This job has no Window Opening Flashing Material yet — set it on the Jobs tab first.'
-      );
+      // No createError — the dedicated warning above the buttons explains it
+      // (and clears itself once a flashing material is typed either place).
+      setFlashingWarned(true);
+      setCreateError(null);
       return;
     }
     if (!workRequest.title.trim()) {
@@ -785,7 +831,7 @@ export function WorkRequestQuickView({
                   No parent job — standalone work request
                 </Text>
               </Pressable>
-              {(missingAddress || missingFlashing) && (
+              {missingAddress && (
                 <View style={styles.prereqWarning}>
                   <Feather
                     name="alert-triangle"
@@ -793,13 +839,8 @@ export function WorkRequestQuickView({
                     color={colors.warning}
                   />
                   <Text style={styles.prereqText}>
-                    Work Requests can&apos;t be created for this job until{' '}
-                    {missingAddress && missingFlashing
-                      ? 'its jobsite address and Window Opening Flashing Material are'
-                      : missingAddress
-                        ? 'its jobsite address is'
-                        : 'its Window Opening Flashing Material is'}{' '}
-                    set — do that on the Jobs tab.
+                    Work Requests can&apos;t be created for this job until its
+                    jobsite address is set — do that on the Jobs tab.
                   </Text>
                 </View>
               )}
@@ -1509,6 +1550,21 @@ export function WorkRequestQuickView({
           Create Work Request at the bottom (plus the validation error). */}
       {creating && (
         <View style={styles.createFooter}>
+          {/* Missing-flashing warning: appears only after a blocked Create
+              click, and disappears on its own once a flashing material is
+              typed on this request (or set on the job). */}
+          {flashingWarned && missingFlashing && (
+            <View style={styles.prereqWarning}>
+              <Feather name="alert-triangle" size={14} color={colors.warning} />
+              <Text style={styles.prereqText}>
+                This job&apos;s Window Opening Flashing Material isn&apos;t set.
+                Type one into this work request&apos;s Window Opening Flashing
+                Material field (add the Windows scope to see it) — or set it in
+                the parent job&apos;s details, where it applies to every future
+                work request.
+              </Text>
+            </View>
+          )}
           {createError ? (
             <Text style={styles.createError}>{createError}</Text>
           ) : null}
@@ -1556,7 +1612,7 @@ export function WorkRequestQuickView({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, popupShifted && styles.overlayShifted]}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         {panel}
       </View>
@@ -1654,6 +1710,11 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
+  },
+  // Shifted left of the job dashboard sidebar (640) so creating a work
+  // request from a job's page shows both side by side.
+  overlayShifted: {
+    paddingRight: 640 + spacing.xl,
   },
   backdrop: {
     position: 'absolute',

@@ -649,6 +649,10 @@ export function CalendarBoard({
             onClose={() => setViewingJobId(null)}
             onBack={() => setViewingJobId(null)}
             editable={role === 'field_super'}
+            // Both roles that render this board (Scheduler + Field Super) may
+            // set flashing material and create work requests; RLS matches.
+            canEditFlashing
+            canCreateWorkRequests
             quickViewJobs={jobs}
             onOpenJob={setViewingJobId}
           />

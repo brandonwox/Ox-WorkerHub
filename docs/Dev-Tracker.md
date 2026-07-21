@@ -4,9 +4,9 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-when the scheduler clicks and drags to move work requests it selects stuff all over (can we fix that?)
+work requests need to be able to be assigned across multiple days. (it cannot be split up(the 10th and the 12th), but it can be stretched (the 10th to the 12th)). when the scheduler drags and drops the work request to a new location, the work request remembers its length (if the work request spanned 5 days, it stays that way where it was moved to.) (visually it should overlap the borders of the days on the calendars.) (I will attach a screenshot of a good visual example of this from google calendar) (This edit needs to be done soon. ask for a screenshot if and when you plan this edit.)
 
-work requests cant be created if the window opening flashing material isn't set. (e.g. "Work Requests can't be created for this job until its Window Opening Flashing Material is set — do that on the Jobs tab."). However, if the user typed something into the "Window Opening Flashing Material" field in the work request, then that warning should go away and the user should be able to create the work request. the warning should not appear until the user clicks the create button. it should appear and tell the user to define the window opening flashing material, and the warning should also remind them it can be set in the parent job details.
+when the scheduler clicks and drags to move work requests it selects stuff all over (can we fix that?)
 
 on the job details page -> issues section -> add a "+ Issue" button on the right side of the "Issues" title, so that issues can be created for the job, without having to be created and assigned to a work request.
 
@@ -14,23 +14,17 @@ when viewing a job details page dont display "PO" before the PO, simply show the
 
 field-super-work-requests page -> the column of work requests -> right now the text directly below the work request name shows the parent job name + the subjob name, instead: just display the PO. (if its a subjob, only show the subjob PO) (same for inside the work request: directly above the work request name, just show the po).
 
-the first task of a work request should automatically be created when the user types the title of the work request (on work request creation.)
-
 job details page -> The additional info section that is only accessible from the edit button on the top right (it holds the flashing material, counts, etc.) -> there should be another input field for "Builder". the input field when clicked should show a dropdown of every builder that has ever been applied to a job in the past. The user can type to search builders. or can simply type and enter to create new builder if no match is found. Also, the 3 dots button should be removed, the "This job has Sub-Jobs" option should just be shown in the job details page if editing is active. (e.g. move the "This job has Sub-Jobs" option to the edit button.)
 
-if window flashing material has not been set for a job it should show a warning on the job details page. (the window flashing material should only even exist for jobs with the window scope, just in case that wasn't already the case.)
-
-web (field supers and scheduler workers) -> job details page -> work request section: add a + Work Request button so they can create new work requests for the job they're on without having to go to their work requests page.
-
 we have a problem: when a scheduler creates a job, they can't assign it to a field super. (allow them to assign field supers.) (this is also part of a bigger problem where sometimes a field super will need to see a jobcard for a job they're not assigned to. I'm thinking we should have a toggle in the field-super-jobs page that allows them to view all jobs. viewing a job they're not assigned to there should be a button to allow them to assign themselves. and the list of jobs on the field-super-jobs page should show the field supers assigned to that job (if that toggle is on.)) (this changes our old rule against having only one field super per job. The first field super assigned to a job should be the name that appears in the job details, unless that field super is no longer assigned to the job, then it should be the runner up.)
-
-give the scheduler the edit button at the top right of the job details page that field supers have. so the scheduler can edit important details like flashing material.
 
 - When enabling "This job has Sub-Jobs" the user must also choose from "Lots", "Phases, "Bldgs", or custom. (this will be used in subjob name creation, see next step to this edit)
 - When creating a subjob: it should show the parent job name (same as it does), then it should show the subjob type that was saved (e.g. "Lot", "Phase", "Bldg", or the custom entry.), then it should show the input field to type the subjob name. The subjob name becomes the subjob type + the entered subjob name. if the type was "Lots" and they entered "159", then the subjob name becomes "Lot 159" (remove the "s" from "Lots" and the other terms.)
 - change the fake "Lot 2, Phase 3, Building B..." text accordingly. (shown in the input field until the user starts typing): it should say something like "Which lot is this?" or "Which phase is this?"
 
 "Service" should not be a scope.
+
+events on the calendar should be drag and droppable, and if created from the "+ Event" button at the top of the page (not inside the daily list): then the event should be created in the work requests backlog.
 
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
 
@@ -41,6 +35,8 @@ manage crews -> permanent crews: an installer can only be selected for one crew 
 in the notifications section: i try to hover over a notification and click on the x button to dismiss the notification and delete it, but the x button disappears whenever i get close.
 
 web users -> the settings page should not show up in the left sidebar. accessing the settings page is done by clicking the profile chip in the top right of the screen.
+
+work request -> rounded square that shows the crews -> add a "Assign Multiple" button at the bottom of the list of crews so the scheduler can assign multiple crews to the work request from here. while the dropdown remains open and the assign multiple button is active, the user can now click on as many crews as they want. also, clicking a crew that's assigned unassigns it.
 
 add small radius drop shadow around popups in web view, such as when a scheduler opens a jobcard popup (there should be a box/drop shadow around the popup, just dont make it too big or too strong.)
 
@@ -87,6 +83,13 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 6 — Flashing material gating + work request creation flow (no DB migration needed):
+- FLASHING GATE ON CREATION: the missing-flashing warning no longer shows up front — it appears only after the Create button is clicked, above the buttons: it says to type a flashing material into the work request's own Window Opening Flashing Material field (visible once the Windows scope is added) OR set it in the parent job's details. Typing one either place clears the warning on its own and unblocks creation (a value typed on the work request satisfies the requirement — the job's own material can stay unset). The missing-jobsite-address warning keeps its old immediate behavior.
+- JOB DETAILS WARNING: a windows-covering job with no flashing material set now shows a plain warning row under the job header ("No Window Opening Flashing Material set — work requests can't be created for this job until it is") on the mobile job details page and the web job dashboard sidebar — shown only to the roles that can fix it (Field Supers, Operator, Schedulers). Verified flashing surfaces stay hidden for jobs whose scopes exclude Windows (already the case everywhere).
+- SCHEDULER EDIT BUTTON: schedulers now get the top-right Edit pencil on the job details sidebar (jobs pages, work requests pages, calendar) — scoped to what their DB guard allows: the flashing material text + reference photo, on windows jobs only. Address/counts stay read-only for them (widening that needs a migration and wasn't asked).
+- "+ WORK REQUEST" ON JOB PAGES (web Field Supers + Schedulers): the job details sidebar's Work Requests section header has a "+ Work Request" button. It opens the standard creation form as a POPUP shifted left of the sidebar (not in the sidebar itself), pre-linked to the job being viewed (the picker still allows adding the rest of its family). Available from the jobs pages, the work-requests pages' stacked job view, and the calendar's job view; the Operator doesn't get it.
+- AUTO FIRST TASK: on creation, typing the work request's title auto-creates the first task with the same text. It keeps following title retypes until the task is edited or another task exists — then it's the user's.
 
 Pass 5 — Job/sub-job deletion + work request creation overhaul (REQUIRES: apply the new wr-multi-jobs-standalone-job-delete Supabase migration — adds work_requests.job_ids, opens jobs DELETE to schedulers + assigned field supers, and lets field supers see/write standalone (null-job) work requests):
 - DELETE JOBS/SUB-JOBS: the job details sidebar's options (…) popup now has a "Delete this Job/Sub-Job…" entry with a confirm step (copy spells out the cascade: sub-jobs + their work requests go too). Available to schedulers (any job), field supers (their jobs), and the operator (who also keeps the type-to-confirm delete in the Edit job popup). The popup now opens on sub-jobs too (delete only — the Sub-Jobs toggle stays parent-only). Both roles could already create jobs/sub-jobs/work requests; deletion was the missing piece.

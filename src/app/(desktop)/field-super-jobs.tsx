@@ -197,6 +197,7 @@ export default function FieldSuperJobsScreen() {
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
         editable
+        canCreateWorkRequests
         canDelete
         quickViewJobs={myJobs}
         onOpenJob={setSelectedJobId}

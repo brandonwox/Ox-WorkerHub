@@ -14,10 +14,11 @@ import {
 } from '@/components/desktop/WorkRequestFilters';
 import { WorkRequestRow } from '@/components/desktop/WorkRequestRow';
 import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
-import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
+import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import {
   workRequestJobIds,
   workRequestJobsLabel,
@@ -225,33 +226,7 @@ export function WorkRequestsScreen({
     );
 
   const handleCreate = (input: NewWorkRequestInput) => {
-    const parent = input.jobId
-      ? jobs.find((j) => j.id === input.jobId)
-      : undefined;
-    addWorkRequest({
-      jobId: input.jobId,
-      jobIds: input.jobIds,
-      title: input.title,
-      // Standalone requests carry their hand-typed address; linked ones
-      // inherit the primary job's location.
-      address: input.jobId ? (parent?.location ?? '') : (input.address ?? ''),
-      // No calendar date at creation — the Scheduler places it later.
-      date: format(new Date(), 'yyyy-MM-dd'),
-      priority: input.priority,
-      priorityStartDate: input.priorityStartDate || undefined,
-      priorityEndDate: input.priorityEndDate || undefined,
-      scopes: input.scopes,
-      // The modal authors task text; each becomes a check-off item with a
-      // stable id (installers tick them off from their phones).
-      tasks: input.tasks.map((text) => ({ id: uuid(), text, done: false })),
-      readiness: input.readiness,
-      materials: input.materials,
-      flashingMaterial: input.flashingMaterial,
-      pickupRequired: input.pickupRequired,
-      pickupLocation: input.pickupLocation,
-      notes: input.notes,
-      details: { generalContractor: '', managerName: '', managerPhone: '' },
-    });
+    addWorkRequest(newWorkRequestPayload(input, jobs));
     flash(`Work Request "${input.title}" created`, 'success');
   };
 
@@ -427,7 +402,10 @@ export function WorkRequestsScreen({
         onBack={() => setOpenJobId(null)}
         editable={role === 'field_super'}
         // Only the Scheduler and Field Supers render this screen — both may
-        // manage sub-jobs and delete jobs (RLS matches).
+        // manage sub-jobs, delete jobs, edit flashing material, and create
+        // work requests (RLS matches).
+        canEditFlashing
+        canCreateWorkRequests
         canManageSubJobs
         canDelete
         quickViewJobs={jobs}
