@@ -18,6 +18,7 @@ import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope } from '@/types';
+import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
 /**
@@ -278,52 +279,44 @@ function JobRow({
   const router = useRouter();
   const [location, setLocation] = useState(job.location);
   const [flashing, setFlashing] = useState(job.flashingMaterial ?? '');
-  // Scope counts, done/total as text (blank = unset).
-  const [windowDone, setWindowDone] = useState(numToText(job.windowCountDone));
-  const [windowTotal, setWindowTotal] = useState(
-    numToText(job.windowCountTotal)
-  );
-  const [sgdDone, setSgdDone] = useState(numToText(job.sgdCountDone));
-  const [sgdTotal, setSgdTotal] = useState(numToText(job.sgdCountTotal));
-  const [mirrorDone, setMirrorDone] = useState(numToText(job.mirrorCountDone));
-  const [mirrorTotal, setMirrorTotal] = useState(
-    numToText(job.mirrorCountTotal)
-  );
+  const windowsAllowed = jobAllowsWindows(job);
+  // The count pairs this job's scopes cover — each edits done/total as text
+  // (blank = unset), keyed by the done/total field names.
+  const countDefs = editableCountDefs(job);
+  const [countText, setCountText] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const def of JOB_COUNT_DEFS) {
+      init[def.doneField] = numToText(job[def.doneField]);
+      init[def.totalField] = numToText(job[def.totalField]);
+    }
+    return init;
+  });
   const [saved, setSaved] = useState(false);
 
-  const windowsAllowed = jobAllowsWindows(job);
-  const mirrorsAllowed = !!job.scopes?.includes('Mirrors');
+  const setCount = (field: string, text: string) => {
+    setCountText((prev) => ({ ...prev, [field]: text }));
+    setSaved(false);
+  };
 
   const dirty =
     location.trim() !== job.location ||
     flashing.trim() !== (job.flashingMaterial ?? '') ||
-    (windowsAllowed &&
-      (parseCount(windowDone) !== job.windowCountDone ||
-        parseCount(windowTotal) !== job.windowCountTotal ||
-        parseCount(sgdDone) !== job.sgdCountDone ||
-        parseCount(sgdTotal) !== job.sgdCountTotal)) ||
-    (mirrorsAllowed &&
-      (parseCount(mirrorDone) !== job.mirrorCountDone ||
-        parseCount(mirrorTotal) !== job.mirrorCountTotal));
+    countDefs.some(
+      (def) =>
+        parseCount(countText[def.doneField]) !== job[def.doneField] ||
+        parseCount(countText[def.totalField]) !== job[def.totalField]
+    );
 
   const save = () => {
+    const countChanges: Partial<Job> = {};
+    for (const def of countDefs) {
+      countChanges[def.doneField] = parseCount(countText[def.doneField]);
+      countChanges[def.totalField] = parseCount(countText[def.totalField]);
+    }
     onSave({
       location: location.trim(),
       flashingMaterial: flashing.trim(),
-      ...(windowsAllowed
-        ? {
-            windowCountDone: parseCount(windowDone),
-            windowCountTotal: parseCount(windowTotal),
-            sgdCountDone: parseCount(sgdDone),
-            sgdCountTotal: parseCount(sgdTotal),
-          }
-        : {}),
-      ...(mirrorsAllowed
-        ? {
-            mirrorCountDone: parseCount(mirrorDone),
-            mirrorCountTotal: parseCount(mirrorTotal),
-          }
-        : {}),
+      ...countChanges,
     });
     setSaved(true);
   };
@@ -390,70 +383,16 @@ function JobRow({
                 placeholder="e.g. regular rainbuster"
               />
               <FlashingPhotoField job={job} editable />
-              <View style={styles.countRow}>
-                <View style={styles.countCol}>
-                  <FormInput
-                    label="Window Count (done)"
-                    value={windowDone}
-                    onChangeText={(t) => {
-                      setWindowDone(t);
-                      setSaved(false);
-                    }}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <View style={styles.countCol}>
-                  <FormInput
-                    label="(total)"
-                    value={windowTotal}
-                    onChangeText={(t) => {
-                      setWindowTotal(t);
-                      setSaved(false);
-                    }}
-                    placeholder="total"
-                    keyboardType="number-pad"
-                  />
-                </View>
-              </View>
-              <View style={styles.countRow}>
-                <View style={styles.countCol}>
-                  <FormInput
-                    label="SGD Count (done)"
-                    value={sgdDone}
-                    onChangeText={(t) => {
-                      setSgdDone(t);
-                      setSaved(false);
-                    }}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <View style={styles.countCol}>
-                  <FormInput
-                    label="(total)"
-                    value={sgdTotal}
-                    onChangeText={(t) => {
-                      setSgdTotal(t);
-                      setSaved(false);
-                    }}
-                    placeholder="total"
-                    keyboardType="number-pad"
-                  />
-                </View>
-              </View>
             </>
           )}
-          {mirrorsAllowed && (
-            <View style={styles.countRow}>
+          {/* One done/total row per count pair the job's scopes cover. */}
+          {countDefs.map((def) => (
+            <View key={def.doneField} style={styles.countRow}>
               <View style={styles.countCol}>
                 <FormInput
-                  label="Mirror Count (done)"
-                  value={mirrorDone}
-                  onChangeText={(t) => {
-                    setMirrorDone(t);
-                    setSaved(false);
-                  }}
+                  label={`${def.label} (done)`}
+                  value={countText[def.doneField]}
+                  onChangeText={(t) => setCount(def.doneField, t)}
                   placeholder="0"
                   keyboardType="number-pad"
                 />
@@ -461,17 +400,14 @@ function JobRow({
               <View style={styles.countCol}>
                 <FormInput
                   label="(total)"
-                  value={mirrorTotal}
-                  onChangeText={(t) => {
-                    setMirrorTotal(t);
-                    setSaved(false);
-                  }}
+                  value={countText[def.totalField]}
+                  onChangeText={(t) => setCount(def.totalField, t)}
                   placeholder="total"
                   keyboardType="number-pad"
                 />
               </View>
             </View>
-          )}
+          ))}
           <Pressable
             style={({ pressed }) => [
               styles.saveButton,

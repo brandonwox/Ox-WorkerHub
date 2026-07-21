@@ -123,7 +123,8 @@ export interface Job {
   /**
    * Scope-driven done/total counts, displayed as "0/100" on the job details
    * page and every work request of the job. Window + SGD pairs belong to the
-   * Windows scope, Mirror to the Mirrors scope. Totals are office-set (the
+   * Windows scope; every other pair belongs to its same-named scope (see
+   * JOB_COUNT_DEFS in utils/jobCounts.ts). Totals are office-set (the
    * Operator / Field Supers); installers update only the done numbers (from
    * the work request count popup; RLS matches). A count shows once its total is
    * set.
@@ -134,6 +135,14 @@ export interface Job {
   sgdCountTotal?: number;
   mirrorCountDone?: number;
   mirrorCountTotal?: number;
+  showerCountDone?: number;
+  showerCountTotal?: number;
+  swingDoorCountDone?: number;
+  swingDoorCountTotal?: number;
+  screenCountDone?: number;
+  screenCountTotal?: number;
+  iguCountDone?: number;
+  iguCountTotal?: number;
   /**
    * The Field Super marked layout plans as not needed for this job ("Window
    * layout plans not necessary"). Suppresses the layout-plan warning on the
@@ -224,21 +233,32 @@ export const PRIORITY_CHOICES = [
 ] as const;
 export type PriorityChoice = (typeof PRIORITY_CHOICES)[number];
 
-/** Trade scope a Work Request covers. At least one is chosen at creation time. */
+/**
+ * Trade scope a Job / Work Request covers. At least one is chosen at creation
+ * time. Every scope behaves the same and is selectable on jobs, sub-jobs, AND
+ * work requests alike (no request-only scopes). Legacy 'Showerglass Door'
+ * values are mapped to 'Showers' on read and by migration.
+ */
 export type JobScope =
   | 'Windows'
   | 'Mirrors'
+  | 'Showers'
+  | 'Swing Doors'
+  | 'Screens'
+  | "IGU's"
   | 'Storefront'
-  | 'Service'
-  | 'Showerglass Door';
+  | 'Service';
 
 /** All selectable scopes, in display order. */
 export const JOB_SCOPES: JobScope[] = [
   'Windows',
   'Mirrors',
+  'Showers',
+  'Swing Doors',
+  'Screens',
+  "IGU's",
   'Storefront',
   'Service',
-  'Showerglass Door',
 ];
 
 /**
@@ -414,6 +434,28 @@ export interface DailyCrew {
 }
 
 /**
+ * A scheduler-authored day note ("Brandon off all day"). Renders like a work
+ * request chip on the calendars, but carries only a date, title, and
+ * description — no crew, tasks, or status. Everyone signed in can see events
+ * (installers get them on their agenda); only schedulers create/edit/move
+ * them. Shares the per-day ordering space with work requests via
+ * {@link priorityOrder}, so events drag-and-drop like requests.
+ */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  /** The day the event sits on (yyyy-MM-dd). */
+  date: string;
+  /** Intra-day sort key (same space as {@link WorkRequest.priorityOrder}). */
+  priorityOrder: number;
+  /** Scheduler who created the event. */
+  createdById?: string;
+  /** ISO timestamp (DB-stamped). */
+  createdAt?: string;
+}
+
+/**
  * Single-source-of-truth link: a Work Request placed on a crew for a date. The
  * Work Request itself is never duplicated; multiple assignments fan it out to
  * multiple crews/dates.
@@ -499,6 +541,14 @@ export interface JobPhoto {
   note?: string;
   /** ISO datetime the photo was taken. */
   takenAt: string;
+  /** True when this is a VIDEO taken in the photo taker (stored as .mp4). */
+  isVideo?: boolean;
+  /**
+   * The taker confirmed this video shows SGD work ("Were any SGD videos
+   * taken?" popup on leaving the camera of a Windows-scope work request).
+   * Drives the "SGD Videos" filter in the Pictures sections.
+   */
+  sgdVideo?: boolean;
 }
 
 /** Upload lifecycle of a photo that hasn't reached the backend yet. */
@@ -524,6 +574,10 @@ export interface PendingJobPhoto {
   /** ISO datetime the photo was taken. */
   takenAt: string;
   state: PendingPhotoState;
+  /** True when this is a video (uploads as .mp4 instead of .jpg). */
+  isVideo?: boolean;
+  /** Tagged as an SGD video before the upload landed (rides along). */
+  sgdVideo?: boolean;
 }
 
 // --- Job issues ---------------------------------------------------------------

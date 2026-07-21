@@ -19,6 +19,8 @@ export interface DisplayPhoto {
   note?: string;
   takenAt: string;
   pending?: PendingPhotoState;
+  isVideo?: boolean;
+  sgdVideo?: boolean;
 }
 
 function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
@@ -32,6 +34,8 @@ function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
     url: p.url,
     note: p.note,
     takenAt: p.takenAt,
+    isVideo: p.isVideo,
+    sgdVideo: p.sgdVideo,
   };
 }
 
@@ -47,6 +51,8 @@ function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
     note: p.note,
     takenAt: p.takenAt,
     pending: p.state,
+    isVideo: p.isVideo,
+    sgdVideo: p.sgdVideo,
   };
 }
 

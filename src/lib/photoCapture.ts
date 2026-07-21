@@ -71,25 +71,45 @@ export async function pickSingleJobPhoto(): Promise<string | null> {
   }
 }
 
+/** One picked media file, ready for addJobPhotos. */
+export interface PickedJobMedia {
+  uri: string;
+  isVideo: boolean;
+}
+
 /**
- * Let the user pick photos from their gallery (native) or file system (web) and
- * return the compressed local uris, ready for the upload queue. Returns [] when
- * the picker is cancelled or permission is denied.
+ * Let the user pick photos AND videos from their gallery (native) or file
+ * system (web), ready for the upload queue. Images are compressed; videos are
+ * passed through as-is (no on-device transcode — addJobPhotos enforces the
+ * upload size cap). Returns [] when the picker is cancelled or permission is
+ * denied.
  */
-export async function pickJobPhotos(): Promise<string[]> {
+export async function pickJobPhotos(): Promise<PickedJobMedia[]> {
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
+    mediaTypes: ['images', 'videos'],
     allowsMultipleSelection: true,
     quality: 1,
+    // iOS: deliver the most COMPATIBLE representation — HEVC videos are
+    // transcoded to H.264 on export so they play everywhere (desktop web
+    // included). Android videos are H.264 MP4 already; ignored there.
+    preferredAssetRepresentationMode:
+      ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
   });
   if (result.canceled) return [];
-  const uris: string[] = [];
+  const items: PickedJobMedia[] = [];
   for (const asset of result.assets) {
+    if (asset.type === 'video') {
+      items.push({ uri: asset.uri, isVideo: true });
+      continue;
+    }
     try {
-      uris.push(await compressJobPhoto(asset.uri, asset.width));
+      items.push({
+        uri: await compressJobPhoto(asset.uri, asset.width),
+        isVideo: false,
+      });
     } catch (e) {
       console.error('Could not process picked image:', e);
     }
   }
-  return uris;
+  return items;
 }

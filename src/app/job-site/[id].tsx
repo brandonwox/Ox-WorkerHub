@@ -24,6 +24,10 @@ import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
+import {
+  PhotoScopeFilterChips,
+  usePhotoScopeFilter,
+} from '@/components/photos/PhotoScopeFilter';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { StatusPill } from '@/components/StatusPill';
@@ -65,6 +69,8 @@ export default function JobSiteScreen() {
   const updateJob = useAppStore((s) => s.updateJob);
   const jobIssues = useAppStore((s) => s.jobIssues);
   const photos = useJobPhotos(job?.id);
+  // Pictures filters: by work-request scope, plus SGD videos.
+  const photoFilter = usePhotoScopeFilter(photos);
 
   // This job's issues from every work request, newest first; split by status below.
   const issues = useMemo(
@@ -165,8 +171,8 @@ export default function JobSiteScreen() {
     if (picking) return;
     setPicking(true);
     try {
-      const uris = await pickJobPhotos();
-      if (uris.length) await addJobPhotos({ jobId: job.id, localUris: uris });
+      const items = await pickJobPhotos();
+      if (items.length) await addJobPhotos({ jobId: job.id, items });
     } finally {
       setPicking(false);
     }
@@ -573,8 +579,13 @@ export default function JobSiteScreen() {
           </View>
         )}
 
+        <PhotoScopeFilterChips
+          filter={photoFilter.filter}
+          setFilter={photoFilter.setFilter}
+          options={photoFilter.options}
+        />
         <JobPhotoGrid
-          photos={photos}
+          photos={photoFilter.filtered}
           onPhotoPress={(photo, sorted) =>
             setViewer({
               photos: sorted,

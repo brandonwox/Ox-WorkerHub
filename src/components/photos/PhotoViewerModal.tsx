@@ -26,6 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { DisplayPhoto } from '@/components/photos/useJobPhotos';
+import { VideoPage } from '@/components/photos/VideoPage';
 import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 // The viewer draws over a black backdrop — pinned to the dark palette so its
@@ -220,19 +221,23 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                     setConfirmingDelete(false);
                   }
                 }}
-                renderItem={({ item }) => (
-                  // Explicit height: on web, list cells have no intrinsic height,
-                  // so the image's percentage height collapses to 0 (black screen).
-                  <View style={[styles.page, { width, height }]}>
-                    <ZoomableImage
-                      uri={item.url}
-                      width={width}
-                      height={height}
-                      onZoomChange={setPhotoZoomed}
-                      onSingleTap={() => setDetailsVisible((v) => !v)}
-                    />
-                  </View>
-                )}
+                renderItem={({ item }) =>
+                  item.isVideo ? (
+                    <VideoPage uri={item.url} width={width} height={height} />
+                  ) : (
+                    // Explicit height: on web, list cells have no intrinsic height,
+                    // so the image's percentage height collapses to 0 (black screen).
+                    <View style={[styles.page, { width, height }]}>
+                      <ZoomableImage
+                        uri={item.url}
+                        width={width}
+                        height={height}
+                        onZoomChange={setPhotoZoomed}
+                        onSingleTap={() => setDetailsVisible((v) => !v)}
+                      />
+                    </View>
+                  )
+                }
               />
 
               {/* Top bar: position + close. */}

@@ -1,8 +1,12 @@
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,24 +24,42 @@ interface Props {
   onSave: (doneField: JobCount['doneField'], done: number) => void;
 }
 
+/** Wheel row height (also the snap interval). */
+const ITEM_HEIGHT = 42;
+/** Rows visible at once — odd so one row sits centered. */
+const VISIBLE_ROWS = 5;
+
 /**
- * The "amount done" popup for a job count: the current done number sits
- * pre-filled as grayed placeholder text, the total on the right. Installers
+ * The "amount done" popup for a job count. On phones the number is picked on
+ * a scroll wheel (like the iOS time selector) pre-set to the current done
+ * number; web keeps a typed input (wheels are a touch idiom). Installers
  * update these from the work request; office roles from the job details page.
  */
 export function CountEditModal({ count, onClose, onSave }: Props) {
+  // Web-only typed input state.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Native wheel selection.
+  const [wheelValue, setWheelValue] = useState(0);
+  const wheelRef = useRef<ScrollView>(null);
 
   // Fresh input each time a count is opened.
   useEffect(() => {
     setText('');
     setError(null);
-  }, [count?.doneField]);
+    setWheelValue(count?.done ?? 0);
+  }, [count?.doneField, count?.done]);
 
   if (!count) return null;
 
+  const useWheel = Platform.OS !== 'web';
+
   const save = () => {
+    if (useWheel) {
+      onSave(count.doneField, wheelValue);
+      onClose();
+      return;
+    }
     const trimmed = text.trim();
     // Nothing typed = keep the current number.
     if (!trimmed) {
@@ -57,6 +79,11 @@ export function CountEditModal({ count, onClose, onSave }: Props) {
     onClose();
   };
 
+  const onWheelEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+    setWheelValue(Math.min(Math.max(index, 0), count.total));
+  };
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -71,19 +98,58 @@ export function CountEditModal({ count, onClose, onSave }: Props) {
 
           <Text style={styles.hint}>How many are done?</Text>
 
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder={String(count.done)}
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="number-pad"
-              autoFocus
-              onSubmitEditing={save}
-            />
-            <Text style={styles.total}>/ {count.total}</Text>
-          </View>
+          {useWheel ? (
+            <View style={styles.wheelRow}>
+              <View style={styles.wheelWrap}>
+                {/* The fixed highlight band the selected row sits inside. */}
+                <View pointerEvents="none" style={styles.wheelBand} />
+                <ScrollView
+                  ref={wheelRef}
+                  style={styles.wheel}
+                  showsVerticalScrollIndicator={false}
+                  snapToInterval={ITEM_HEIGHT}
+                  decelerationRate="fast"
+                  // Land on the current done number when the wheel opens.
+                  contentOffset={{ x: 0, y: count.done * ITEM_HEIGHT }}
+                  onMomentumScrollEnd={onWheelEnd}
+                  // A slow drag released without momentum never fires the
+                  // momentum-end event — catch it here too.
+                  onScrollEndDrag={onWheelEnd}
+                  contentContainerStyle={{
+                    paddingVertical: (ITEM_HEIGHT * (VISIBLE_ROWS - 1)) / 2,
+                  }}
+                >
+                  {Array.from({ length: count.total + 1 }, (_, n) => (
+                    <View key={n} style={styles.wheelItem}>
+                      <Text
+                        style={[
+                          styles.wheelText,
+                          n === wheelValue && styles.wheelTextActive,
+                        ]}
+                      >
+                        {n}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              <Text style={styles.total}>/ {count.total}</Text>
+            </View>
+          ) : (
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                value={text}
+                onChangeText={setText}
+                placeholder={String(count.done)}
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="number-pad"
+                autoFocus
+                onSubmitEditing={save}
+              />
+              <Text style={styles.total}>/ {count.total}</Text>
+            </View>
+          )}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -132,6 +198,43 @@ const styles = themed(() =>
       color: colors.textSecondary,
       fontFamily: fonts.regular,
       fontSize: 13,
+    },
+    wheelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.md,
+    },
+    wheelWrap: {
+      width: 120,
+      height: ITEM_HEIGHT * VISIBLE_ROWS,
+    },
+    wheel: {
+      flex: 1,
+    },
+    wheelBand: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: (ITEM_HEIGHT * (VISIBLE_ROWS - 1)) / 2,
+      height: ITEM_HEIGHT,
+      borderRadius: radii.md,
+      backgroundColor: colors.surfaceLight,
+    },
+    wheelItem: {
+      height: ITEM_HEIGHT,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    wheelText: {
+      color: colors.textTertiary,
+      fontFamily: fonts.medium,
+      fontSize: 20,
+    },
+    wheelTextActive: {
+      color: colors.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 24,
     },
     inputRow: {
       flexDirection: 'row',

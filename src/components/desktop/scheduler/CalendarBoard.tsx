@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { addMonths, format, parseISO, subMonths } from 'date-fns';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,15 +13,26 @@ import {
 
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
-import { Backlog, isReadyNow } from '@/components/desktop/scheduler/Backlog';
+import { Backlog } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
+import {
+  CalendarEventModal,
+  EventModalState,
+} from '@/components/desktop/scheduler/CalendarEventModal';
 import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
+import {
+  DragBoardProvider,
+  DragItem,
+  DropTarget,
+  useDropZone,
+} from '@/components/desktop/scheduler/DragBoard';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
+import { buildDayItems } from '@/utils/daySchedule';
 import { jobDisplayNameById } from '@/utils/jobName';
 
 interface Props {
@@ -65,6 +77,10 @@ export function CalendarBoard({
   const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
+  const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
+  const calendarEvents = useAppStore((s) => s.calendarEvents);
+  const updateCalendarEvent = useAppStore((s) => s.updateCalendarEvent);
+  const reorderDaySchedule = useAppStore((s) => s.reorderDaySchedule);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
 
@@ -85,6 +101,8 @@ export function CalendarBoard({
   // The day whose schedule shows in the sidebar, or null when closed.
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // The Event popup: creating on a day, or viewing/editing an existing one.
+  const [eventModal, setEventModal] = useState<EventModalState | null>(null);
   // A work request popup's parent-job link opens the job dashboard OVER the popup;
   // its back arrow returns to the (still-open) work request.
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -114,13 +132,14 @@ export function CalendarBoard({
   // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
   // Work Requests container visibly grows leftward across the board.
   const expandAnim = useRef(new Animated.Value(0)).current;
+  // Expanded, the two calendars split the board 50/50 (equal flex).
   const calFlex = expandAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [2, 1],
   });
   const backlogFlex = expandAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 2.5],
+    outputRange: [1, 1],
   });
   const backlogMaxWidth = expandAnim.interpolate({
     inputRange: [0, 1],
@@ -272,13 +291,6 @@ export function CalendarBoard({
     () => workRequests.filter((c) => assignments.every((a) => a.workRequestId !== c.id)),
     [workRequests, assignments]
   );
-  // The expanded calendar shows only ready requests — same filter as the list's
-  // main section (the list handles the "Not ready yet" leftovers itself).
-  const readyUnassigned = useMemo(
-    () => unassigned.filter(isReadyNow),
-    [unassigned]
-  );
-
   // Every assignment belonging to a visible (not toggled-off) crew.
   const visibleAssignments = useMemo(
     () => assignments.filter((a) => !hiddenCrewIds.has(a.crewId)),
@@ -323,7 +335,110 @@ export function CalendarBoard({
     flash(title ? `Work Request "${title}" deleted` : 'Work Request deleted', 'success');
   };
 
+  // Drag & drop is a scheduler tool on the web console (mouse-driven); field
+  // supers and native fall back to plain taps.
+  const dragEnabled = canAssign && Platform.OS === 'web';
+
+  /**
+   * Renumber `date`'s schedule with `moved` inserted at `index` (the index
+   * is counted against the day's items EXCLUDING the moved one — exactly how
+   * the drag layer computed it). Reads fresh store state: the drop handler
+   * may have just created/moved assignments synchronously.
+   */
+  const applyDayOrder = (
+    date: string,
+    moved: { kind: 'request' | 'event'; id: string },
+    index: number
+  ) => {
+    const s = useAppStore.getState();
+    const items = buildDayItems(
+      s.assignments.filter((a) => a.date === date),
+      s.workRequests,
+      s.calendarEvents.filter((e) => e.date === date)
+    )
+      .map((item) => ({
+        kind: item.kind,
+        id: item.kind === 'request' ? item.card.id : item.event.id,
+      }))
+      .filter((item) => !(item.kind === moved.kind && item.id === moved.id));
+    const clamped = Math.max(0, Math.min(index, items.length));
+    items.splice(clamped, 0, moved);
+    reorderDaySchedule(date, items);
+  };
+
+  /** Every completed drag lands here (see DragBoard's DropTarget). */
+  const handleDrop = (item: DragItem, target: DropTarget) => {
+    if (item.kind === 'event') {
+      // Events live on days — the pool is not a valid target for them.
+      if (target.kind !== 'day') {
+        flash('Events sit on calendar days — drop them on a day.', 'info');
+        return;
+      }
+      const event = calendarEvents.find((e) => e.id === item.id);
+      if (!event) return;
+      if (event.date !== target.date) {
+        updateCalendarEvent(item.id, { date: target.date });
+      }
+      applyDayOrder(target.date, { kind: 'event', id: item.id }, target.index);
+      return;
+    }
+
+    const card = workRequests.find((c) => c.id === item.id);
+    if (!card) return;
+    const existing = assignments.filter((a) => a.workRequestId === item.id);
+
+    if (target.kind === 'backlog') {
+      // Into the pool = off the calendar entirely (every crew, every date).
+      if (existing.length === 0) return;
+      existing.forEach((a) => unassignWorkRequest(a.id));
+      flash(`"${card.title}" moved back to Work Requests`, 'success');
+      return;
+    }
+
+    if (target.kind === 'backlog-day') {
+      // A specific pool day: unassign (if placed) and retarget the request.
+      existing.forEach((a) => unassignWorkRequest(a.id));
+      if (card.date !== target.date) {
+        updateWorkRequest(item.id, { date: target.date });
+      }
+      flash(
+        existing.length > 0
+          ? `"${card.title}" unassigned — target date ${target.date}`
+          : `"${card.title}" target date moved to ${target.date}`,
+        'success'
+      );
+      return;
+    }
+
+    // A crew-calendar (or day-sidebar) day.
+    if (existing.length > 0) {
+      // Move: keep the same crews, land on the new date. A shared card moves
+      // everywhere at once (same rule as unassigning).
+      const crewIds = [...new Set(existing.map((a) => a.crewId))];
+      existing
+        .filter((a) => a.date !== target.date)
+        .forEach((a) => unassignWorkRequest(a.id));
+      crewIds.forEach((crewId) => assignWorkRequest(item.id, crewId, target.date));
+    } else {
+      // From the pool: same crew-target rules as the Schedule button.
+      if (activeCrews.length === 0) {
+        flash(
+          allCrews.length === 0
+            ? 'Create a crew before assigning work.'
+            : 'Tap a crew to make it the assign target first.',
+          'warning'
+        );
+        return;
+      }
+      activeCrews.forEach((c) => assignWorkRequest(item.id, c.id, target.date));
+      const names = activeCrews.map((c) => c.name).join(', ');
+      flash(`Assigned "${card.title}" to ${names}`, 'success');
+    }
+    applyDayOrder(target.date, { kind: 'request', id: item.id }, target.index);
+  };
+
   return (
+    <DragBoardProvider enabled={dragEnabled} onDrop={handleDrop}>
     <View style={styles.screen}>
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
@@ -376,13 +491,27 @@ export function CalendarBoard({
           )}
         </View>
         {canAssign && (
-          <Pressable
-            style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
-            onPress={() => setManageOpen(true)}
-          >
-            <Feather name="users" size={15} color={colors.textPrimary} />
-            <Text style={styles.manageText}>Manage crews</Text>
-          </Pressable>
+          <View style={styles.toolbarRight}>
+            <Pressable
+              style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
+              onPress={() =>
+                setEventModal({
+                  mode: 'create',
+                  date: format(new Date(), 'yyyy-MM-dd'),
+                })
+              }
+            >
+              <Feather name="plus" size={15} color={colors.textPrimary} />
+              <Text style={styles.manageText}>Event</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
+              onPress={() => setManageOpen(true)}
+            >
+              <Feather name="users" size={15} color={colors.textPrimary} />
+              <Text style={styles.manageText}>Manage crews</Text>
+            </Pressable>
+          </View>
         )}
       </View>
       {allCrews.length > 0 && (
@@ -404,6 +533,7 @@ export function CalendarBoard({
             activeCrews={activeCrews}
             visibleAssignments={visibleAssignments}
             workRequests={workRequests}
+            calendarEvents={calendarEvents}
             colorForCrew={colorForCrew}
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
@@ -416,6 +546,7 @@ export function CalendarBoard({
               setViewingId(id);
               setDayFocus(null);
             }}
+            onOpenEvent={(id) => setEventModal({ mode: 'view', eventId: id })}
             canUnassign={canAssign}
             canAssign={canAssign}
             crewNameFor={crewTagFor}
@@ -427,10 +558,17 @@ export function CalendarBoard({
             date={dayFocus}
             assignments={visibleAssignments.filter((a) => a.date === dayFocus)}
             workRequests={workRequests}
+            calendarEvents={calendarEvents}
             jobNameFor={jobNameFor}
             colorForCrew={colorForCrew}
             crewNameFor={crewTagFor}
             onOpenCard={setViewingId}
+            onOpenEvent={(id) => setEventModal({ mode: 'view', eventId: id })}
+            onCreateEvent={
+              canAssign
+                ? () => setEventModal({ mode: 'create', date: dayFocus })
+                : undefined
+            }
             onClose={() => setDayFocus(null)}
           />
         )}
@@ -441,9 +579,10 @@ export function CalendarBoard({
             { flex: backlogFlex, maxWidth: backlogMaxWidth },
           ]}
         >
+          <BacklogDropColumn>
           {backlogExpanded ? (
             <BacklogCalendar
-              cards={readyUnassigned}
+              cards={unassigned}
               jobNameFor={jobNameFor}
               onOpenCard={(card) => setViewingId(card.id)}
               onCollapse={() => toggleBacklogExpanded(false)}
@@ -464,6 +603,7 @@ export function CalendarBoard({
               }))}
             />
           )}
+          </BacklogDropColumn>
         </Animated.View>
       </View>
 
@@ -473,6 +613,12 @@ export function CalendarBoard({
           onClose={() => setManageOpen(false)}
         />
       )}
+
+      <CalendarEventModal
+        state={eventModal}
+        canEdit={canAssign}
+        onClose={() => setEventModal(null)}
+      />
 
       <WorkRequestQuickView
         workRequestId={viewingId}
@@ -508,6 +654,29 @@ export function CalendarBoard({
           />
         </Modal>
       )}
+    </View>
+    </DragBoardProvider>
+  );
+}
+
+/**
+ * The Work Requests column as a drop target: dragging a placed request onto
+ * it (list or expanded calendar, outside a specific pool day) pulls it off
+ * the calendar entirely. Day cells inside register their own higher-priority
+ * zones, so they win when the pointer is over one.
+ */
+function BacklogDropColumn({ children }: { children: ReactNode }) {
+  const { ref, hovered } = useDropZone('backlog', {
+    type: 'backlog',
+    priority: 1,
+  });
+  return (
+    <View
+      ref={ref}
+      collapsable={false}
+      style={[styles.backlogDropWrap, hovered && styles.backlogDropHover]}
+    >
+      {children}
     </View>
   );
 }
@@ -663,6 +832,21 @@ const styles = themed(() => StyleSheet.create({
   },
   multiTextActive: {
     color: colors.textPrimary,
+  },
+  toolbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  backlogDropWrap: {
+    flex: 1,
+    borderRadius: radii.lg,
+  },
+  backlogDropHover: {
+    // A subtle outline says "drop here to unassign".
+    borderWidth: 2,
+    borderColor: colors.primary,
+    margin: -2,
   },
   manageBtn: {
     flexDirection: 'row',

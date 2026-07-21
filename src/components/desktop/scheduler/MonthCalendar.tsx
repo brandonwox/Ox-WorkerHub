@@ -7,10 +7,17 @@ import {
   isToday,
   startOfMonth,
 } from 'date-fns';
+import { Fragment } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import {
+  DragSource,
+  DropLine,
+  useDropZone,
+} from '@/components/desktop/scheduler/DragBoard';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Crew, WorkRequest, ScheduleAssignment } from '@/types';
+import { CalendarEvent, Crew, WorkRequest, ScheduleAssignment } from '@/types';
+import { buildDayItems } from '@/utils/daySchedule';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -25,6 +32,8 @@ interface Props {
   /** Assignments already filtered to the visible (toggled-on) crews. */
   visibleAssignments: ScheduleAssignment[];
   workRequests: WorkRequest[];
+  /** Scheduler day notes — rendered like request chips, crew-neutral. */
+  calendarEvents: CalendarEvent[];
   /** Distinct color for a crew id, used to tint that crew's cards. */
   colorForCrew: (crewId: string) => string;
   /** True when a work request is selected and waiting to be placed. */
@@ -37,6 +46,8 @@ interface Props {
   highlightDate?: string | null;
   /** Open a placed work request (same quick view the Work Requests pages use). */
   onOpenCard: (workRequestId: string) => void;
+  /** Open an event's popup. */
+  onOpenEvent: (eventId: string) => void;
   /** Whether placed cards can be removed from the calendar (Scheduler only). */
   canUnassign?: boolean;
   /**
@@ -56,6 +67,7 @@ export function MonthCalendar({
   activeCrews,
   visibleAssignments,
   workRequests,
+  calendarEvents,
   colorForCrew,
   placing,
   onAssignToDate,
@@ -63,6 +75,7 @@ export function MonthCalendar({
   onOpenDay,
   highlightDate,
   onOpenCard,
+  onOpenEvent,
   canUnassign = true,
   canAssign = true,
   crewNameFor,
@@ -87,8 +100,6 @@ export function MonthCalendar({
       {i < activeCrews.length - 1 ? ', ' : ''}
     </Text>
   ));
-
-  const cardById = (id: string) => workRequests.find((c) => c.id === id);
 
   return (
     <View style={styles.wrap}>
@@ -148,108 +159,177 @@ export function MonthCalendar({
 
         {days.map((dayDate) => {
           const dateStr = format(dayDate, 'yyyy-MM-dd');
-          const dayAssignments = visibleAssignments.filter(
-            (a) => a.date === dateStr
-          );
-          // One chip per work request even when several visible crews share it —
-          // the crew letters on the end of the chip say who it belongs to.
-          const dayCards: { card: WorkRequest; group: ScheduleAssignment[] }[] = [];
-          for (const a of dayAssignments) {
-            const entry = dayCards.find((e) => e.card.id === a.workRequestId);
-            if (entry) {
-              entry.group.push(a);
-              continue;
-            }
-            const card = cardById(a.workRequestId);
-            if (card) dayCards.push({ card, group: [a] });
-          }
-
           return (
-            <Pressable
+            <DayCell
               key={dateStr}
-              style={[styles.cell, dateStr === highlightDate && styles.cellHighlight]}
-              onPress={
-                placing
-                  ? () => onAssignToDate(dateStr)
-                  : onOpenDay
-                    ? () => onOpenDay(dateStr)
-                    : undefined
-              }
-            >
-              <View style={styles.cellHead}>
-                <Text
-                  style={[styles.dayNum, isToday(dayDate) && styles.dayNumToday]}
-                >
-                  {format(dayDate, 'd')}
-                </Text>
-              </View>
-
-              <View style={styles.cellCards}>
-                {dayCards.map(({ card, group }) => {
-                  const crewColor = colorForCrew(group[0].crewId);
-                  return (
-                    <Pressable
-                      key={card.id}
-                      onPress={
-                        placing
-                          ? () => onAssignToDate(dateStr)
-                          : () => onOpenCard(card.id)
-                      }
-                      style={({ pressed }) => [
-                        styles.placed,
-                        {
-                          backgroundColor: withAlpha(crewColor, 0.18),
-                          borderColor: withAlpha(crewColor, 0.55),
-                        },
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.placedDot,
-                          { backgroundColor: effectivePriority(card).color },
-                        ]}
-                      />
-                      <Text style={styles.placedTitle} numberOfLines={1}>
-                        {card.title}
-                      </Text>
-                      {group.length > 1 && (
-                        <Text style={styles.placedCrews} numberOfLines={1}>
-                          {group.map((a, i) => (
-                            <Text
-                              key={a.id}
-                              style={{ color: colorForCrew(a.crewId) }}
-                            >
-                              {i > 0 ? ' ' : ''}
-                              {crewNameFor(a.crewId)}
-                            </Text>
-                          ))}
-                        </Text>
-                      )}
-                      {canUnassign && (
-                        <Pressable
-                          // Unassigning a shared card removes it from every
-                          // crew (the handler fans out from any assignment).
-                          onPress={() => onUnassign(group[0].id)}
-                          hitSlop={6}
-                          style={({ pressed }) => pressed && styles.pressed}
-                        >
-                          <Feather
-                            name="x"
-                            size={12}
-                            color={colors.textTertiary}
-                          />
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </Pressable>
+              date={dateStr}
+              today={isToday(dayDate)}
+              highlight={dateStr === highlightDate}
+              assignments={visibleAssignments.filter((a) => a.date === dateStr)}
+              workRequests={workRequests}
+              events={calendarEvents.filter((e) => e.date === dateStr)}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              placing={placing}
+              onAssignToDate={onAssignToDate}
+              onUnassign={onUnassign}
+              onOpenDay={onOpenDay}
+              onOpenCard={onOpenCard}
+              onOpenEvent={onOpenEvent}
+              canUnassign={canUnassign}
+            />
           );
         })}
       </ScrollView>
     </View>
+  );
+}
+
+interface DayCellProps {
+  date: string;
+  today: boolean;
+  highlight: boolean;
+  assignments: ScheduleAssignment[];
+  workRequests: WorkRequest[];
+  events: CalendarEvent[];
+  colorForCrew: (crewId: string) => string;
+  crewNameFor: (crewId: string) => string;
+  placing: boolean;
+  onAssignToDate: (date: string) => void;
+  onUnassign: (assignmentId: string) => void;
+  onOpenDay?: (date: string) => void;
+  onOpenCard: (workRequestId: string) => void;
+  onOpenEvent: (eventId: string) => void;
+  canUnassign: boolean;
+}
+
+/**
+ * One month-grid day: an ordered stack of request chips + event chips
+ * (priorityOrder), a drop zone for drag & drop, and the click-to-place /
+ * open-day behaviors on the cell background.
+ */
+function DayCell({
+  date,
+  today,
+  highlight,
+  assignments,
+  workRequests,
+  events,
+  colorForCrew,
+  crewNameFor,
+  placing,
+  onAssignToDate,
+  onUnassign,
+  onOpenDay,
+  onOpenCard,
+  onOpenEvent,
+  canUnassign,
+}: DayCellProps) {
+  const zoneId = `cal:${date}`;
+  const { ref, hovered, hoverIndex } = useDropZone(zoneId, {
+    type: 'day',
+    surface: 'calendar',
+    date,
+    priority: 2,
+  });
+
+  const items = buildDayItems(assignments, workRequests, events);
+
+  return (
+    <Pressable
+      ref={ref}
+      style={[
+        styles.cell,
+        highlight && styles.cellHighlight,
+        hovered && styles.cellDropHover,
+      ]}
+      onPress={
+        placing
+          ? () => onAssignToDate(date)
+          : onOpenDay
+            ? () => onOpenDay(date)
+            : undefined
+      }
+    >
+      <View style={styles.cellHead}>
+        <Text style={[styles.dayNum, today && styles.dayNumToday]}>
+          {format(new Date(`${date}T00:00:00`), 'd')}
+        </Text>
+      </View>
+
+      <View style={styles.cellCards}>
+        {hoverIndex === 0 && <DropLine />}
+        {items.map((item, i) => (
+          <Fragment key={item.key}>
+            {item.kind === 'request' ? (
+              <DragSource
+                item={{ kind: 'request', id: item.card.id }}
+                ghost={{
+                  title: item.card.title,
+                  color: colorForCrew(item.group[0].crewId),
+                }}
+                zoneId={zoneId}
+                onPress={
+                  placing ? () => onAssignToDate(date) : () => onOpenCard(item.card.id)
+                }
+                style={[
+                  styles.placed,
+                  {
+                    backgroundColor: withAlpha(colorForCrew(item.group[0].crewId), 0.18),
+                    borderColor: withAlpha(colorForCrew(item.group[0].crewId), 0.55),
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.placedDot,
+                    { backgroundColor: effectivePriority(item.card).color },
+                  ]}
+                />
+                <Text style={styles.placedTitle} numberOfLines={1}>
+                  {item.card.title}
+                </Text>
+                {item.group.length > 1 && (
+                  <Text style={styles.placedCrews} numberOfLines={1}>
+                    {item.group.map((a, j) => (
+                      <Text key={a.id} style={{ color: colorForCrew(a.crewId) }}>
+                        {j > 0 ? ' ' : ''}
+                        {crewNameFor(a.crewId)}
+                      </Text>
+                    ))}
+                  </Text>
+                )}
+                {canUnassign && (
+                  <Pressable
+                    // Unassigning a shared card removes it from every
+                    // crew (the handler fans out from any assignment).
+                    onPress={() => onUnassign(item.group[0].id)}
+                    hitSlop={6}
+                    style={({ pressed }) => pressed && styles.pressed}
+                  >
+                    <Feather name="x" size={12} color={colors.textTertiary} />
+                  </Pressable>
+                )}
+              </DragSource>
+            ) : (
+              <DragSource
+                item={{ kind: 'event', id: item.event.id }}
+                ghost={{ title: item.event.title, color: colors.textSecondary }}
+                zoneId={zoneId}
+                onPress={() => onOpenEvent(item.event.id)}
+                style={styles.eventChip}
+              >
+                <Feather name="info" size={9} color={colors.textSecondary} />
+                <Text style={styles.eventTitle} numberOfLines={1}>
+                  {item.event.title}
+                </Text>
+              </DragSource>
+            )}
+            {hoverIndex === i + 1 && <DropLine />}
+          </Fragment>
+        ))}
+      </View>
+    </Pressable>
   );
 }
 
@@ -348,6 +428,10 @@ const styles = themed(() => StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: withAlpha(colors.primary, 0.12),
   },
+  cellDropHover: {
+    borderColor: colors.primary,
+    backgroundColor: withAlpha(colors.primary, 0.08),
+  },
   cellHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -392,5 +476,23 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 9,
     letterSpacing: 0.5,
+  },
+  // Events: same rounded-rectangle chip as a request, crew-neutral colors.
+  eventChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+  },
+  eventTitle: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
   },
 }));

@@ -1,9 +1,16 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parseISO } from 'date-fns';
+import { Fragment } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import {
+  DragSource,
+  DropLine,
+  useDropZone,
+} from '@/components/desktop/scheduler/DragBoard';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { WorkRequest, ScheduleAssignment } from '@/types';
+import { CalendarEvent, WorkRequest, ScheduleAssignment } from '@/types';
+import { buildDayItems } from '@/utils/daySchedule';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
@@ -13,44 +20,55 @@ interface Props {
   /** Assignments for `date`, already filtered to the visible crews. */
   assignments: ScheduleAssignment[];
   workRequests: WorkRequest[];
+  /** This day's events (rendered in the same ordered stack). */
+  calendarEvents: CalendarEvent[];
   jobNameFor: (jobId?: string) => string;
   colorForCrew: (crewId: string) => string;
   /** Crew display name (a single letter). */
   crewNameFor: (crewId: string) => string;
   onOpenCard: (workRequestId: string) => void;
+  /** Open an event's popup. */
+  onOpenEvent: (eventId: string) => void;
+  /** Schedulers only: open the "+ Event" popup pre-filled with this day. */
+  onCreateEvent?: () => void;
   onClose: () => void;
 }
 
 /**
  * A day's schedule, opened by clicking that day in the month calendar. Sits
  * between the calendar and the Work Requests column; clicking a work request on the
- * main calendar closes it.
+ * main calendar closes it. The list is a drag target too — rows reorder and
+ * requests can be dragged in/out just like the month cells.
  */
 export function DaySidebar({
   date,
   assignments,
   workRequests,
+  calendarEvents,
   jobNameFor,
   colorForCrew,
   crewNameFor,
   onOpenCard,
+  onOpenEvent,
+  onCreateEvent,
   onClose,
 }: Props) {
-  // One row per work request even when several visible crews share it — the crew
-  // letters on the row say who it belongs to (same grouping as the calendar).
-  const dayCards: { card: WorkRequest; group: ScheduleAssignment[] }[] = [];
-  for (const a of assignments) {
-    const entry = dayCards.find((e) => e.card.id === a.workRequestId);
-    if (entry) {
-      entry.group.push(a);
-      continue;
-    }
-    const card = workRequests.find((c) => c.id === a.workRequestId);
-    if (card) dayCards.push({ card, group: [a] });
-  }
+  const zoneId = `sidebar:${date}`;
+  const { ref, hoverIndex } = useDropZone(zoneId, {
+    type: 'day',
+    surface: 'sidebar',
+    date,
+    priority: 2,
+  });
+
+  const items = buildDayItems(
+    assignments,
+    workRequests,
+    calendarEvents.filter((e) => e.date === date)
+  );
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} ref={ref} collapsable={false}>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.title}>
@@ -60,6 +78,16 @@ export function DaySidebar({
             {format(parseISO(date), 'MMMM d, yyyy')}
           </Text>
         </View>
+        {onCreateEvent && (
+          <Pressable
+            style={({ pressed }) => [styles.eventBtn, pressed && styles.pressed]}
+            onPress={onCreateEvent}
+            hitSlop={6}
+          >
+            <Feather name="plus" size={14} color={colors.textPrimary} />
+            <Text style={styles.eventBtnText}>Event</Text>
+          </Pressable>
+        )}
         <Pressable
           style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
           onPress={onClose}
@@ -70,49 +98,87 @@ export function DaySidebar({
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {dayCards.length === 0 ? (
+        {items.length === 0 ? (
           <Text style={styles.emptyText}>Nothing scheduled this day.</Text>
         ) : (
-          dayCards.map(({ card, group }) => {
-            const crewColor = colorForCrew(group[0].crewId);
-            return (
-              <Pressable
-                key={card.id}
-                onPress={() => onOpenCard(card.id)}
-                style={({ pressed }) => [
-                  styles.row,
-                  {
-                    backgroundColor: withAlpha(crewColor, 0.14),
-                    borderColor: withAlpha(crewColor, 0.5),
-                  },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.priorityDot,
-                    { backgroundColor: effectivePriority(card).color },
-                  ]}
-                />
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>
-                    {card.title}
-                  </Text>
-                  <Text style={styles.rowJob} numberOfLines={1}>
-                    {jobNameFor(card.jobId)}
-                  </Text>
-                </View>
-                <Text style={styles.rowCrews}>
-                  {group.map((a, i) => (
-                    <Text key={a.id} style={{ color: colorForCrew(a.crewId) }}>
-                      {i > 0 ? ' ' : ''}
-                      {crewNameFor(a.crewId)}
+          <>
+            {hoverIndex === 0 && <DropLine />}
+            {items.map((item, i) => (
+              <Fragment key={item.key}>
+                {item.kind === 'request' ? (
+                  <DragSource
+                    item={{ kind: 'request', id: item.card.id }}
+                    ghost={{
+                      title: item.card.title,
+                      color: colorForCrew(item.group[0].crewId),
+                    }}
+                    zoneId={zoneId}
+                    onPress={() => onOpenCard(item.card.id)}
+                    style={[
+                      styles.row,
+                      {
+                        backgroundColor: withAlpha(
+                          colorForCrew(item.group[0].crewId),
+                          0.14
+                        ),
+                        borderColor: withAlpha(
+                          colorForCrew(item.group[0].crewId),
+                          0.5
+                        ),
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.priorityDot,
+                        { backgroundColor: effectivePriority(item.card).color },
+                      ]}
+                    />
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowTitle} numberOfLines={2}>
+                        {item.card.title}
+                      </Text>
+                      <Text style={styles.rowJob} numberOfLines={1}>
+                        {jobNameFor(item.card.jobId)}
+                      </Text>
+                    </View>
+                    <Text style={styles.rowCrews}>
+                      {item.group.map((a, j) => (
+                        <Text key={a.id} style={{ color: colorForCrew(a.crewId) }}>
+                          {j > 0 ? ' ' : ''}
+                          {crewNameFor(a.crewId)}
+                        </Text>
+                      ))}
                     </Text>
-                  ))}
-                </Text>
-              </Pressable>
-            );
-          })
+                  </DragSource>
+                ) : (
+                  <DragSource
+                    item={{ kind: 'event', id: item.event.id }}
+                    ghost={{
+                      title: item.event.title,
+                      color: colors.textSecondary,
+                    }}
+                    zoneId={zoneId}
+                    onPress={() => onOpenEvent(item.event.id)}
+                    style={[styles.row, styles.eventRow]}
+                  >
+                    <Feather name="info" size={12} color={colors.textSecondary} />
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowTitle} numberOfLines={2}>
+                        {item.event.title}
+                      </Text>
+                      {item.event.description ? (
+                        <Text style={styles.rowJob} numberOfLines={1}>
+                          {item.event.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </DragSource>
+                )}
+                {hoverIndex === i + 1 && <DropLine />}
+              </Fragment>
+            ))}
+          </>
         )}
       </ScrollView>
     </View>
@@ -152,6 +218,21 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 12,
   },
+  eventBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  eventBtnText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
   closeBtn: {
     width: 40,
     height: 40,
@@ -182,6 +263,10 @@ const styles = themed(() => StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
+  },
+  eventRow: {
+    backgroundColor: colors.surfaceLight,
+    borderColor: colors.border,
   },
   priorityDot: {
     width: 8,

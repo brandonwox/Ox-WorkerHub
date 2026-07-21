@@ -12,7 +12,12 @@ import {
 import { syncRealtimeAuth } from '@/integrations/supabase/auth';
 import * as backend from '@/integrations/supabase/data';
 import * as notificationsBackend from '@/integrations/supabase/notifications';
-import { discardPhotoFile, stashPhotoFile } from '@/lib/photoFiles';
+import {
+  discardPhotoFile,
+  MAX_UPLOAD_BYTES,
+  mediaFileSize,
+  stashPhotoFile,
+} from '@/lib/photoFiles';
 import {
   loadDataCache,
   persistDataCache,
@@ -23,6 +28,7 @@ import {
   ActiveShift,
   AppNotification,
   AppRole,
+  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -303,6 +309,8 @@ const OUTBOX_EXECUTORS = {
   markTimesheetsSentRemote: (_p: null) => backend.markTimesheetsSentRemote(),
   updateJobPhotoNote: (p: { id: string; note?: string }) =>
     backend.updateJobPhotoNote(p.id, p.note),
+  updateJobPhotoSgd: (p: { id: string; sgdVideo: boolean }) =>
+    backend.updateJobPhotoSgd(p.id, p.sgdVideo),
   deleteJobPhoto: (p: { id: string; storagePath: string }) =>
     backend.deleteJobPhoto(p.id, p.storagePath),
   insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
@@ -311,6 +319,9 @@ const OUTBOX_EXECUTORS = {
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
+  insertCalendarEvent: (p: CalendarEvent) => backend.insertCalendarEvent(p),
+  updateCalendarEvent: (p: CalendarEvent) => backend.updateCalendarEvent(p),
+  deleteCalendarEvent: (p: string) => backend.deleteCalendarEvent(p),
   insertNotification: (p: AppNotification) =>
     notificationsBackend.insertNotification(p),
   markNotificationRead: (p: string) =>
@@ -697,6 +708,8 @@ interface AppState {
   dailyCrews: DailyCrew[];
   /** Work Request→crew→date links (single source of truth; never duplicates a card). */
   assignments: ScheduleAssignment[];
+  /** Scheduler-authored day notes, shown on the calendars like requests. */
+  calendarEvents: CalendarEvent[];
   logs: TimesheetLog[];
   /** Jobsite photos hydrated from the backend (see also pendingPhotos). */
   jobPhotos: JobPhoto[];
@@ -879,6 +892,25 @@ interface AppState {
   ) => ScheduleAssignment;
   unassignWorkRequest: (assignmentId: string) => void;
 
+  // --- Calendar events (Scheduler day notes) ---
+  /** Create an event on a day. Returns the record, or null when signed out. */
+  addCalendarEvent: (input: {
+    title: string;
+    description?: string;
+    date: string;
+  }) => CalendarEvent | null;
+  updateCalendarEvent: (id: string, changes: Partial<CalendarEvent>) => void;
+  deleteCalendarEvent: (id: string) => void;
+  /**
+   * Persist a day's drag-reordered schedule: renumbers priorityOrder (1…n)
+   * across the day's work requests AND events in the given order. Only rows
+   * whose order actually changed are written.
+   */
+  reorderDaySchedule: (
+    date: string,
+    ordered: { kind: 'request' | 'event'; id: string }[]
+  ) => void;
+
   clockIn: (ref: { workRequestId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
   clockOut: () => TimesheetLog | null;
@@ -914,10 +946,13 @@ interface AppState {
     workRequestId?: string;
     issueId?: string;
     taskId?: string;
-    localUris: string[];
+    /** The captured/picked media files — photos and/or videos, in order. */
+    items: { uri: string; isVideo?: boolean }[];
   }) => Promise<string[]>;
   /** Set/replace the caption on a photo (pending or uploaded). Owner-only in the UI. */
   setJobPhotoNote: (id: string, note: string) => void;
+  /** Tag/untag a video as an SGD video (pending or uploaded). Owner-only in the UI. */
+  setJobPhotoSgd: (id: string, sgdVideo: boolean) => void;
   /** Delete a photo — a queued one locally, an uploaded one from the backend too. */
   deleteJobPhoto: (id: string) => void;
   /** Re-queue failed uploads and kick the queue (also fired by the retry timer). */
@@ -1026,6 +1061,7 @@ let nextCrewId = 100;
 let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
 let nextNotificationId = 100;
+let nextEventId = 100;
 
 // Coalesces the burst of realtime row events one logical change can emit into a
 // single collection refetch. Module-level so it survives across store calls.
@@ -1060,6 +1096,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   crews: [],
   dailyCrews: [],
   assignments: [],
+  calendarEvents: [],
   logs: [],
   jobPhotos: [],
   jobIssues: [],
@@ -1151,6 +1188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: seed.mockCrews,
       dailyCrews: seed.mockDailyCrews,
       assignments: seed.mockAssignments,
+      calendarEvents: seed.mockCalendarEvents,
       logs: seed.mockLogs,
       jobPhotos: [],
       jobIssues: [],
@@ -1185,6 +1223,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           crews: cached.crews,
           dailyCrews: cached.dailyCrews,
           assignments: cached.assignments,
+          calendarEvents: cached.calendarEvents ?? [],
           logs: cached.logs,
           jobIssues: cached.jobIssues,
           // Older caches predate documents — tolerate their absence.
@@ -1206,6 +1245,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         crews: data.crews,
         dailyCrews: data.dailyCrews,
         assignments: data.assignments,
+        calendarEvents: data.calendarEvents,
         logs: data.logs,
         jobPhotos: data.jobPhotos,
         jobIssues: data.jobIssues,
@@ -1301,6 +1341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: data.crews,
       dailyCrews: data.dailyCrews,
       assignments: data.assignments,
+      calendarEvents: data.calendarEvents,
       logs: data.logs,
       // Photos with a queued note write keep the LOCAL note. (No local row —
       // e.g. right after a fresh launch restored the queue — keeps fetched.)
@@ -1393,6 +1434,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: [],
       dailyCrews: [],
       assignments: [],
+      calendarEvents: [],
       logs: [],
       // Pending photo files/queue stay stashed on disk — they resume when
       // their owner signs back in (restorePendingPhotos filters by worker).
@@ -1991,6 +2033,66 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  addCalendarEvent: ({ title, description, date }) => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return null;
+    const isBackend = backendActive(state);
+    // New events land at the bottom of their day's stack.
+    const maxOrder = state.calendarEvents
+      .filter((e) => e.date === date)
+      .reduce((max, e) => Math.max(max, e.priorityOrder), 0);
+    const created: CalendarEvent = {
+      id: isBackend ? uuid() : `evt-${nextEventId++}`,
+      title: title.trim(),
+      description: description?.trim() || undefined,
+      date,
+      priorityOrder: maxOrder + 1,
+      createdById: me.id,
+      createdAt: new Date().toISOString(),
+    };
+    set({ calendarEvents: [...state.calendarEvents, created] });
+    if (isBackend) write('insertCalendarEvent', created);
+    return created;
+  },
+
+  updateCalendarEvent: (id, changes) => {
+    let updated: CalendarEvent | undefined;
+    set((state) => ({
+      calendarEvents: state.calendarEvents.map((event) => {
+        if (event.id !== id) return event;
+        updated = { ...event, ...changes };
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) write('updateCalendarEvent', updated);
+  },
+
+  deleteCalendarEvent: (id) => {
+    set((state) => ({
+      calendarEvents: state.calendarEvents.filter((event) => event.id !== id),
+    }));
+    if (backendActive(get())) write('deleteCalendarEvent', id);
+  },
+
+  reorderDaySchedule: (date, ordered) => {
+    void date; // The order list is authoritative; date is for the caller's clarity.
+    ordered.forEach(({ kind, id }, index) => {
+      const order = index + 1;
+      if (kind === 'event') {
+        const event = get().calendarEvents.find((e) => e.id === id);
+        if (event && event.priorityOrder !== order) {
+          get().updateCalendarEvent(id, { priorityOrder: order });
+        }
+        return;
+      }
+      const card = get().workRequests.find((c) => c.id === id);
+      if (card && card.priorityOrder !== order) {
+        get().updateWorkRequest(id, { priorityOrder: order });
+      }
+    });
+  },
+
   clockIn: (ref) =>
     set({
       activeShift: { ...ref, startTime: new Date().toISOString() },
@@ -2125,11 +2227,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!me) return [];
     const createdIds: string[] = [];
     const isBackend = backendActive(state);
-    for (const uri of input.localUris) {
+    for (const item of input.items) {
+      // A file over the bucket's size cap would be rejected server-side on
+      // every retry — refuse it up front with a visible warning instead of a
+      // silent post-queue drop. (Only library videos can realistically hit
+      // this; in-camera recordings are capped well below it.)
+      if (item.isVideo) {
+        const size = await mediaFileSize(item.uri);
+        if (size != null && size > MAX_UPLOAD_BYTES) {
+          get().flash('Video too large to upload (200 MB max)', 'warning');
+          continue;
+        }
+      }
       const id = uuid();
       let stashed: string;
       try {
-        stashed = await stashPhotoFile(uri, id);
+        stashed = await stashPhotoFile(item.uri, id, item.isVideo ? 'mp4' : 'jpg');
       } catch (e) {
         console.error('Could not stage photo file:', e);
         continue;
@@ -2145,6 +2258,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           localUri: stashed,
           takenAt: new Date().toISOString(),
           state: 'queued',
+          isVideo: item.isVideo,
         };
         set((s) => ({ pendingPhotos: [pending, ...s.pendingPhotos] }));
       } else {
@@ -2159,6 +2273,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           storagePath: '',
           url: stashed,
           takenAt: new Date().toISOString(),
+          isVideo: item.isVideo,
         };
         set((s) => ({ jobPhotos: [photo, ...s.jobPhotos] }));
       }
@@ -2193,6 +2308,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     if (backendActive(get()) && found) {
       write('updateJobPhotoNote', { id, note: value }, { map: 'photoNote', id });
+    }
+  },
+
+  setJobPhotoSgd: (id, sgdVideo) => {
+    // Mirrors setJobPhotoNote: a still-pending video carries the tag along in
+    // the queue; an uploaded one writes through the outbox (photoNote's guard
+    // map keeps the whole local row safe from a stale refetch either way).
+    if (get().pendingPhotos.some((p) => p.id === id)) {
+      set((s) => ({
+        pendingPhotos: s.pendingPhotos.map((p) =>
+          p.id === id ? { ...p, sgdVideo } : p
+        ),
+      }));
+      persistPendingPhotos(get().pendingPhotos);
+      return;
+    }
+    let found = false;
+    set((s) => ({
+      jobPhotos: s.jobPhotos.map((p) => {
+        if (p.id !== id) return p;
+        found = true;
+        return { ...p, sgdVideo };
+      }),
+    }));
+    if (backendActive(get()) && found) {
+      write('updateJobPhotoSgd', { id, sgdVideo }, { map: 'photoNote', id });
     }
   },
 
@@ -2597,9 +2738,13 @@ async function processPhotoQueue(): Promise<void> {
           p.id === next.id ? { ...p, state: 'uploading' } : p
         ),
       }));
-      const storagePath = `${next.jobId}/${next.id}.jpg`;
+      const storagePath = `${next.jobId}/${next.id}.${next.isVideo ? 'mp4' : 'jpg'}`;
       try {
-        await backend.uploadJobPhoto(next.localUri, storagePath);
+        await backend.uploadJobPhoto(
+          next.localUri,
+          storagePath,
+          next.isVideo ? 'video/mp4' : 'image/jpeg'
+        );
         // The photo may have been deleted from the queue mid-upload — then the
         // metadata row is skipped and the orphaned object is left behind
         // (harmless: nothing references it).
@@ -2618,6 +2763,8 @@ async function processPhotoQueue(): Promise<void> {
           url: backend.jobPhotoUrl(storagePath),
           note: current.note,
           takenAt: current.takenAt,
+          isVideo: current.isVideo,
+          sgdVideo: current.sgdVideo,
         };
         await backend.insertJobPhoto(photo);
         useAppStore.setState((s) => ({

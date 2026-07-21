@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 import {
+  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -55,6 +56,14 @@ interface JobRow {
   sgd_count_total: number | null;
   mirror_count_done: number | null;
   mirror_count_total: number | null;
+  shower_count_done: number | null;
+  shower_count_total: number | null;
+  swing_door_count_done: number | null;
+  swing_door_count_total: number | null;
+  screen_count_done: number | null;
+  screen_count_total: number | null;
+  igu_count_done: number | null;
+  igu_count_total: number | null;
   window_layout_not_needed: boolean | null;
   mirror_layout_not_needed: boolean | null;
 }
@@ -150,6 +159,8 @@ interface JobPhotoRow {
   storage_path: string;
   note: string | null;
   taken_at: string;
+  is_video: boolean | null;
+  sgd_video: boolean | null;
 }
 
 interface JobIssueRow {
@@ -179,6 +190,17 @@ interface JobDocumentRow {
 
 // --- Mappers (row -> domain) -------------------------------------------------
 
+/**
+ * Map legacy scope values onto the current set (rows read before the scopes
+ * migration ran still carry 'Showerglass Door' — renamed to 'Showers').
+ */
+function normalizeScopes(scopes: string[] | null): JobScope[] | undefined {
+  if (!scopes) return undefined;
+  return scopes.map((s) =>
+    s === 'Showerglass Door' ? 'Showers' : s
+  ) as JobScope[];
+}
+
 function rowToJob(r: JobRow): Job {
   return {
     id: r.id,
@@ -192,7 +214,7 @@ function rowToJob(r: JobRow): Job {
     flashingPhotoUrl: r.flashing_photo_path
       ? jobPhotoUrl(r.flashing_photo_path)
       : undefined,
-    scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
+    scopes: normalizeScopes(r.scopes),
     coverPhotoId: r.cover_photo_id ?? undefined,
     laborBudget: r.labor_budget != null ? Number(r.labor_budget) : undefined,
     parentJobId: r.parent_job_id ?? undefined,
@@ -203,6 +225,14 @@ function rowToJob(r: JobRow): Job {
     sgdCountTotal: r.sgd_count_total ?? undefined,
     mirrorCountDone: r.mirror_count_done ?? undefined,
     mirrorCountTotal: r.mirror_count_total ?? undefined,
+    showerCountDone: r.shower_count_done ?? undefined,
+    showerCountTotal: r.shower_count_total ?? undefined,
+    swingDoorCountDone: r.swing_door_count_done ?? undefined,
+    swingDoorCountTotal: r.swing_door_count_total ?? undefined,
+    screenCountDone: r.screen_count_done ?? undefined,
+    screenCountTotal: r.screen_count_total ?? undefined,
+    iguCountDone: r.igu_count_done ?? undefined,
+    iguCountTotal: r.igu_count_total ?? undefined,
     windowLayoutNotNeeded: r.window_layout_not_needed || undefined,
     mirrorLayoutNotNeeded: r.mirror_layout_not_needed || undefined,
   };
@@ -263,7 +293,7 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     priorityOrder: r.priority_order,
     priorityStartDate: r.priority_start_date ?? undefined,
     priorityEndDate: r.priority_end_date ?? undefined,
-    scopes: r.scopes ? (r.scopes as JobScope[]) : undefined,
+    scopes: normalizeScopes(r.scopes),
     tasks: normalizeTasks(r.tasks),
     readiness: normalizeReadiness(r.readiness),
     flashingMaterial: r.flashing_material ?? undefined,
@@ -322,6 +352,8 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
     url: jobPhotoUrl(r.storage_path),
     note: r.note ?? undefined,
     takenAt: r.taken_at,
+    isVideo: r.is_video || undefined,
+    sgdVideo: r.sgd_video || undefined,
   };
 }
 
@@ -378,6 +410,29 @@ export interface BackendData {
   jobPhotos: JobPhoto[];
   jobIssues: JobIssue[];
   jobDocuments: JobDocument[];
+  calendarEvents: CalendarEvent[];
+}
+
+interface CalendarEventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  priority_order: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+function rowToCalendarEvent(r: CalendarEventRow): CalendarEvent {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description || undefined,
+    date: r.date,
+    priorityOrder: r.priority_order,
+    createdById: r.created_by ?? undefined,
+    createdAt: r.created_at,
+  };
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -398,6 +453,7 @@ export async function fetchAllData(): Promise<BackendData> {
     jobPhotosR,
     jobIssuesR,
     jobDocumentsR,
+    calendarEventsR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -412,6 +468,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('job_photos').select('*'),
     sb.from('job_issues').select('*'),
     sb.from('job_documents').select('*'),
+    sb.from('calendar_events').select('*'),
   ]);
 
   const firstError =
@@ -440,6 +497,13 @@ export async function fetchAllData(): Promise<BackendData> {
     console.warn(
       'Job documents load failed; none shown.',
       jobDocumentsR.error.message
+    );
+  }
+  // Calendar events degrade the same way while their migration hasn't run yet.
+  if (calendarEventsR.error) {
+    console.warn(
+      'Calendar events load failed; none shown.',
+      calendarEventsR.error.message
     );
   }
 
@@ -496,6 +560,9 @@ export async function fetchAllData(): Promise<BackendData> {
     jobDocuments: ((jobDocumentsR.data ?? []) as JobDocumentRow[]).map(
       rowToJobDocument
     ),
+    calendarEvents: ((calendarEventsR.data ?? []) as CalendarEventRow[]).map(
+      rowToCalendarEvent
+    ),
   };
 }
 
@@ -541,6 +608,14 @@ function jobToRow(job: Job) {
     sgd_count_total: job.sgdCountTotal ?? null,
     mirror_count_done: job.mirrorCountDone ?? null,
     mirror_count_total: job.mirrorCountTotal ?? null,
+    shower_count_done: job.showerCountDone ?? null,
+    shower_count_total: job.showerCountTotal ?? null,
+    swing_door_count_done: job.swingDoorCountDone ?? null,
+    swing_door_count_total: job.swingDoorCountTotal ?? null,
+    screen_count_done: job.screenCountDone ?? null,
+    screen_count_total: job.screenCountTotal ?? null,
+    igu_count_done: job.iguCountDone ?? null,
+    igu_count_total: job.iguCountTotal ?? null,
     window_layout_not_needed: job.windowLayoutNotNeeded ?? false,
     mirror_layout_not_needed: job.mirrorLayoutNotNeeded ?? false,
   };
@@ -781,6 +856,39 @@ export async function deleteDailyCrew(id: string): Promise<void> {
   check((await getSupabase().from('daily_crews').delete().eq('id', id)).error);
 }
 
+function calendarEventToRow(event: CalendarEvent) {
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description ?? '',
+    date: event.date,
+    priority_order: event.priorityOrder,
+    created_by: event.createdById ?? null,
+  };
+}
+
+export async function insertCalendarEvent(event: CalendarEvent): Promise<void> {
+  check(
+    (await getSupabase().from('calendar_events').insert(calendarEventToRow(event)))
+      .error
+  );
+}
+export async function updateCalendarEvent(event: CalendarEvent): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('calendar_events')
+        .update(calendarEventToRow(event))
+        .eq('id', event.id)
+    ).error
+  );
+}
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  check(
+    (await getSupabase().from('calendar_events').delete().eq('id', id)).error
+  );
+}
+
 export async function insertAssignment(a: ScheduleAssignment): Promise<void> {
   check(
     (
@@ -852,7 +960,8 @@ function base64ToBytes(base64: string): Uint8Array {
  */
 export async function uploadJobPhoto(
   localUri: string,
-  storagePath: string
+  storagePath: string,
+  contentType = 'image/jpeg'
 ): Promise<void> {
   // Storage must see the signed-in worker: with no session supabase-js silently
   // falls back to the anon key and the server rejects the object with a bare
@@ -877,7 +986,7 @@ export async function uploadJobPhoto(
   }
   const { error } = await getSupabase()
     .storage.from(PHOTO_BUCKET)
-    .upload(storagePath, body, { contentType: 'image/jpeg', upsert: true });
+    .upload(storagePath, body, { contentType, upsert: true });
   if (error) throw new Error(error.message);
 }
 
@@ -894,7 +1003,24 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
         storage_path: photo.storagePath,
         note: photo.note ?? null,
         taken_at: photo.takenAt,
+        is_video: photo.isVideo ?? false,
+        sgd_video: photo.sgdVideo ?? false,
       })
+    ).error
+  );
+}
+
+/** Tag/untag an uploaded video as an SGD video (owner-only per RLS). */
+export async function updateJobPhotoSgd(
+  id: string,
+  sgdVideo: boolean
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_photos')
+        .update({ sgd_video: sgdVideo })
+        .eq('id', id)
     ).error
   );
 }
@@ -1101,6 +1227,7 @@ const REALTIME_TABLES = [
   'job_photos',
   'job_issues',
   'job_documents',
+  'calendar_events',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the

@@ -13,6 +13,11 @@ import {
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { isReadyNow } from '@/components/desktop/scheduler/Backlog';
+import {
+  DragSource,
+  useDropZone,
+} from '@/components/desktop/scheduler/DragBoard';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
@@ -21,7 +26,10 @@ import { effectivePriority } from '@/utils/priorityRange';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface Props {
-  /** The ready (readiness "Yes") unassigned work requests — the Work Requests pool. */
+  /**
+   * EVERY unassigned work request — ready ones render normally, not-ready
+   * ones muted with a "Not ready" tag so schedulers see what's coming.
+   */
   cards: WorkRequest[];
   jobNameFor: (jobId?: string) => string;
   /** Open a request's details (the same quick view the board uses). */
@@ -32,10 +40,10 @@ interface Props {
 
 /**
  * The Work Requests pool expanded in place into a large month calendar: it
- * replaces the list inside the (widened) Work Requests column, with each open
- * request on its target date, colored by priority. Purely a viewing tool —
- * nothing here touches crew schedules; placing requests on crews still happens
- * from the collapsed list + main calendar.
+ * replaces the list inside the (half-width-expanded) Work Requests column,
+ * with each open request on its target date, colored by priority. Requests
+ * drag between days here (changing their target date), out to the crew
+ * calendar (scheduling them), and in from it (unassigning back to the pool).
  */
 export function BacklogCalendar({
   cards,
@@ -76,8 +84,8 @@ export function BacklogCalendar({
             </View>
           </View>
           <Text style={styles.hint}>
-            Open requests by their target date. View-only — crew schedules
-            aren&apos;t affected.
+            Open requests by their target date. Drag between days to retarget,
+            or across to the crew calendar to schedule.
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -135,49 +143,87 @@ export function BacklogCalendar({
 
         {days.map((dayDate) => {
           const dateStr = format(dayDate, 'yyyy-MM-dd');
-          const dayCards = cardsByDate.get(dateStr) ?? [];
           return (
-            <View key={dateStr} style={styles.cell}>
-              <Text
-                style={[styles.dayNum, isToday(dayDate) && styles.dayNumToday]}
-              >
-                {format(parseISO(dateStr), 'd')}
-              </Text>
-              <View style={styles.cellCards}>
-                {dayCards.map((card) => {
-                  const accent = effectivePriority(card).color;
-                  return (
-                    <Pressable
-                      key={card.id}
-                      onPress={() => onOpenCard(card)}
-                      style={({ pressed }) => [
-                        styles.request,
-                        {
-                          backgroundColor: withAlpha(accent, 0.14),
-                          borderColor: withAlpha(accent, 0.5),
-                        },
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <View
-                        style={[styles.requestDot, { backgroundColor: accent }]}
-                      />
-                      <View style={styles.requestText}>
-                        <Text style={styles.requestTitle} numberOfLines={1}>
-                          {card.title}
-                        </Text>
-                        <Text style={styles.requestJob} numberOfLines={1}>
-                          {jobNameFor(card.jobId)}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
+            <BacklogDayCell
+              key={dateStr}
+              date={dateStr}
+              today={isToday(dayDate)}
+              cards={cardsByDate.get(dateStr) ?? []}
+              jobNameFor={jobNameFor}
+              onOpenCard={onOpenCard}
+            />
           );
         })}
       </ScrollView>
+    </View>
+  );
+}
+
+/** One day of the pool calendar: a "backlog-day" drop zone with drag chips. */
+function BacklogDayCell({
+  date,
+  today,
+  cards,
+  jobNameFor,
+  onOpenCard,
+}: {
+  date: string;
+  today: boolean;
+  cards: WorkRequest[];
+  jobNameFor: (jobId?: string) => string;
+  onOpenCard: (card: WorkRequest) => void;
+}) {
+  const { ref, hovered } = useDropZone(`bcal:${date}`, {
+    type: 'backlog-day',
+    date,
+    priority: 2,
+  });
+  return (
+    <View
+      ref={ref}
+      collapsable={false}
+      style={[styles.cell, hovered && styles.cellDropHover]}
+    >
+      <Text style={[styles.dayNum, today && styles.dayNumToday]}>
+        {format(parseISO(date), 'd')}
+      </Text>
+      <View style={styles.cellCards}>
+        {cards.map((card) => {
+          const accent = effectivePriority(card).color;
+          const ready = isReadyNow(card);
+          return (
+            <DragSource
+              key={card.id}
+              item={{ kind: 'request', id: card.id }}
+              ghost={{ title: card.title, color: accent }}
+              onPress={() => onOpenCard(card)}
+              style={[
+                styles.request,
+                {
+                  backgroundColor: withAlpha(accent, 0.14),
+                  borderColor: withAlpha(accent, 0.5),
+                },
+                !ready && styles.requestNotReady,
+              ]}
+            >
+              <View style={[styles.requestDot, { backgroundColor: accent }]} />
+              <View style={styles.requestText}>
+                <Text style={styles.requestTitle} numberOfLines={1}>
+                  {card.title}
+                </Text>
+                <Text style={styles.requestJob} numberOfLines={1}>
+                  {jobNameFor(card.jobId)}
+                </Text>
+              </View>
+              {!ready && (
+                <Text style={styles.notReadyTag} numberOfLines={1}>
+                  Not ready
+                </Text>
+              )}
+            </DragSource>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -350,5 +396,18 @@ const styles = themed(() => StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  cellDropHover: {
+    borderColor: colors.primary,
+  },
+  requestNotReady: {
+    opacity: 0.55,
+  },
+  notReadyTag: {
+    color: colors.textTertiary,
+    fontFamily: fonts.semiBold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 }));

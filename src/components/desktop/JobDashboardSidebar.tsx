@@ -24,6 +24,10 @@ import {
 import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
+import {
+  PhotoScopeFilterChips,
+  usePhotoScopeFilter,
+} from '@/components/photos/PhotoScopeFilter';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { StatusPill } from '@/components/StatusPill';
@@ -31,7 +35,7 @@ import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
-import { formatCount, jobCounts } from '@/utils/jobCounts';
+import { editableCountDefs, formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
@@ -98,6 +102,8 @@ export function JobDashboardSidebar({
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
   const photos = useJobPhotos(job?.id);
+  // Pictures filters: by work-request scope, plus SGD videos.
+  const photoFilter = usePhotoScopeFilter(photos);
 
   const [viewingCardId, setViewingCardId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<{
@@ -221,8 +227,8 @@ export function JobDashboardSidebar({
     if (picking) return;
     setPicking(true);
     try {
-      const uris = await pickJobPhotos();
-      if (uris.length) await addJobPhotos({ jobId: job.id, localUris: uris });
+      const items = await pickJobPhotos();
+      if (items.length) await addJobPhotos({ jobId: job.id, items });
     } finally {
       setPicking(false);
     }
@@ -232,10 +238,10 @@ export function JobDashboardSidebar({
     setViewer({ photos: all, index: all.findIndex((p) => p.id === photo.id) });
 
   // Scope counts: display any pair with a total; edit-mode inputs are gated
-  // by the job's scopes.
+  // by the job's scopes (every scope's pair, not just Windows/Mirrors).
   const counts = jobCounts(job);
   const windowsAllowed = jobAllowsWindows(job);
-  const mirrorsAllowed = !!job.scopes?.includes('Mirrors');
+  const editCounts = editableCountDefs(job);
 
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
@@ -452,7 +458,7 @@ export function JobDashboardSidebar({
         {/* Edit mode extras: flashing material (window jobs) and the scope
             counts' done/total numbers. The address is edited up in the
             header. */}
-        {editable && editMode && (windowsAllowed || mirrorsAllowed) && (
+        {editable && editMode && (windowsAllowed || editCounts.length > 0) && (
           <View style={styles.editBlock}>
             {windowsAllowed && (
               <>
@@ -469,50 +475,27 @@ export function JobDashboardSidebar({
                   />
                   <FlashingPhotoField job={job} editable />
                 </View>
-                <Text style={styles.fieldLabel}>Window Count (done / total)</Text>
-                <CountPairEditor
-                  key={`wc-${job.id}`}
-                  done={job.windowCountDone}
-                  total={job.windowCountTotal}
-                  onCommit={(done, total) =>
-                    updateJob(job.id, {
-                      windowCountDone: done,
-                      windowCountTotal: total,
-                    })
-                  }
-                />
-                <Text style={styles.fieldLabel}>SGD Count (done / total)</Text>
-                <CountPairEditor
-                  key={`sc-${job.id}`}
-                  done={job.sgdCountDone}
-                  total={job.sgdCountTotal}
-                  onCommit={(done, total) =>
-                    updateJob(job.id, {
-                      sgdCountDone: done,
-                      sgdCountTotal: total,
-                    })
-                  }
-                />
               </>
             )}
-            {mirrorsAllowed && (
-              <>
+            {/* One done/total editor per count pair the job's scopes cover.
+                The wrapper keeps the label/editor spacing of the parent's gap. */}
+            {editCounts.map((def) => (
+              <View key={`${def.doneField}-${job.id}`} style={styles.countPair}>
                 <Text style={styles.fieldLabel}>
-                  Mirror Count (done / total)
+                  {def.label} (done / total)
                 </Text>
                 <CountPairEditor
-                  key={`mc-${job.id}`}
-                  done={job.mirrorCountDone}
-                  total={job.mirrorCountTotal}
+                  done={job[def.doneField]}
+                  total={job[def.totalField]}
                   onCommit={(done, total) =>
                     updateJob(job.id, {
-                      mirrorCountDone: done,
-                      mirrorCountTotal: total,
+                      [def.doneField]: done,
+                      [def.totalField]: total,
                     })
                   }
                 />
-              </>
-            )}
+              </View>
+            ))}
           </View>
         )}
 
@@ -753,7 +736,12 @@ export function JobDashboardSidebar({
               </Text>
             </Pressable>
           </View>
-          <JobPhotoGrid photos={photos} onPhotoPress={openPhoto} />
+          <PhotoScopeFilterChips
+            filter={photoFilter.filter}
+            setFilter={photoFilter.setFilter}
+            options={photoFilter.options}
+          />
+          <JobPhotoGrid photos={photoFilter.filtered} onPhotoPress={openPhoto} />
         </View>
       </ScrollView>
 
@@ -1272,6 +1260,9 @@ const styles = themed(() =>
       borderColor: colors.border,
       borderRadius: radii.lg,
       padding: spacing.lg,
+    },
+    countPair: {
+      gap: spacing.xs + 2,
     },
     fieldLabel: {
       color: colors.textSecondary,

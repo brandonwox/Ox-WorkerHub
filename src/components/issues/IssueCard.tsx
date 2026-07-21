@@ -95,13 +95,13 @@ export function IssueCard({
     if (picking) return;
     setPicking(true);
     try {
-      const uris = await pickJobPhotos();
-      if (uris.length) {
+      const items = await pickJobPhotos();
+      if (items.length) {
         await addJobPhotos({
           jobId: issue.jobId,
           workRequestId: issue.workRequestId,
           issueId: issue.id,
-          localUris: uris,
+          items,
         });
       }
     } finally {

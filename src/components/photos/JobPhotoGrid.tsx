@@ -81,12 +81,27 @@ export function JobPhotoGrid({ photos, onPhotoPress }: Props) {
                 style={styles.cell}
                 onPress={() => onPhotoPress(photo, sorted)}
               >
-                <Image
-                  source={{ uri: photo.url }}
-                  style={styles.thumb}
-                  contentFit="cover"
-                  transition={100}
-                />
+                {photo.isVideo ? (
+                  // Videos get a dark play tile (no frame extraction on
+                  // device); the viewer plays them.
+                  <View style={[styles.thumb, styles.videoThumb]}>
+                    <Feather
+                      name="play-circle"
+                      size={22}
+                      color={darkColors.textPrimary}
+                    />
+                    {photo.sgdVideo && (
+                      <Text style={styles.videoTag}>SGD</Text>
+                    )}
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: photo.url }}
+                    style={styles.thumb}
+                    contentFit="cover"
+                    transition={100}
+                  />
+                )}
                 {photo.pending && (
                   <View style={styles.pendingBadge}>
                     <Feather
@@ -152,6 +167,19 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceLight,
+  },
+  videoThumb: {
+    // A video tile sits on photo-style dark chrome in both themes.
+    backgroundColor: darkColors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  videoTag: {
+    color: darkColors.textSecondary,
+    fontFamily: fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
   pendingBadge: {
     position: 'absolute',

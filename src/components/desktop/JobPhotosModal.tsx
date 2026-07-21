@@ -51,8 +51,8 @@ export function JobPhotosModal({ job, onClose }: Props) {
     if (!job || picking) return;
     setPicking(true);
     try {
-      const uris = await pickJobPhotos();
-      if (uris.length) await addJobPhotos({ jobId: job.id, localUris: uris });
+      const items = await pickJobPhotos();
+      if (items.length) await addJobPhotos({ jobId: job.id, items });
     } finally {
       setPicking(false);
     }

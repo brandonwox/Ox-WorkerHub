@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
+import { Image } from 'expo-image';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -1008,6 +1009,9 @@ export function WorkRequestQuickView({
               const taskIssues = cardIssues.filter(
                 (issue) => issue.taskId === task.id
               );
+              // Photos taken FOR this task — shown inside the task (they
+              // also appear in the Photos section below).
+              const taskPhotos = photos.filter((p) => p.taskId === task.id);
               return (
                 <View key={task.id} style={styles.taskBlock}>
                   {editing === `task-${index}` ? (
@@ -1033,6 +1037,38 @@ export function WorkRequestQuickView({
                         {task.text}
                       </Text>
                     </Editable>
+                  )}
+                  {taskPhotos.length > 0 && (
+                    <View style={styles.taskPhotosRow}>
+                      {taskPhotos.map((photo) => (
+                        <Pressable
+                          key={photo.id}
+                          onPress={() => openPhoto(photo, taskPhotos)}
+                        >
+                          {photo.isVideo ? (
+                            <View
+                              style={[
+                                styles.taskPhotoThumb,
+                                styles.taskVideoThumb,
+                              ]}
+                            >
+                              <Feather
+                                name="play-circle"
+                                size={16}
+                                color={colors.textPrimary}
+                              />
+                            </View>
+                          ) : (
+                            <Image
+                              source={{ uri: photo.url }}
+                              style={styles.taskPhotoThumb}
+                              contentFit="cover"
+                              transition={100}
+                            />
+                          )}
+                        </Pressable>
+                      ))}
+                    </View>
                   )}
                   {taskIssues.length > 0 && (
                     <View style={styles.taskIssues}>
@@ -1896,6 +1932,22 @@ const styles = themed(() => StyleSheet.create({
     marginLeft: spacing.lg,
     marginBottom: spacing.xs,
     gap: spacing.sm,
+  },
+  taskPhotosRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginLeft: spacing.lg,
+  },
+  taskPhotoThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceLight,
+  },
+  taskVideoThumb: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   issueStack: {
     gap: spacing.sm,

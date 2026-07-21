@@ -1,6 +1,7 @@
 import { addDays, format, set, subDays } from 'date-fns';
 
 import {
+  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -142,6 +143,8 @@ const seededWorkRequests: WorkRequest[] = [
     status: 'Made Progress',
     priorityOrder: 1,
     priority: 'High',
+    // Windows scope: exercises the SGD-videos flow and the Pictures filters.
+    scopes: ['Windows', 'Storefront'],
     scopeOfWork:
       'Set and seal three storefront glass panels at the main entry. Verify plumb before final caulk.',
     materials: 'Structural silicone, setting blocks, backer rod',
@@ -161,6 +164,7 @@ const seededWorkRequests: WorkRequest[] = [
     status: 'Undefined',
     priorityOrder: 2,
     priority: 'Medium',
+    scopes: ["IGU's", 'Swing Doors'],
     scopeOfWork: 'Replace cracked curtain-wall units on Tower B, floors 4–6.',
     materials: 'Replacement gaskets, weep covers',
     details: {
@@ -269,6 +273,17 @@ export const mockJobs: Job[] = [
     qbtJobcodeId: '90112',
     flashingMaterial: 'Regular rainbuster',
     fieldSuperIds: ['w-fs', 'w-fs2'],
+    // Exercises the multi-scope count pairs (Window + SGD from Windows,
+    // Shower and Screen from their own scopes).
+    scopes: ['Windows', 'Showers', 'Screens', 'Storefront'],
+    windowCountDone: 12,
+    windowCountTotal: 40,
+    sgdCountDone: 2,
+    sgdCountTotal: 6,
+    showerCountDone: 0,
+    showerCountTotal: 8,
+    screenCountDone: 5,
+    screenCountTotal: 20,
   },
   {
     id: 'job-2',
@@ -278,6 +293,13 @@ export const mockJobs: Job[] = [
     qbtJobcodeId: '90113',
     flashingMaterial: 'Regular rainbuster',
     fieldSuperIds: ['w-fs'],
+    scopes: ['Windows', 'Mirrors', 'Swing Doors', "IGU's"],
+    mirrorCountDone: 3,
+    mirrorCountTotal: 15,
+    swingDoorCountDone: 1,
+    swingDoorCountTotal: 4,
+    iguCountDone: 10,
+    iguCountTotal: 32,
   },
   {
     id: 'job-3',
@@ -442,4 +464,16 @@ export const mockLogs: TimesheetLog[] = [
   makeLog('t-12', M, 21, 8, 14, 0, { customProjectName: 'Shop Fabrication' }),
   makeLog('t-13', M, 24, 7, 15, 0, { customProjectName: 'Condo Balcony Rails' }),
   makeLog('t-14', M, 28, 8, 16, 30, { customProjectName: 'Condo Balcony Rails' }),
+];
+
+/** A sample scheduler day note so the calendars render an Event in dev mode. */
+export const mockCalendarEvents: CalendarEvent[] = [
+  {
+    id: 'evt-1',
+    title: 'Brandon off all day',
+    description: 'Out of office — do not schedule him on anything.',
+    date: day(1),
+    priorityOrder: 1,
+    createdById: 'w-sch',
+  },
 ];

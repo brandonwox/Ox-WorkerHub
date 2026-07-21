@@ -32,6 +32,7 @@ export function InstallerAgenda() {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
+  const calendarEvents = useAppStore((s) => s.calendarEvents);
   const currentUserId = useAppStore((s) => currentWorkerOf(s)?.id ?? '');
   const clockIn = useAppStore((s) => s.clockIn);
   const updateShiftProject = useAppStore((s) => s.updateShiftProject);
@@ -63,6 +64,15 @@ export function InstallerAgenda() {
       ).sort((a, b) => a.priorityOrder - b.priorityOrder),
     [crews, dailyCrews, assignments, allWorkRequests, currentUserId, selectedDate]
   );
+
+  // Scheduler day notes ("Brandon off all day") — shown above the day's work
+  // so the crew sees them without opening anything.
+  const dayEvents = useMemo(() => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    return calendarEvents
+      .filter((e) => e.date === dateStr)
+      .sort((a, b) => a.priorityOrder - b.priorityOrder);
+  }, [calendarEvents, selectedDate]);
 
   const handleWorkRequestPress = (workRequest: WorkRequest) => {
     if (editShift) {
@@ -111,6 +121,25 @@ export function InstallerAgenda() {
         data={dayWorkRequests}
         keyExtractor={(workRequest) => workRequest.id}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          dayEvents.length > 0 ? (
+            <View style={styles.eventList}>
+              {dayEvents.map((event) => (
+                <View key={event.id} style={styles.eventRow}>
+                  <Feather name="info" size={14} color={colors.textSecondary} />
+                  <View style={styles.eventText}>
+                    <Text style={styles.eventTitle}>{event.title}</Text>
+                    {event.description ? (
+                      <Text style={styles.eventDescription}>
+                        {event.description}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => (
           <WorkRequestCard
             workRequest={item}
@@ -183,6 +212,35 @@ const styles = themed(() => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: 96,
     gap: spacing.md,
+  },
+  eventList: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  eventText: {
+    flex: 1,
+    gap: 1,
+  },
+  eventTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  eventDescription: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   empty: {
     alignItems: 'center',

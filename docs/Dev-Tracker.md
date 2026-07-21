@@ -10,33 +10,11 @@ manage crews -> permanent crews: an installer can only be selected for one crew 
 
 in the notifications section: i try to hover over a notification and click on the x button to dismiss the notification and delete it, but the x button disappears whenever i get close.
 
-scheduler:
-- the work requests calendar should show all work requests, even the ones not ready yet. (the work requests backlog has a "Not ready yet" section, those work requests should also be in the work requests calendar, not just the backlog list.)
-- allow the scheduler to drag work requests(formerly known as jobcards) anywhere. wherever the work request lands is where it should move. if they move it from the 17th of may to the work requests bin of unassigned work requests, it should land in there. if they drag a work request from the top of the 10th of june to the bottom of the stack on the 10th of june, it should move the the bottom. 
-- the scheduler also needs to be able to create "Events". Events are simple things that the scheduler can title and add a description to and assign to any day. when viewing the calendar an event looks just like a work request (rectangle with rounded corners with a title). but in the popup that normally shows all the work request details (formerly known as jobcard), the event only shows the data for the date, title, and description. (events also need to be drag and dropable.) (events are useful if the scheduler needs to say something like "Brandon off all day", now the crew knows that brandon will not be working.)
-Here's a better list of the functionality schedulers should have in the calendars:
-- ability to drag a work request between other work requests in a single day. (they could rearrange the daily schedule for a specific day by moving things around from top to middle to bottom or anywhere inbetween.)
-- ability to drag work requests to any day (and any location in that day) (and from any calendar to any calendar.)
-- when the work requests backlog is expanded, have it take up half the space, so that both the main scheduling calendar and the work requests backlog calendar get an equal width. (the scheduler should be able to drag work requests from and to any calendar and any location in those days.)
-
-right now we have a "Window Count". and i think we also have a mirror count. we need a count like this for all scopes: Showers, Mirrors, Windows, SGD's, IGU's, Swing Doors, Screens. 
-
 web users -> the settings page should not show up in the left sidebar. accessing the settings page is done by clicking the profile chip in the top right of the screen.
 
 add small radius drop shadow around popups in web view, such as when a scheduler opens a jobcard popup (there should be a box/drop shadow around the popup, just dont make it too big or too strong.)
 
 make sure the field super is shown on the jobcard. (installers don't see the field super for the jobcard.) (also make so field supers phone numbers are required for the field super to operate.) (the field super's phone number should be shown on the same line as the field supers name).
-
-Work requests (formerly known as jobcards):
-- when a photo is taken for a task, it should be shown in the task as well as the pictures section of the jobcard (right now any photo taken for a task only shows in the photos section of the jobcard, and not in the task.).
-
-photo taker:
-- allow the photo taker to take videos.
-- if taking photos for a jobcard with the "Windows" scope: when in the mobile photo taker -> if any videos have been taken -> and the user exits the photo taker: show a popup with all the videos that were taken and a title that says "Were any SGD videos taken?", the user can click to check any videos. if no videos have been clicked then the button at the bottom of the popup should say "No SGD videos taken" and if any videos have been clicked, then the button should say "Confirm". (the new "SGD Video" is a filter for the job details page photos section (this edit should be done at the same time as the edit below).)
-
-job details page (also subjobs) -> Pictures section -> the pictures section should have filters by scope. (jobcards have a scope field, so any picture for a jobcard can be sorted by the scope that jobcard has.) (there should also be a filter for "SGD videos" which is part of the new photo taker.)
-
-we need to add some scopes, we need to make sure we have: "Windows", "Mirrors", "Showers", "Swing Doors". <- those scopes are for jobs, subjobs, and jobcards. These scopes are only for jobcards, and not jobs: "Screens", "IGU's"
 
 job details page: rather than having the active section not show as a card, keep all section cards showing at all times, the active section should still remain as a card and also show its section, and rather than hiding the card, highlight it. which means Issues, Jobcards, Subjobs, documents, should all show no matter what, and whatever one is active shows with an active border. This should also work the same for subjob details pages: show each card "Documents", "Issues", and "Jobcards" at all times, don't hide the section card just because the section is showing, just add an active border.
 
@@ -91,6 +69,28 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 3 — Unified scopes + counts for every scope + videos/SGD tagging + Pictures filters (REQUIRES: apply the new scopes-counts-videos Supabase migration, and run npm install after pulling — adds expo-video):
+- SCOPES: the selectable set is now Windows, Mirrors, Showers, Swing Doors, Screens, IGU's, Storefront, Service — the SAME list everywhere (jobs, sub-jobs, work requests; the planned "work-request-only" split was dropped by decision). 'Showerglass Door' was renamed to 'Showers' (legacy rows are mapped on read and rewritten by the migration). 'Service' predates this pass and was kept.
+- COUNTS for every counted scope: Shower, Swing Door, Screen, and IGU counts join Window/SGD/Mirror — each a done/total pair shown once its total is set (job details page, web sidebar, and every work request of the job). Which pairs are EDITABLE follows the job's scopes (Window + SGD both belong to Windows; Storefront/Service carry no counts); the office edit surfaces (web sidebar Edit mode + mobile field-super editor) are now generated from one shared definition list instead of hand-rolled per pair. Totals stay office-set, installers write only done numbers, schedulers/finance neither (DB guards updated).
+- COUNT WHEEL: on phones, updating an "amount done" now scrolls an iOS-style number wheel (0 to the total, pre-set to the current done); web keeps the typed input.
+- VIDEOS: the in-app photo taker has a PHOTO/VIDEO mode toggle — recordings (1080p, 2 min cap, red shutter → square while recording) enter the same offline upload queue as photos and upload as .mp4 (the job-photos bucket now allows video mime types and 200 MiB). The "Upload Images" pickers (work request, job pages, web sidebar, issues) now accept videos alongside photos too — picked videos over the 200 MB cap are refused up front with a warning instead of failing after queueing, and iOS delivers library videos in their most compatible representation (HEVC transcodes to H.264 on export, so they play in desktop browsers too). Video tiles show a play icon in the grids; the viewer plays them with native controls (new expo-video dependency). Camera + mic permissions both prompt (a denied mic records muted).
+- SGD VIDEOS: leaving the camera of a Windows-scope work request with videos taken opens "Were any SGD videos taken?" — checkable video list; button reads "No SGD videos taken" until one is checked, then "Confirm". Checked videos carry an SGD tag (queues offline like a note edit; the taker owns the row per RLS).
+- PICTURES FILTERS: the job (and sub-job) Pictures sections — mobile page + web sidebar — gained filter chips: All, one chip per scope that actually has photos (a photo's scope = its work request's scopes; photos not taken from a work request only show under All), plus "SGD Videos". The row hides when there's nothing to filter.
+- TASK PHOTOS IN THE TASK: photos/videos taken for a task now show as a thumbnail strip inside that task on the mobile work request page AND the web quick view (still in the Photos section too).
+
+Pass 2 — Scheduler calendar: drag & drop, Events, backlog calendar upgrades (REQUIRES: apply the new calendar-events Supabase migration — events won't load/save without it):
+- EVENTS: schedulers create simple day notes ("+ Event" button on the calendar toolbar, and one inside the day sidebar pre-filled with that day) — title, optional description, date. On the calendars an event renders like a work request chip (rounded rectangle with title) in a neutral crew-less style; clicking it opens a popup showing ONLY date/title/description, where schedulers edit or delete it (two-click confirm). Field supers see events read-only on their shared calendar, and installers see the day's events pinned above their agenda list. Events live in a new calendar_events table (everyone reads, schedulers write), sync over realtime, cache offline, and queue writes like everything else.
+- DRAG & DROP (scheduler web console; field supers and mobile keep tap flows): press-and-drag any chip — a ghost follows the cursor, the hovered day highlights with an insertion line, release drops it. Works from/to the main calendar's day cells, the day sidebar, the Work Requests list, and the expanded Work Requests calendar:
+  - within a day: drop between two chips to reorder (day stacks now sort by priorityOrder; work requests and events share the ordering).
+  - day → any day (including across the two side-by-side calendars): the request moves — every crew assignment follows to the new date, landing at the drop position.
+  - Work Requests pool → a crew-calendar day: assigns to the current active crew(s), exactly like the Schedule button (warns when no crew is targeted).
+  - calendar → the Work Requests column: unassigns from every crew (back to the pool). Dropping on a specific day of the expanded pool calendar also moves the request's target date; day → day inside the pool calendar just retargets.
+  - events drag between days; the pool refuses them (a hint flashes). A drop outside any valid zone snaps back and changes nothing. A plain click (no movement) still opens the chip as before.
+  - known limits: dragging can't scroll the page or flip months mid-drag (drag between months by putting the two calendars on different months), and drop positions are measured when the drag starts — scrolling mid-drag isn't supported.
+- the Work Requests calendar now shows EVERY unassigned request, including not-ready ones (muted, with a small "Not ready" tag) — so schedulers see what's coming without mistaking it for schedulable work.
+- expanding the Work Requests calendar now splits the board 50/50 with the main crew calendar (it used to dwarf it), since dragging between the two needs both usable.
+- the old click-to-place "Schedule" flow, multi-crew assign, and crew colors are unchanged.
 
 Pass 1 — Work Requests rename + readiness + status overhaul + crew foremen (REQUIRES: apply the new work-requests Supabase migration — the app now reads/writes the renamed work_requests table and the new status/foreman columns, so it will not run against the old schema):
 - jobcards are now "Work Requests" EVERYWHERE: all user-facing text, the web routes (/scheduler-work-requests, /field-super-work-requests, and the detail page moved from /job/<id> to /work-request/<id>), the codebase (components, store actions, types — WorkRequest*, workRequestId, …), and the DATABASE (public.jobcards → public.work_requests; every jobcard_id column, constraint, RLS policy, trigger, and guard function renamed; old notification rows remapped). Decision on renaming code identifiers: YES — the app is pre-production, so code, DB, and product language stay in lockstep; nothing legacy remains to confuse future work. (Old on-device caches/outboxes from before the rename are treated as a miss and refill on the next online open.)

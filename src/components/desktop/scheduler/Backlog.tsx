@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { DragSource } from '@/components/desktop/scheduler/DragBoard';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
@@ -77,8 +78,13 @@ export function Backlog({
   const renderCard = (card: WorkRequest, showReadiness = false) => {
     const selected = placingCardId === card.id;
     return (
-      <View
+      // Draggable: schedulers can drag a request straight onto a calendar day
+      // instead of the Schedule-then-click flow. The buttons inside still win
+      // the touch, so Open/Schedule keep working.
+      <DragSource
         key={card.id}
+        item={{ kind: 'request', id: card.id }}
+        ghost={{ title: card.title, color: effectivePriority(card).color }}
         style={[
           styles.card,
           selected && styles.cardSelected,
@@ -160,7 +166,7 @@ export function Backlog({
             </Pressable>
           )}
         </View>
-      </View>
+      </DragSource>
     );
   };
 

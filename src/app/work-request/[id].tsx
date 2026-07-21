@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -143,13 +144,13 @@ export default function JobDetailsScreen() {
     if (picking) return;
     setPicking(true);
     try {
-      const uris = await pickJobPhotos();
-      if (uris.length) {
+      const items = await pickJobPhotos();
+      if (items.length) {
         await addJobPhotos({
           jobId: job.jobId,
           workRequestId: job.id,
           taskId,
-          localUris: uris,
+          items,
         });
       }
     } finally {
@@ -425,6 +426,50 @@ export default function JobDetailsScreen() {
                       off.
                     </Text>
                   )}
+                  {/* The task's own photos/videos, right inside the task (they
+                      also show in the Photos section below). */}
+                  {taskPhotos.length > 0 && (
+                    <View style={styles.taskPhotosRow}>
+                      {taskPhotos.map((photo) => (
+                        <Pressable
+                          key={photo.id}
+                          style={({ pressed }) => [
+                            pressed && styles.closePressed,
+                          ]}
+                          onPress={() =>
+                            setViewer({
+                              photos: taskPhotos,
+                              index: taskPhotos.findIndex(
+                                (p) => p.id === photo.id
+                              ),
+                            })
+                          }
+                        >
+                          {photo.isVideo ? (
+                            <View
+                              style={[
+                                styles.taskPhotoThumb,
+                                styles.taskVideoThumb,
+                              ]}
+                            >
+                              <Feather
+                                name="play-circle"
+                                size={16}
+                                color={colors.textPrimary}
+                              />
+                            </View>
+                          ) : (
+                            <Image
+                              source={{ uri: photo.url }}
+                              style={styles.taskPhotoThumb}
+                              contentFit="cover"
+                              transition={100}
+                            />
+                          )}
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
                   {taskIssues.length > 0 && (
                     <View style={styles.taskIssues}>
                       {taskIssues.map((issue) => (
@@ -511,12 +556,12 @@ export default function JobDetailsScreen() {
                   if (picking) return;
                   setPicking(true);
                   try {
-                    const uris = await pickJobPhotos();
-                    if (uris.length) {
+                    const items = await pickJobPhotos();
+                    if (items.length) {
                       await addJobPhotos({
                         jobId: job.jobId!,
                         workRequestId: job.id,
-                        localUris: uris,
+                        items,
                       });
                     }
                   } finally {
@@ -749,6 +794,22 @@ const styles = themed(() => StyleSheet.create({
     color: colors.warning,
     fontFamily: fonts.medium,
     fontSize: 12,
+  },
+  taskPhotosRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginLeft: spacing.xl + spacing.sm,
+  },
+  taskPhotoThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceLight,
+  },
+  taskVideoThumb: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   taskIssues: {
     marginLeft: spacing.xl + spacing.sm,
