@@ -18,9 +18,8 @@ const SECTION_ORDER: AppRole[] = [
 ];
 
 /**
- * The Operator's roster on the phone: workers grouped by role, with rate and
- * installer type where relevant. Inviting, role changes, and rate edits stay
- * on the desktop console.
+ * The Operator's roster on the phone: workers grouped by role, with rate where
+ * relevant. Inviting, role changes, and rate edits stay on the desktop console.
  */
 export function OperatorPeopleMobile() {
   const workers = useAppStore((s) => s.workers);
@@ -56,11 +55,6 @@ export function OperatorPeopleMobile() {
       {worker.role === 'installer' && (
         <View style={styles.right}>
           <Text style={styles.rate}>{formatMoney(worker.hourlyRate)}/hr</Text>
-          {worker.installerType ? (
-            <Text style={styles.type} numberOfLines={1}>
-              {worker.installerType}
-            </Text>
-          ) : null}
         </View>
       )}
     </View>
@@ -184,11 +178,6 @@ const styles = themed(() => StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.semiBold,
     fontSize: 13,
-  },
-  type: {
-    color: colors.textTertiary,
-    fontFamily: fonts.regular,
-    fontSize: 11,
   },
   empty: {
     alignItems: 'center',

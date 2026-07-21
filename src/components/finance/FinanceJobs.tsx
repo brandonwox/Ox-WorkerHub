@@ -123,9 +123,15 @@ function FinanceJobCard({
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
+        {/* Jobs broken into sub-jobs read as folders, not standalone
+            jobsites. */}
+        {job.hasSubJobs && (
+          <Text style={styles.masterFolderLabel}>Master Folder</Text>
+        )}
         <Text style={styles.jobName} numberOfLines={1}>
           {displayName}
         </Text>
+        {job.po ? <Text style={styles.poText}>PO {job.po}</Text> : null}
         {job.status === 'Finished' && (
           <View style={styles.archivedPill}>
             <Text style={styles.archivedText}>Finished</Text>
@@ -291,6 +297,16 @@ const styles = themed(() =>
       color: colors.textPrimary,
       fontFamily: fonts.bold,
       fontSize: 16,
+    },
+    masterFolderLabel: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+    },
+    poText: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
     },
     archivedPill: {
       backgroundColor: colors.surfaceLight,

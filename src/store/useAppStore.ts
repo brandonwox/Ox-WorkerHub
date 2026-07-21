@@ -813,6 +813,8 @@ interface AppState {
   addSubJob: (input: {
     parentJobId: string;
     name: string;
+    /** The sub-job's own PO, typed at creation (not inherited). */
+    po?: string;
     /** Override the inherited jobsite address (creation form edit). */
     location?: string;
     /** Override the inherited scopes (creation form edit). */
@@ -1564,7 +1566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return local;
   },
 
-  addSubJob: ({ parentJobId, name, location, scopes, flashingMaterial }) => {
+  addSubJob: ({ parentJobId, name, po, location, scopes, flashingMaterial }) => {
     const state = get();
     const parent = state.jobs.find((j) => j.id === parentJobId);
     // One level only — a sub-job can't parent another.
@@ -1573,6 +1575,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const created: Job = {
       id: isBackend ? uuid() : `job-${nextJobId++}`,
       name,
+      po,
       status: 'Active',
       parentJobId,
       // Inherited from the parent (the creation form may override; all remain

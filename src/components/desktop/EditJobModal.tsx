@@ -11,6 +11,8 @@ import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
 
 export interface JobChanges {
   name: string;
+  /** The job's PO number (cleared when blanked — legacy jobs may lack one). */
+  po?: string;
   qbtJobcodeId?: string;
   status: JobStatus;
   fieldSuperIds: string[];
@@ -48,6 +50,7 @@ export function EditJobModal({
   onDelete,
 }: Props) {
   const [name, setName] = useState('');
+  const [po, setPo] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
   const [status, setStatus] = useState<JobStatus>('Active');
   const [scopes, setScopes] = useState<JobScope[]>([]);
@@ -62,6 +65,7 @@ export function EditJobModal({
   useEffect(() => {
     if (!job) return;
     setName(job.name);
+    setPo(job.po ?? '');
     setQbtJobcodeId(job.qbtJobcodeId ?? '');
     setStatus(job.status);
     setScopes(job.scopes ?? []);
@@ -80,6 +84,7 @@ export function EditJobModal({
     // Address and flashing material are managed by the Field Super.
     onSave(job.id, {
       name: name.trim(),
+      po: po.trim() || undefined,
       qbtJobcodeId: qbtJobcodeId.trim() || undefined,
       status,
       scopes: scopes.length > 0 ? scopes : undefined,
@@ -120,13 +125,27 @@ export function EditJobModal({
             </Pressable>
           </View>
 
-          <FormInput
-            label="Job name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Snyderville Commercial Complex"
-            autoCapitalize="words"
-          />
+          {/* Name + PO share the line, matching the creation form. */}
+          <View style={styles.row}>
+            <View style={styles.colWide}>
+              <FormInput
+                label="Job name"
+                value={name}
+                onChangeText={setName}
+                placeholder="Snyderville Commercial Complex"
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.col}>
+              <FormInput
+                label="PO"
+                value={po}
+                onChangeText={setPo}
+                placeholder="e.g. 4501"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
           <View style={styles.row}>
             <View style={styles.col}>
               <FormInput
@@ -299,6 +318,9 @@ const styles = themed(() => StyleSheet.create({
   },
   col: {
     flex: 1,
+  },
+  colWide: {
+    flex: 2,
   },
   field: {
     gap: spacing.xs + 2,

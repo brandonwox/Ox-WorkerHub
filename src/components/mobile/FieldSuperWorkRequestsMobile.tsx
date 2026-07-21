@@ -38,6 +38,11 @@ export function FieldSuperWorkRequestsMobile() {
     () => new Map(myJobs.map((job) => [job.id, jobDisplayName(job, jobs)])),
     [myJobs, jobs]
   );
+  // Job POs match the search too (anywhere job names do).
+  const jobPoById = useMemo(
+    () => new Map(myJobs.map((job) => [job.id, job.po ?? ''])),
+    [myJobs]
+  );
 
   const scheduledIds = useMemo(
     () => new Set(assignments.map((a) => a.workRequestId)),
@@ -53,13 +58,15 @@ export function FieldSuperWorkRequestsMobile() {
         if (schedule === 'Unscheduled' && scheduledIds.has(card.id)) return false;
         if (!query) return true;
         const jobName = jobNameById.get(card.jobId) ?? '';
+        const jobPo = jobPoById.get(card.jobId) ?? '';
         return (
           card.title.toLowerCase().includes(query) ||
-          jobName.toLowerCase().includes(query)
+          jobName.toLowerCase().includes(query) ||
+          jobPo.toLowerCase().includes(query)
         );
       })
       .sort(comparePriority);
-  }, [allWorkRequests, jobNameById, schedule, scheduledIds, search]);
+  }, [allWorkRequests, jobNameById, jobPoById, schedule, scheduledIds, search]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>

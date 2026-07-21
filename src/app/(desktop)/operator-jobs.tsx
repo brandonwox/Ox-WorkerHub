@@ -49,6 +49,7 @@ export default function JobsScreen() {
     return topLevelJobs.filter(
       (job) =>
         job.name.toLowerCase().includes(q) ||
+        (job.po ?? '').toLowerCase().includes(q) ||
         (job.location ?? '').toLowerCase().includes(q)
     );
   }, [topLevelJobs, query]);
@@ -99,7 +100,7 @@ export default function JobsScreen() {
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search jobs by name or address…"
+            placeholder="Search jobs by name, PO, or address…"
             placeholderTextColor={colors.textTertiary}
           />
           {query.length > 0 && (
@@ -175,9 +176,17 @@ function JobCard({
       onPress={onOpen}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.name} numberOfLines={2}>
-          {job.name}
-        </Text>
+        <View style={styles.nameWrap}>
+          {/* Jobs broken into sub-jobs read as folders, not standalone
+              jobsites. */}
+          {job.hasSubJobs && (
+            <Text style={styles.masterFolderLabel}>Master Folder</Text>
+          )}
+          <Text style={styles.name} numberOfLines={2}>
+            {job.name}
+            {job.po ? <Text style={styles.poText}>  PO {job.po}</Text> : null}
+          </Text>
+        </View>
         <View
           style={[styles.statusBadge, archived && styles.statusBadgeArchived]}
         >
@@ -314,12 +323,25 @@ const styles = themed(() => StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  name: {
+  nameWrap: {
     flex: 1,
+    gap: 1,
+  },
+  name: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 16,
     lineHeight: 21,
+  },
+  masterFolderLabel: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  poText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
   },
   statusBadge: {
     paddingHorizontal: spacing.sm + 2,

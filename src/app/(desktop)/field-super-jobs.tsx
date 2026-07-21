@@ -62,6 +62,7 @@ export default function FieldSuperJobsScreen() {
     return listJobs.filter(
       (job) =>
         job.name.toLowerCase().includes(q) ||
+        (job.po ?? '').toLowerCase().includes(q) ||
         (job.location ?? '').toLowerCase().includes(q)
     );
   }, [listJobs, query]);
@@ -99,7 +100,7 @@ export default function FieldSuperJobsScreen() {
               style={styles.searchInput}
               value={query}
               onChangeText={setQuery}
-              placeholder="Search jobs by name or address…"
+              placeholder="Search jobs by name, PO, or address…"
               placeholderTextColor={colors.textTertiary}
             />
             {query.length > 0 && (
@@ -146,9 +147,19 @@ export default function FieldSuperJobsScreen() {
                 >
                   <View style={styles.jobCardMain}>
                     <View style={styles.jobCardTitleRow}>
+                      {/* Jobs broken into sub-jobs read as folders, not
+                          standalone jobsites. */}
+                      {job.hasSubJobs && (
+                        <Text style={styles.masterFolderLabel}>
+                          Master Folder
+                        </Text>
+                      )}
                       <Text style={styles.jobName} numberOfLines={1}>
                         {job.name}
                       </Text>
+                      {job.po ? (
+                        <Text style={styles.poText}>PO {job.po}</Text>
+                      ) : null}
                       {job.status === 'Finished' && (
                         <View style={styles.archivedPill}>
                           <Text style={styles.archivedText}>Finished</Text>
@@ -283,6 +294,16 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 15,
+  },
+  masterFolderLabel: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  poText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
   },
   jobLocation: {
     color: colors.textSecondary,

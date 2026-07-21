@@ -10,6 +10,8 @@ import { JOB_SCOPES, JobScope, Worker } from '@/types';
 
 export interface NewJobInput {
   name: string;
+  /** The job's PO number — required at creation, typed next to the name. */
+  po: string;
   location: string;
   qbtJobcodeId?: string;
   fieldSuperIds: string[];
@@ -42,6 +44,7 @@ export function CreateJobModal({
   onSubmit,
 }: Props) {
   const [name, setName] = useState('');
+  const [po, setPo] = useState('');
   const [location, setLocation] = useState('');
   const [qbtJobcodeId, setQbtJobcodeId] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
@@ -50,6 +53,7 @@ export function CreateJobModal({
 
   const reset = () => {
     setName('');
+    setPo('');
     setLocation('');
     setQbtJobcodeId('');
     setScopes([]);
@@ -67,10 +71,15 @@ export function CreateJobModal({
       setError('Job name is required.');
       return;
     }
+    if (!po.trim()) {
+      setError('PO is required.');
+      return;
+    }
     // Operator mode leaves the address to the Field Super; field mode offers
     // it right on the form (still optional — editable later either way).
     onSubmit({
       name: name.trim(),
+      po: po.trim(),
       location: mode === 'field' ? location.trim() : '',
       qbtJobcodeId:
         mode === 'operator' ? qbtJobcodeId.trim() || undefined : undefined,
@@ -92,13 +101,27 @@ export function CreateJobModal({
             </Pressable>
           </View>
 
-          <FormInput
-            label="Job name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Snyderville Commercial Complex"
-            autoCapitalize="words"
-          />
+          {/* Name + PO share the line — both are required to create. */}
+          <View style={styles.nameRow}>
+            <View style={styles.nameCol}>
+              <FormInput
+                label="Job name"
+                value={name}
+                onChangeText={setName}
+                placeholder="Snyderville Commercial Complex"
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.poCol}>
+              <FormInput
+                label="PO"
+                value={po}
+                onChangeText={setPo}
+                placeholder="e.g. 4501"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
           {mode === 'operator' ? (
             <FormInput
               label="QuickBooks Time jobcode ID"
@@ -208,6 +231,16 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 20,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  nameCol: {
+    flex: 2,
+  },
+  poCol: {
+    flex: 1,
   },
   field: {
     gap: spacing.xs + 2,

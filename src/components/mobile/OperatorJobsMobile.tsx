@@ -59,9 +59,19 @@ export function OperatorJobsMobile() {
           return (
             <View style={[styles.card, archived && styles.cardArchived]}>
               <View style={styles.topRow}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {item.name}
-                </Text>
+                <View style={styles.titleWrap}>
+                  {/* Jobs broken into sub-jobs read as folders, not
+                      standalone jobsites. */}
+                  {item.hasSubJobs && (
+                    <Text style={styles.masterFolderLabel}>Master Folder</Text>
+                  )}
+                  <Text style={styles.title} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {item.po ? (
+                    <Text style={styles.poText}>PO {item.po}</Text>
+                  ) : null}
+                </View>
                 <View
                   style={[
                     styles.statusPill,
@@ -175,11 +185,27 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
   },
-  title: {
+  titleWrap: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  title: {
+    flexShrink: 1,
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 15,
+  },
+  masterFolderLabel: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  poText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   statusPill: {
     borderRadius: radii.pill,

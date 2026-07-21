@@ -16,6 +16,8 @@ import { JOB_SCOPES, Job, JobScope } from '@/types';
 
 export interface NewSubJobInput {
   name: string;
+  /** The sub-job's own PO number — required at creation, typed next to the name. */
+  po: string;
   location: string;
   scopes?: JobScope[];
   flashingMaterial?: string;
@@ -39,6 +41,7 @@ interface Props {
  */
 export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const [name, setName] = useState('');
+  const [po, setPo] = useState('');
   const [location, setLocation] = useState<string | null>(null);
   const [scopes, setScopes] = useState<JobScope[] | null>(null);
   const [flashing, setFlashing] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
 
   const reset = () => {
     setName('');
+    setPo('');
     setLocation(null);
     setScopes(null);
     setFlashing(null);
@@ -67,8 +71,13 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
       setError('Sub-job name is required.');
       return;
     }
+    if (!po.trim()) {
+      setError('PO is required.');
+      return;
+    }
     onSubmit({
       name: name.trim(),
+      po: po.trim(),
       location: effectiveLocation.trim(),
       scopes: effectiveScopes.length > 0 ? effectiveScopes : undefined,
       flashingMaterial: effectiveFlashing.trim() || undefined,
@@ -91,23 +100,38 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Sub-job name</Text>
-            {/* The parent's name is a fixed prefix, not typed — the stored
-                name is only what the worker enters after it. */}
-            <View style={styles.nameRow}>
-              <View style={styles.prefixChip}>
-                <Text style={styles.prefixText} numberOfLines={1}>
-                  {parentJob.name}
-                </Text>
+            {/* Name + PO share the line — both are required to create. */}
+            <View style={styles.namePoRow}>
+              <View style={styles.nameCol}>
+                <Text style={styles.fieldLabel}>Sub-job name</Text>
+                {/* The parent's name is a fixed prefix, not typed — the stored
+                    name is only what the worker enters after it. */}
+                <View style={styles.nameRow}>
+                  <View style={styles.prefixChip}>
+                    <Text style={styles.prefixText} numberOfLines={1}>
+                      {parentJob.name}
+                    </Text>
+                  </View>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Lot 2, Phase 3, Building B…"
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                  />
+                </View>
               </View>
-              <TextInput
-                style={styles.nameInput}
-                value={name}
-                onChangeText={setName}
-                placeholder="Lot 2, Phase 3, Building B…"
-                placeholderTextColor={colors.textTertiary}
-                autoFocus
-              />
+              <View style={styles.poCol}>
+                <Text style={styles.fieldLabel}>PO</Text>
+                <TextInput
+                  style={styles.poInput}
+                  value={po}
+                  onChangeText={setPo}
+                  placeholder="e.g. 4501"
+                  placeholderTextColor={colors.textTertiary}
+                />
+              </View>
             </View>
             <Text style={styles.fieldHint}>
               No need to type “{parentJob.name}” — it shows in front of the
@@ -212,6 +236,30 @@ const styles = themed(() =>
       fontFamily: fonts.regular,
       fontSize: 12,
       lineHeight: 17,
+    },
+    namePoRow: {
+      flexDirection: 'row',
+      gap: spacing.lg,
+    },
+    nameCol: {
+      flex: 1,
+      gap: spacing.xs + 2,
+    },
+    poCol: {
+      width: 130,
+      gap: spacing.xs + 2,
+    },
+    poInput: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+      color: colors.textPrimary,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      outlineWidth: 0,
     },
     nameRow: {
       flexDirection: 'row',

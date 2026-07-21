@@ -70,11 +70,16 @@ export function JobPicsList({ onSelectJob }: Props) {
   }, [me, logs, workRequests, jobs, activeShift, jobPhotos, pendingPhotos]);
 
   // Sub-jobs are listed like any job, under their conjoined name ("Vista
-  // Homes Lot 2") — searching either the parent's or the sub-job's name hits.
+  // Homes Lot 2") — searching the parent's name, the sub-job's name, or the
+  // job's PO hits.
   const results = useMemo(() => {
     if (!query) return byRecency;
     return jobs
-      .filter((job) => jobDisplayName(job, jobs).toLowerCase().includes(query))
+      .filter(
+        (job) =>
+          jobDisplayName(job, jobs).toLowerCase().includes(query) ||
+          (job.po ?? '').toLowerCase().includes(query)
+      )
       .sort((a, b) =>
         jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs))
       );
@@ -92,7 +97,7 @@ export function JobPicsList({ onSelectJob }: Props) {
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search any job by name…"
+          placeholder="Search any job by name or PO…"
           placeholderTextColor={colors.textTertiary}
           autoCapitalize="none"
           autoCorrect={false}
@@ -135,9 +140,19 @@ export function JobPicsList({ onSelectJob }: Props) {
               >
                 <View style={styles.rowMain}>
                   <View style={styles.rowTitleWrap}>
+                    {/* Jobs broken into sub-jobs read as folders, not
+                        standalone jobsites. */}
+                    {job.hasSubJobs && (
+                      <Text style={styles.masterFolderLabel}>
+                        Master Folder
+                      </Text>
+                    )}
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {jobDisplayName(job, jobs)}
                     </Text>
+                    {job.po ? (
+                      <Text style={styles.poText}>PO {job.po}</Text>
+                    ) : null}
                     {job.status === 'Finished' && (
                       <View style={styles.archivedPill}>
                         <Text style={styles.archivedText}>Finished</Text>
@@ -232,6 +247,16 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 15,
+  },
+  masterFolderLabel: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  poText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   rowSub: {
     color: colors.textSecondary,

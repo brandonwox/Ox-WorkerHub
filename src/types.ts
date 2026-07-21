@@ -72,6 +72,13 @@ export interface Job {
   name: string;
   /** Jobsite address / location. */
   location: string;
+  /**
+   * The job's PO number, typed by the creator at creation (required there;
+   * legacy jobs may lack one). Shown alongside the job name in lists and
+   * detail headers, and matched by every search that matches job names.
+   * Office-edited afterwards (Operator / Field Supers; DB guards match).
+   */
+  po?: string;
   status: JobStatus;
   /**
    * Set when this job is a SUB-JOB: a piece of the referenced parent job.

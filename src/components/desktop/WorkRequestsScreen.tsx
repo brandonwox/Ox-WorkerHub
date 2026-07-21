@@ -146,6 +146,12 @@ export function WorkRequestsScreen({
   }, [jobs]);
   const jobNameFor = (jobId?: string) =>
     (jobId && nameById.get(jobId)) || 'Unlinked job';
+  // Job POs match the search too (anywhere job names do).
+  const poById = useMemo(() => {
+    const map = new Map<string, string>();
+    jobs.forEach((j) => j.po && map.set(j.id, j.po));
+    return map;
+  }, [jobs]);
 
   // Distinct priorities present, ordered presets-first then alphabetical.
   const priorities = useMemo(() => {
@@ -165,7 +171,8 @@ export function WorkRequestsScreen({
     const q = search.trim().toLowerCase();
     return workRequests.filter((card) => {
       if (q) {
-        const hay = `${card.title} ${jobNameFor(card.jobId)}`.toLowerCase();
+        const po = (card.jobId && poById.get(card.jobId)) || '';
+        const hay = `${card.title} ${jobNameFor(card.jobId)} ${po}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (
@@ -179,7 +186,7 @@ export function WorkRequestsScreen({
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workRequests, search, selectedPriorities, schedule, scheduledIds, nameById]);
+  }, [workRequests, search, selectedPriorities, schedule, scheduledIds, nameById, poById]);
 
   // Group the filtered cards by parent job (only when toggled on).
   const groups = useMemo(() => {

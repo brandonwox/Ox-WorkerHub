@@ -5,6 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormInput } from '@/components/FormInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { updatePassword } from '@/integrations/supabase';
+import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { initialsOf } from '@/utils/initials';
@@ -66,12 +67,12 @@ export function SettingsContent() {
         </View>
         <View style={styles.profileInfo}>
           <Text style={styles.profileName}>{user.name}</Text>
-          <Text style={styles.profileRole}>
-            {user.installerType ?? user.tradeRole}
-          </Text>
-          <Text style={styles.profileRate}>
-            {formatMoney(user.hourlyRate)}/hr
-          </Text>
+          <Text style={styles.profileRole}>{ROLE_LABELS[user.role]}</Text>
+          {user.role === 'installer' && (
+            <Text style={styles.profileRate}>
+              {formatMoney(user.hourlyRate)}/hr
+            </Text>
+          )}
         </View>
       </View>
 

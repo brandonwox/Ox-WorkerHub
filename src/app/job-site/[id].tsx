@@ -52,7 +52,9 @@ const defaultSectionFor = (job?: Job): SectionKey =>
 
 /**
  * A parent Job's page: centered cover photo + header, section cards
- * (Issues / Documents / Work Requests — one open at a time), and the photo wall.
+ * (Issues / Documents / Work Requests — one section open at a time; every
+ * card stays visible, the active one carries an accent border), and the
+ * photo wall.
  * Installers open it from the Jobs tab. Capture/upload float at the bottom as
  * icon buttons (no live camera on web — upload only there).
  */
@@ -205,9 +207,12 @@ export default function JobSiteScreen() {
 
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
-  // Sub-Jobs list: name-only search, then collapse to 3 unless expanded.
-  const filteredSubJobs = subJobs.filter((s) =>
-    s.name.toLowerCase().includes(subJobSearch.trim().toLowerCase())
+  // Sub-Jobs list: name/PO search, then collapse to 3 unless expanded.
+  const subJobQuery = subJobSearch.trim().toLowerCase();
+  const filteredSubJobs = subJobs.filter(
+    (s) =>
+      s.name.toLowerCase().includes(subJobQuery) ||
+      (s.po ?? '').toLowerCase().includes(subJobQuery)
   );
   const visibleSubJobs = subJobsExpanded
     ? filteredSubJobs
@@ -304,22 +309,26 @@ export default function JobSiteScreen() {
         </Pressable>
 
         {/* Centered header: name, tappable location, Field Supers. A sub-job
-            leads with its parent's name as a link back to the parent. */}
+            leads with its parent's name (a link back to the parent) on the
+            SAME line as its own name, separated by a dot. */}
         <View style={styles.header}>
-          {parentJob && (
-            <Pressable
-              hitSlop={6}
-              onPress={() =>
-                router.push({
-                  pathname: '/job-site/[id]',
-                  params: { id: parentJob.id },
-                })
-              }
-            >
-              <Text style={styles.parentLink}>{parentJob.name}</Text>
-            </Pressable>
-          )}
           <View style={styles.titleRow}>
+            {parentJob && (
+              <>
+                <Pressable
+                  hitSlop={6}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/job-site/[id]',
+                      params: { id: parentJob.id },
+                    })
+                  }
+                >
+                  <Text style={styles.parentLink}>{parentJob.name}</Text>
+                </Pressable>
+                <Text style={styles.titleDot}>·</Text>
+              </>
+            )}
             <Text style={styles.title}>{job.name}</Text>
             {job.status === 'Finished' && (
               <View style={styles.archivedPill}>
@@ -327,6 +336,8 @@ export default function JobSiteScreen() {
               </View>
             )}
           </View>
+          {/* The job's PO, right under the name (smaller than the name). */}
+          {job.po ? <Text style={styles.poLine}>PO {job.po}</Text> : null}
           <Pressable
             style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
             onPress={() => job.location && setMapsOpen(true)}
@@ -365,26 +376,26 @@ export default function JobSiteScreen() {
           <LayoutPlanBanner job={job} kind="mirror" />
         </View>
 
-        {/* Section cards — the active one hides its button and shows below. */}
+        {/* Section cards — every card stays visible; the active one is
+            highlighted with an accent border and its section shows below. */}
         <View style={styles.cardsRow}>
-          {sectionCards
-            .filter((card) => card.key !== section)
-            .map((card) => (
-              <Pressable
-                key={card.key}
-                style={({ pressed }) => [
-                  styles.sectionCard,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => setSection(card.key)}
-              >
-                <View style={[styles.sectionIcon, { backgroundColor: card.dim }]}>
-                  <Feather name={card.icon} size={17} color={card.tint} />
-                </View>
-                <Text style={styles.sectionLabel}>{card.label}</Text>
-                <Text style={styles.sectionSub}>{card.sub}</Text>
-              </Pressable>
-            ))}
+          {sectionCards.map((card) => (
+            <Pressable
+              key={card.key}
+              style={({ pressed }) => [
+                styles.sectionCard,
+                card.key === section && styles.sectionCardActive,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => setSection(card.key)}
+            >
+              <View style={[styles.sectionIcon, { backgroundColor: card.dim }]}>
+                <Feather name={card.icon} size={17} color={card.tint} />
+              </View>
+              <Text style={styles.sectionLabel}>{card.label}</Text>
+              <Text style={styles.sectionSub}>{card.sub}</Text>
+            </Pressable>
+          ))}
         </View>
 
         {section === 'issues' && (
@@ -511,7 +522,7 @@ export default function JobSiteScreen() {
                   style={styles.searchInput}
                   value={subJobSearch}
                   onChangeText={setSubJobSearch}
-                  placeholder="Search sub-jobs by name…"
+                  placeholder="Search sub-jobs by name or PO…"
                   placeholderTextColor={colors.textTertiary}
                 />
               </View>
@@ -540,9 +551,11 @@ export default function JobSiteScreen() {
                       <Text style={styles.workRequestTitle} numberOfLines={1}>
                         {sub.name}
                       </Text>
-                      {sub.location ? (
+                      {sub.po || sub.location ? (
                         <Text style={styles.workRequestMeta} numberOfLines={1}>
-                          {sub.location}
+                          {[sub.po ? `PO ${sub.po}` : '', sub.location]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </Text>
                       ) : null}
                     </View>
@@ -811,14 +824,27 @@ const styles = themed(() => StyleSheet.create({
   parentLink: {
     color: colors.primary,
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 16,
     textAlign: 'center',
+  },
+  titleDot: {
+    color: colors.textTertiary,
+    fontFamily: fonts.bold,
+    fontSize: 18,
   },
   titleRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
+    maxWidth: '92%',
+  },
+  poLine: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    textAlign: 'center',
   },
   title: {
     flexShrink: 1,
@@ -869,6 +895,9 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.lg,
     padding: spacing.md,
     gap: spacing.xs + 2,
+  },
+  sectionCardActive: {
+    borderColor: colors.primary,
   },
   sectionIcon: {
     width: 38,

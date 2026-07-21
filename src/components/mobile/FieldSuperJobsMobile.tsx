@@ -134,17 +134,20 @@ function CreateJobSheet({
   onClose: () => void;
   onSubmit: (input: {
     name: string;
+    po: string;
     location: string;
     scopes?: JobScope[];
   }) => void;
 }) {
   const [name, setName] = useState('');
+  const [po, setPo] = useState('');
   const [location, setLocation] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const close = () => {
     setName('');
+    setPo('');
     setLocation('');
     setScopes([]);
     setError(null);
@@ -163,8 +166,13 @@ function CreateJobSheet({
       setError('Job name is required.');
       return;
     }
+    if (!po.trim()) {
+      setError('PO is required.');
+      return;
+    }
     onSubmit({
       name: name.trim(),
+      po: po.trim(),
       location: location.trim(),
       scopes: scopes.length > 0 ? scopes : undefined,
     });
@@ -183,13 +191,27 @@ function CreateJobSheet({
             </Pressable>
           </View>
 
-          <FormInput
-            label="Job name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Snyderville Commercial Complex"
-            autoCapitalize="words"
-          />
+          {/* Name + PO share the line — both are required to create. */}
+          <View style={styles.namePoRow}>
+            <View style={styles.nameCol}>
+              <FormInput
+                label="Job name"
+                value={name}
+                onChangeText={setName}
+                placeholder="Snyderville Commercial Complex"
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.poCol}>
+              <FormInput
+                label="PO"
+                value={po}
+                onChangeText={setPo}
+                placeholder="e.g. 4501"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
           <FormInput
             label="Jobsite address"
             value={location}
@@ -337,9 +359,17 @@ function JobRow({
             router.push({ pathname: '/job-site/[id]', params: { id: job.id } })
           }
         >
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {job.name}
-          </Text>
+          <View style={styles.cardTitleRow}>
+            {/* Jobs broken into sub-jobs read as folders, not standalone
+                jobsites. */}
+            {job.hasSubJobs && (
+              <Text style={styles.masterFolderLabel}>Master Folder</Text>
+            )}
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {job.name}
+            </Text>
+            {job.po ? <Text style={styles.poText}>PO {job.po}</Text> : null}
+          </View>
           <Text style={styles.cardSub} numberOfLines={1}>
             {counts.total} {counts.total === 1 ? 'work request' : 'work requests'} ·{' '}
             {counts.scheduled} on calendar
@@ -492,10 +522,26 @@ const styles = themed(() => StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   cardTitle: {
+    flexShrink: 1,
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 15,
+  },
+  masterFolderLabel: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  poText: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   cardSub: {
     color: colors.textSecondary,
@@ -555,6 +601,16 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 18,
+  },
+  namePoRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  nameCol: {
+    flex: 2,
+  },
+  poCol: {
+    flex: 1,
   },
   scopeField: {
     gap: spacing.sm,

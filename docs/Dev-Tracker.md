@@ -4,7 +4,13 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+"Service" should not be a role.
+
+scheduler role and field super role should both be able to delete or create jobs, subjobs, and work requests. For jobs (and subjobs) the delete button should be in the options popup.  
+
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
+
+improve the notifications system. Right now the notification dropdown seems like it could use a lot of improvements. (find weakspots or missing functionality, and make a list. Also look at what notifications we should set up (right now we have some good notifications like when a work request changes priority to Now. But we need to make a list of more notifications that I can decide yes or no to.))
 
 manage crews -> permanent crews: an installer can only be selected for one crew at a time, and must be deselected from their current crew if the scheduler wants to assign them to another crew.
 
@@ -15,18 +21,6 @@ web users -> the settings page should not show up in the left sidebar. accessing
 add small radius drop shadow around popups in web view, such as when a scheduler opens a jobcard popup (there should be a box/drop shadow around the popup, just dont make it too big or too strong.)
 
 make sure the field super is shown on the jobcard. (installers don't see the field super for the jobcard.) (also make so field supers phone numbers are required for the field super to operate.) (the field super's phone number should be shown on the same line as the field supers name).
-
-job details page: rather than having the active section not show as a card, keep all section cards showing at all times, the active section should still remain as a card and also show its section, and rather than hiding the card, highlight it. which means Issues, Jobcards, Subjobs, documents, should all show no matter what, and whatever one is active shows with an active border. This should also work the same for subjob details pages: show each card "Documents", "Issues", and "Jobcards" at all times, don't hide the section card just because the section is showing, just add an active border.
-
-on job and subjob creation: there should be an input for "PO" (it should be on the same line as the name input field when creating the job.) This way the creator of the job has to type the name of the job and the PO of the job. (PO's can be used for search inputs any time the search is used for job names.) 
-
-jobs pages (the page that show the list of each job):
-- any time it shows a job that has the "this job has subjobs" activated: that job should have a label in front of the job name that says "Master Folder". the label should be a faded color, and possible a different font weight. (This is so our workers can differentiate fron jobs that operate alone, or jobs with subjobs.)
-- also show the PO for the job or subjob in the list.
-
-job details page:
-- show the job PO underneath the job name (make it smaller than the job name)
-- subjob detaials page: right now the parent job name is above the subjob name, can you put them on the same line and add a dot between them.
 
 Window Layout Plans: when selecting from the options "upload image", "choose from job images" and "choose from job documents", they should all have hover states so users know they're clickable.
 
@@ -69,6 +63,13 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 4 — PO numbers + job pages overhaul (REQUIRES: apply the new job-po Supabase migration — the app reads/writes the new jobs.po column):
+- PO ON CREATION: every job and sub-job creation form (operator create, scheduler/field-super web create, field-super mobile create sheet, and the New Sub-Job modal) has a required "PO" input on the same line as the name — creation is blocked until both are typed. The Operator's Edit job popup can fix a PO afterwards (name + PO share the line there too). DB guards: installers, schedulers, and finance managers can't change a PO after creation (schedulers still create jobs WITH one); Operators and Field Supers can.
+- PO IN SEARCH: every search that matches job names now matches POs too — the operator/scheduler/field-super web jobs pages, the sub-job searches (web sidebar + mobile job details), the installer Jobs tab, and the work-request searches that match parent job names (desktop Work Requests screen + field-super mobile). Placeholders updated to say PO.
+- JOBS LISTS: rows on every job list (web jobs pages, operator/field-super mobile lists, installer Jobs tab, finance manager cards, and the Sub-Jobs sections' rows) show the job's PO in a faded style, and any job with "This job has Sub-Jobs" active leads with a faded, lighter-weight "Master Folder" label in front of its name.
+- JOB DETAILS HEADERS (mobile page + web sidebar): the PO shows directly under the job name, smaller than the name. On a sub-job's details, the parent job's name (still a link back to the parent) now sits on the SAME line as the sub-job's name with a dot between them, instead of stacked above.
+- SECTION CARDS: on job and sub-job details (mobile + web sidebar), the active section's card no longer hides — all cards (Sub-Jobs / Issues / Documents / Work Requests) stay visible at all times and the active one is highlighted with an accent border; its section still renders below, one at a time.
 
 Pass 3 — Unified scopes + counts for every scope + videos/SGD tagging + Pictures filters (REQUIRES: apply the new scopes-counts-videos Supabase migration, and run npm install after pulling — adds expo-video):
 - SCOPES: the selectable set is now Windows, Mirrors, Showers, Swing Doors, Screens, IGU's, Storefront, Service — the SAME list everywhere (jobs, sub-jobs, work requests; the planned "work-request-only" split was dropped by decision). 'Showerglass Door' was renamed to 'Showers' (legacy rows are mapped on read and rewritten by the migration). 'Service' predates this pass and was kept.

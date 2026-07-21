@@ -17,7 +17,7 @@ import { inviteWorker } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { AppRole, INSTALLER_TYPES, InstallerType, Worker } from '@/types';
+import { AppRole, Worker } from '@/types';
 
 const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
   value,
@@ -26,12 +26,6 @@ const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
 
 /** Order the per-role tables are stacked in on the People screen. */
 const ROLE_ORDER = Object.keys(ROLE_LABELS) as AppRole[];
-
-/** Installer-type picker options, with a placeholder for "not yet set". */
-const INSTALLER_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Set type…' },
-  ...INSTALLER_TYPES.map((value) => ({ value, label: value })),
-];
 
 export default function PeopleScreen() {
   const role = useCurrentRole();
@@ -123,9 +117,6 @@ export default function PeopleScreen() {
               members={members}
               onSetRole={setWorkerRole}
               onSetRate={setWorkerRate}
-              onSetInstallerType={(id, installerType) =>
-                updateWorker(id, { installerType })
-              }
               onEdit={setEditing}
             />
           );
@@ -154,14 +145,12 @@ function RoleTable({
   members,
   onSetRole,
   onSetRate,
-  onSetInstallerType,
   onEdit,
 }: {
   role: AppRole;
   members: Worker[];
   onSetRole: (id: string, role: AppRole) => void;
   onSetRate: (id: string, rate: number) => void;
-  onSetInstallerType: (id: string, type: InstallerType | undefined) => void;
   onEdit: (worker: Worker) => void;
 }) {
   const isInstaller = role === 'installer';
@@ -200,21 +189,6 @@ function RoleTable({
                 onChange={(next) => onSetRole(worker.id, next)}
                 minWidth={140}
               />
-              {isInstaller && (
-                <View style={styles.installerTypeWrap}>
-                  <InlineSelect
-                    value={worker.installerType ?? ''}
-                    options={INSTALLER_TYPE_OPTIONS}
-                    onChange={(value) =>
-                      onSetInstallerType(
-                        worker.id,
-                        (value || undefined) as InstallerType | undefined
-                      )
-                    }
-                    minWidth={140}
-                  />
-                </View>
-              )}
             </View>
 
             <View style={[styles.cell, styles.colRate]}>
@@ -376,9 +350,6 @@ const styles = themed(() => StyleSheet.create({
   colRole: {
     flex: 2,
     gap: spacing.sm,
-  },
-  installerTypeWrap: {
-    alignSelf: 'flex-start',
   },
   colRate: {
     flex: 2,
