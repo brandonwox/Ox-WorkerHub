@@ -60,10 +60,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
     [dailyCrews, crews, dateKey]
   );
 
-  const crewColors = useMemo(
-    () => buildCrewColorMap(dayCrews.map((c) => c.id)),
-    [dayCrews]
-  );
+  const crewColors = useMemo(() => buildCrewColorMap(dayCrews), [dayCrews]);
 
   const jobNameFor = (card: WorkRequest) =>
     workRequestJobsLabel(card, jobs) || 'No parent job';

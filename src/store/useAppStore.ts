@@ -70,6 +70,21 @@ function onlyInstallerIds(workers: Worker[], ids: string[]): string[] {
 }
 
 /**
+ * Every crew list in the app stays alphabetical — the DB fetch has no ORDER BY
+ * (arbitrary order was why lists "got unorganized"), so the store sorts at
+ * every point crews enter state. This also makes the automatic palette color
+ * (keyed by list position) stable.
+ */
+function sortCrews(list: Crew[]): Crew[] {
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+function sortDailyCrews(list: DailyCrew[]): DailyCrew[] {
+  return [...list].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.date.localeCompare(b.date)
+  );
+}
+
+/**
  * Write-through is active only for a real, non-Developer session. Dev mode (no
  * auth) and a signed-in Developer (who has no RLS write grants) both stay local.
  */
@@ -240,6 +255,7 @@ const pendingPhotoNotes = new Map<string, number>();
 const pendingWorkRequestTaskWrites = new Map<string, number>();
 const pendingDocumentInserts = new Map<string, number>();
 const pendingDocumentUpdates = new Map<string, number>();
+const pendingDocumentDeletes = new Map<string, number>();
 
 const GUARD_MAPS = {
   issueUpsert: pendingIssueUpserts,
@@ -248,6 +264,7 @@ const GUARD_MAPS = {
   workRequestTasks: pendingWorkRequestTaskWrites,
   documentInsert: pendingDocumentInserts,
   documentUpdate: pendingDocumentUpdates,
+  documentDelete: pendingDocumentDeletes,
 } as const;
 
 /** Which guard map a queued op holds a row in (serialized with the op). */
@@ -316,6 +333,14 @@ const OUTBOX_EXECUTORS = {
   insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
   updateJobDocumentType: (p: { id: string; docType?: JobDocumentType }) =>
     backend.updateJobDocumentType(p.id, p.docType),
+  updateJobDocument: (p: {
+    id: string;
+    title: string;
+    body?: string;
+    docType?: JobDocumentType;
+  }) => backend.updateJobDocument(p),
+  deleteJobDocument: (p: { id: string; storagePath?: string }) =>
+    backend.deleteJobDocument(p.id, p.storagePath),
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
@@ -992,6 +1017,20 @@ interface AppState {
    * layout plan). Queues offline like other metadata writes.
    */
   setJobDocumentType: (id: string, docType: JobDocumentType | undefined) => void;
+  /**
+   * Edit a document's title / body (text kind) / type tag. Queues offline.
+   * RLS: the creator, the Operator, or a Field Super scoped to the job.
+   */
+  updateJobDocument: (
+    id: string,
+    patch: { title: string; body?: string; docType?: JobDocumentType }
+  ) => void;
+  /**
+   * Delete a document (and its storage file, best-effort). Queues offline.
+   * Deleting a job's last layout-plan document brings its warning back on its
+   * own (the banner derives from the live document list).
+   */
+  deleteJobDocument: (id: string) => void;
 
   // --- Job issues ---
   /**
@@ -1187,8 +1226,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       workers: seed.mockWorkers,
       jobs: seed.mockJobs,
       workRequests: seed.mockWorkRequests,
-      crews: seed.mockCrews,
-      dailyCrews: seed.mockDailyCrews,
+      crews: sortCrews(seed.mockCrews),
+      dailyCrews: sortDailyCrews(seed.mockDailyCrews),
       assignments: seed.mockAssignments,
       calendarEvents: seed.mockCalendarEvents,
       logs: seed.mockLogs,
@@ -1222,8 +1261,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           workers: cached.workers,
           jobs: cached.jobs,
           workRequests: cached.workRequests,
-          crews: cached.crews,
-          dailyCrews: cached.dailyCrews,
+          crews: sortCrews(cached.crews),
+          dailyCrews: sortDailyCrews(cached.dailyCrews),
           assignments: cached.assignments,
           calendarEvents: cached.calendarEvents ?? [],
           logs: cached.logs,
@@ -1244,8 +1283,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         workers: data.workers,
         jobs: data.jobs,
         workRequests: data.workRequests,
-        crews: data.crews,
-        dailyCrews: data.dailyCrews,
+        crews: sortCrews(data.crews),
+        dailyCrews: sortDailyCrews(data.dailyCrews),
         assignments: data.assignments,
         calendarEvents: data.calendarEvents,
         logs: data.logs,
@@ -1340,8 +1379,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
           : card
       ),
-      crews: data.crews,
-      dailyCrews: data.dailyCrews,
+      crews: sortCrews(data.crews),
+      dailyCrews: sortDailyCrews(data.dailyCrews),
       assignments: data.assignments,
       calendarEvents: data.calendarEvents,
       logs: data.logs,
@@ -1353,18 +1392,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         return local ? { ...photo, note: local.note } : photo;
       }),
       // Documents with a queued insert survive refreshes that predate them;
-      // ones with a queued update (retag) keep their local shape.
+      // ones with a queued update (retag/edit) keep their local shape, and
+      // ones with a queued delete stay gone.
       jobDocuments: [
         ...state.jobDocuments.filter(
           (doc) =>
             pendingDocumentInserts.has(doc.id) &&
             !data.jobDocuments.some((f) => f.id === doc.id)
         ),
-        ...data.jobDocuments.map((doc) => {
-          if (!pendingDocumentUpdates.has(doc.id)) return doc;
-          const local = state.jobDocuments.find((d) => d.id === doc.id);
-          return local ?? doc;
-        }),
+        ...data.jobDocuments
+          .filter((doc) => !pendingDocumentDeletes.has(doc.id))
+          .map((doc) => {
+            if (!pendingDocumentUpdates.has(doc.id)) return doc;
+            const local = state.jobDocuments.find((d) => d.id === doc.id);
+            return local ?? doc;
+          }),
       ],
       // Issues with unsettled writes keep their local shape: pending deletes
       // stay gone, pending inserts/updates keep the local row (including ones
@@ -1913,7 +1955,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   addCrew: (crew) => {
     const state = get();
     const isBackend = backendActive(state);
-    const installerIds = onlyInstallerIds(state.workers, crew.installerIds);
+    // One permanent crew per installer: ids already on another crew are
+    // dropped (the UI blocks picking them; this + a DB unique index are the
+    // backstops). Daily crews are exempt.
+    const takenElsewhere = new Set(state.crews.flatMap((c) => c.installerIds));
+    const installerIds = onlyInstallerIds(
+      state.workers,
+      crew.installerIds
+    ).filter((wid) => !takenElsewhere.has(wid));
     const created: Crew = {
       ...crew,
       id: crew.id ?? (isBackend ? uuid() : `crew-${nextCrewId++}`),
@@ -1924,32 +1973,46 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? crew.foremanId
           : undefined,
     };
-    set({ crews: [...state.crews, created] });
+    set({ crews: sortCrews([...state.crews, created]) });
     if (isBackend) write('insertCrew', created);
     return created;
   },
 
   updateCrew: (id, changes) => {
     let updated: Crew | undefined;
-    set((state) => ({
-      crews: state.crews.map((crew) => {
-        if (crew.id !== id) return crew;
-        const merged: Crew = {
-          ...crew,
-          ...changes,
-          installerIds: changes.installerIds
-            ? onlyInstallerIds(state.workers, changes.installerIds)
-            : crew.installerIds,
-        };
-        // A foreman who leaves the crew loses the tag (the UI then demands a
-        // replacement — every permanent crew needs exactly one).
-        if (merged.foremanId && !merged.installerIds.includes(merged.foremanId)) {
-          merged.foremanId = undefined;
-        }
-        updated = merged;
-        return updated;
-      }),
-    }));
+    set((state) => {
+      // One permanent crew per installer — same backstop as addCrew, against
+      // every OTHER crew's membership.
+      const takenElsewhere = new Set(
+        state.crews.filter((c) => c.id !== id).flatMap((c) => c.installerIds)
+      );
+      return {
+        crews: sortCrews(
+          state.crews.map((crew) => {
+            if (crew.id !== id) return crew;
+            const merged: Crew = {
+              ...crew,
+              ...changes,
+              installerIds: changes.installerIds
+                ? onlyInstallerIds(state.workers, changes.installerIds).filter(
+                    (wid) => !takenElsewhere.has(wid)
+                  )
+                : crew.installerIds,
+            };
+            // A foreman who leaves the crew loses the tag (the UI then demands a
+            // replacement — every permanent crew needs exactly one).
+            if (
+              merged.foremanId &&
+              !merged.installerIds.includes(merged.foremanId)
+            ) {
+              merged.foremanId = undefined;
+            }
+            updated = merged;
+            return updated;
+          })
+        ),
+      };
+    });
     if (backendActive(get()) && updated) write('updateCrew', updated);
   },
 
@@ -1966,7 +2029,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: crew.id ?? (isBackend ? uuid() : `dc-${nextDailyCrewId++}`),
       installerIds: onlyInstallerIds(state.workers, crew.installerIds),
     };
-    set({ dailyCrews: [...state.dailyCrews, created] });
+    set({ dailyCrews: sortDailyCrews([...state.dailyCrews, created]) });
     if (isBackend) write('insertDailyCrew', created);
     return created;
   },
@@ -1974,17 +2037,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateDailyCrew: (id, changes) => {
     let updated: DailyCrew | undefined;
     set((state) => ({
-      dailyCrews: state.dailyCrews.map((crew) => {
-        if (crew.id !== id) return crew;
-        updated = {
-          ...crew,
-          ...changes,
-          installerIds: changes.installerIds
-            ? onlyInstallerIds(state.workers, changes.installerIds)
-            : crew.installerIds,
-        };
-        return updated;
-      }),
+      dailyCrews: sortDailyCrews(
+        state.dailyCrews.map((crew) => {
+          if (crew.id !== id) return crew;
+          updated = {
+            ...crew,
+            ...changes,
+            installerIds: changes.installerIds
+              ? onlyInstallerIds(state.workers, changes.installerIds)
+              : crew.installerIds,
+          };
+          return updated;
+        })
+      ),
     }));
     if (backendActive(get()) && updated) write('updateDailyCrew', updated);
   },
@@ -2477,6 +2542,46 @@ export const useAppStore = create<AppState>((set, get) => ({
         'updateJobDocumentType',
         { id, docType },
         { map: 'documentUpdate', id }
+      );
+    }
+  },
+
+  updateJobDocument: (id, patch) => {
+    const title = patch.title.trim();
+    if (!title) return;
+    set((s) => ({
+      jobDocuments: s.jobDocuments.map((doc) =>
+        doc.id === id
+          ? {
+              ...doc,
+              title,
+              body: doc.kind === 'text' ? patch.body : doc.body,
+              docType: patch.docType,
+            }
+          : doc
+      ),
+    }));
+    if (backendActive(get())) {
+      const doc = get().jobDocuments.find((d) => d.id === id);
+      write(
+        'updateJobDocument',
+        { id, title, body: doc?.body, docType: patch.docType },
+        { map: 'documentUpdate', id }
+      );
+    }
+  },
+
+  deleteJobDocument: (id) => {
+    const doc = get().jobDocuments.find((d) => d.id === id);
+    if (!doc) return;
+    set((s) => ({
+      jobDocuments: s.jobDocuments.filter((d) => d.id !== id),
+    }));
+    if (backendActive(get())) {
+      write(
+        'deleteJobDocument',
+        { id, storagePath: doc.storagePath },
+        { map: 'documentDelete', id }
       );
     }
   },

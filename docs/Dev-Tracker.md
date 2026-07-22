@@ -4,6 +4,17 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+i noticed the mobile keyboard doesn't have a button to hide the mobile keyboard, are we able to add one?
+
+mobile (installer):
+- open work request: the top of the work request has a shadow above it. remove that shadow and any other border.
+- calendar (e.g. viewing the schedule for the day): each work request shown to me for the day should show the PO directly above the work request title. directly below we can leave the address, but remove the materials needed, and replace it with the notes. (it should all still get cut off and stay on one line, no wrapping to new lines (as it is))
+- in light mode: viewing the daily schedule: the bg color of the work request cards in the schedule list is the same as the bg color behind them. can you make it slightly darker. (but do not affect the bg color of the work requests when they're open)
+- in work requests: clicking the location should open a menu to open the location in any installed maps apps (I thought this functionality was already implemented, is it not?)
+- when inside an open work request I want to be able to swipe down to close the work request (right now I have to click the x button to close it, but i also want to be able to swipe down)
+
+scheduler-calendar: get rid of events. (Do not touch the work requests or anything else, only the event feature.)
+
 work requests need to be able to be assigned across multiple days. (it cannot be split up(the 10th and the 12th), but it can be stretched (the 10th to the 12th)). when the scheduler drags and drops the work request to a new location, the work request remembers its length (if the work request spanned 5 days, it stays that way where it was moved to.) (visually it should overlap the borders of the days on the calendars.) (I will attach a screenshot of a good visual example of this from google calendar) (This edit needs to be done soon. ask for a screenshot if and when you plan this edit.)
 
 when the scheduler clicks and drags to move work requests it selects stuff all over (can we fix that?)
@@ -19,7 +30,7 @@ job details page -> The additional info section that is only accessible from the
 we have a problem: when a scheduler creates a job, they can't assign it to a field super. (allow them to assign field supers.) (this is also part of a bigger problem where sometimes a field super will need to see a jobcard for a job they're not assigned to. I'm thinking we should have a toggle in the field-super-jobs page that allows them to view all jobs. viewing a job they're not assigned to there should be a button to allow them to assign themselves. and the list of jobs on the field-super-jobs page should show the field supers assigned to that job (if that toggle is on.)) (this changes our old rule against having only one field super per job. The first field super assigned to a job should be the name that appears in the job details, unless that field super is no longer assigned to the job, then it should be the runner up.)
 
 - When enabling "This job has Sub-Jobs" the user must also choose from "Lots", "Phases, "Bldgs", or custom. (this will be used in subjob name creation, see next step to this edit)
-- When creating a subjob: it should show the parent job name (same as it does), then it should show the subjob type that was saved (e.g. "Lot", "Phase", "Bldg", or the custom entry.), then it should show the input field to type the subjob name. The subjob name becomes the subjob type + the entered subjob name. if the type was "Lots" and they entered "159", then the subjob name becomes "Lot 159" (remove the "s" from "Lots" and the other terms.)
+- When creating a subjob: it should show the parent job name (same as it does currently), then it should show the subjob type that was saved for subjobs (e.g. "Lot", "Phase", "Bldg", or the custom entry.), then it should show the input field to type the subjob name. The subjob name becomes the subjob type + the entered subjob name. if the type was "Lots" and they entered "159", then the subjob name becomes "Lot 159" (remove the "s" from "Lots" and the other terms.)
 - change the fake "Lot 2, Phase 3, Building B..." text accordingly. (shown in the input field until the user starts typing): it should say something like "Which lot is this?" or "Which phase is this?"
 
 "Service" should not be a scope.
@@ -29,8 +40,6 @@ events on the calendar should be drag and droppable, and if created from the "+ 
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
 
 improve the notifications system. Right now the notification dropdown seems like it could use a lot of improvements. (find weakspots or missing functionality, and make a list. Also look at what notifications we should set up (right now we have some good notifications like when a work request changes priority to Now. But we need to make a list of more notifications that I can decide yes or no to.))
-
-manage crews -> permanent crews: an installer can only be selected for one crew at a time, and must be deselected from their current crew if the scheduler wants to assign them to another crew.
 
 in the notifications section: i try to hover over a notification and click on the x button to dismiss the notification and delete it, but the x button disappears whenever i get close.
 
@@ -42,25 +51,9 @@ add small radius drop shadow around popups in web view, such as when a scheduler
 
 make sure the field super is shown on the jobcard. (installers don't see the field super for the jobcard.) (also make so field supers phone numbers are required for the field super to operate.) (the field super's phone number should be shown on the same line as the field supers name).
 
-Window Layout Plans: when selecting from the options "upload image", "choose from job images" and "choose from job documents", they should all have hover states so users know they're clickable.
-
-the "window layout plans not necessary" text needs to change color on hover so users know it can be clicked.
-
-documents should be editable, and deleteable. (if all window layout plans are deleted, show the warning again(unless the warning was dismissed in the first place(e.g. the "window layout plans not necessary" button)))
-
-got this message "Document upload failed — check your signal and retry" when trying to select an image for the window layout plans image.
-
-when choosing a job image for the window layout plans make the images larger, they're too small.
-
-the plus button on the right of the "The installers need an image of the window layout." warning is way too big, and get rid of the blue background, just add a neutral color border with rounded corners.
-
 make the speech to text work for mobile users. (add mic button in text sections, especially for image notes.) use lucide Mic icon.
 
 Not every single change needs to display the "Changes Saved" notification. can you organize which changes should display it and which should not?
-
-installers can only be on one crew at a time (one installer cannot be assigned to crew a and crew b.) the only acception are daily crews. an installer can only ever be on a single crew, but can be on any amount of daily crews (along with their regular crew.) (I thought this was already working, but its not.)
-
-Daily crew names can be up to 10 characters (doesnt limit to a single letter). (regular crews names should still only be a single letter).
 
 use font Poppins for everything aside from the "WorkerHub" text in the header. here's the import code:
 ```
@@ -83,6 +76,19 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 
 # DONE
+
+Pass 8 — Crews overhaul (REQUIRES: apply the new crew-colors-one-crew Supabase migration — it adds the color columns AND enforces one permanent crew per installer with a unique index; installers currently on several crews are kept only on their OLDEST crew, the rest are dropped, and a crew whose foreman was dropped that way gets re-flagged in Manage Crews):
+- CREW COLORS: schedulers pick a color per crew (permanent AND daily) from a 16-swatch row in Manage Crews — the leading dashed "A" swatch returns the crew to the automatic palette assignment. The picked color drives every colored surface (calendar chips/tints, crew filter chips, work request crew squares, mobile calendar). Stored on crews.color / daily_crews.color.
+- ALPHABETICAL EVERYWHERE: crews had NO database ordering (that's why lists "got unorganized easily") — the store now sorts crews alphabetically (daily crews by name, then date) at every point they enter state, so every crew list on every surface stays sorted, and the automatic palette color (keyed by list position) stays stable too.
+- MANAGE CREWS MEMBER PICKER: crew blocks no longer list every installer — only the crew's members show (tap a chip to remove), with a dashed "+ Add" chip that unfolds the addable roster.
+- ONE PERMANENT CREW PER INSTALLER (this was never actually enforced): the add picker shows installers already on another permanent crew as disabled with "· on A" so the scheduler deselects them there first; the store drops violations as a backstop; and the DB unique index makes it impossible to bypass. Daily crews stay exempt (any number, alongside the regular crew).
+- DAILY CREW NAMES: up to 20 characters (decision changed in-session from the tracker's 10), free text, no forced uppercase. Permanent crews keep the single-letter rule.
+
+Pass 7 — Layout Plans: Shower plans + document editing + polish (REQUIRES: apply the new shower-layout-document-editing Supabase migration — it adds jobs.shower_layout_not_needed + the 'shower_layout' doc type, widens document delete RLS, and contains the document-upload bug fix):
+- SHOWER LAYOUT PLANS (requested in-session alongside this pass): Showers-scoped jobs now run the identical layout-plan flow as Windows and Mirrors — the "The installers need an image of the shower layout." warning on the job details page (mobile + web sidebar), the same + assignment menu, a "Shower Layout Plans" document type (shows in the Documents type chips and tags), and a "Shower layout plans not necessary" escape hatch (office-only flag, like the other two).
+- DOCUMENTS EDITABLE + DELETABLE: each document row gains a pencil (edit title / body / type in the same form, prefilled; the file itself isn't replaceable — delete and recreate for that) and a two-tap trash (arms red, disarms after 4s). Available to the creator, the Operator, and Field Supers on their jobs (RLS widened to match for delete). Edits/deletes queue offline like other metadata writes. Deleting a job's last layout-plan document brings its warning banner back automatically — unless "layout plans not necessary" was chosen, which stays dismissed.
+- UPLOAD FAILURE FIXED ("Document upload failed — check your signal and retry"): root cause found — document files upload with upsert, which Postgres executes as INSERT ... ON CONFLICT DO UPDATE and therefore needs INSERT + UPDATE + SELECT policies on storage.objects; the job-documents bucket only had INSERT + DELETE. This is the exact bug fixed for the job-photos bucket on 2026-07-10; the fix never reached this bucket. The migration adds the two missing policies.
+- PICKER POLISH: the layout-plan + button is now a small neutral bordered rounded-corner button (was a big solid-blue pill); the Take photo / Upload Image / Choose from Job images / Choose from Job documents options (and the document list rows) highlight on hover; the "…layout plans not necessary" text brightens on hover so it reads as clickable; the "Choose a job image" popup is wider with 3-across (much larger) thumbnails.
 
 Pass 6 — Flashing material gating + work request creation flow (no DB migration needed):
 - FLASHING GATE ON CREATION: the missing-flashing warning no longer shows up front — it appears only after the Create button is clicked, above the buttons: it says to type a flashing material into the work request's own Window Opening Flashing Material field (visible once the Windows scope is added) OR set it in the parent job's details. Typing one either place clears the warning on its own and unblocks creation (a value typed on the work request satisfies the requirement — the job's own material can stay unset). The missing-jobsite-address warning keeps its old immediate behavior.

@@ -30,9 +30,12 @@ import { Job, JOB_DOCUMENT_TYPE_LABELS, JobDocumentType } from '@/types';
 
 interface Props {
   job: Job;
-  /** Which layout plan this banner nags about (Windows / Mirrors scope). */
-  kind: 'window' | 'mirror';
+  /** Which layout plan this banner nags about (Windows / Mirrors / Showers scope). */
+  kind: 'window' | 'mirror' | 'shower';
 }
+
+/** RN's Pressable state on web also carries `hovered` (react-native-web). */
+type PressState = { pressed: boolean; hovered?: boolean };
 
 /** Per-kind wiring: scope, doc type, copy, and the job's not-needed flag. */
 const KIND_META = {
@@ -52,6 +55,14 @@ const KIND_META = {
     notNeededPatch: { mirrorLayoutNotNeeded: true } as Partial<Job>,
     notNeeded: (job: Job) => !!job.mirrorLayoutNotNeeded,
   },
+  shower: {
+    scope: 'Showers' as const,
+    docType: 'shower_layout' as JobDocumentType,
+    warning: 'The installers need an image of the shower layout.',
+    notNeededLabel: 'Shower layout plans not necessary',
+    notNeededPatch: { showerLayoutNotNeeded: true } as Partial<Job>,
+    notNeeded: (job: Job) => !!job.showerLayoutNotNeeded,
+  },
 };
 
 /**
@@ -61,7 +72,8 @@ const KIND_META = {
  * upload an image, pick one of the job's photos, assign an existing job
  * document, or mark layout plans unnecessary. The first three create a new
  * typed photo document that MUST be labeled ("West face") so installers can
- * tell the plans apart. Mirrors-scoped jobs get the identical Mirror flow.
+ * tell the plans apart. Mirrors- and Showers-scoped jobs get the identical
+ * Mirror / Shower flows.
  */
 export function LayoutPlanBanner({ job, kind }: Props) {
   const meta = KIND_META[kind];
@@ -80,6 +92,7 @@ export function LayoutPlanBanner({ job, kind }: Props) {
   const [pickedUri, setPickedUri] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notNeededHovered, setNotNeededHovered] = useState(false);
 
   const hasPlan = useMemo(
     () =>
@@ -112,6 +125,7 @@ export function LayoutPlanBanner({ job, kind }: Props) {
     setStep(null);
     setPickedUri(null);
     setLabel('');
+    setNotNeededHovered(false);
   };
 
   const startLabel = (uri: string) => {
@@ -190,11 +204,15 @@ export function LayoutPlanBanner({ job, kind }: Props) {
       <Feather name="alert-triangle" size={16} color={colors.warning} />
       <Text style={styles.warningText}>{meta.warning}</Text>
       <Pressable
-        style={({ pressed }) => [styles.plusButton, pressed && styles.pressed]}
+        style={({ pressed, hovered }: PressState) => [
+          styles.plusButton,
+          (hovered || pressed) && styles.plusButtonHover,
+        ]}
+        hitSlop={6}
         onPress={() => setStep('menu')}
         accessibilityLabel={`Assign ${JOB_DOCUMENT_TYPE_LABELS[meta.docType]}`}
       >
-        <Feather name="plus" size={18} color={colors.textOnAccent} />
+        <Feather name="plus" size={15} color={colors.textSecondary} />
       </Pressable>
 
       <Modal
@@ -214,9 +232,9 @@ export function LayoutPlanBanner({ job, kind }: Props) {
               {menuOptions.map((option) => (
                 <Pressable
                   key={option.key}
-                  style={({ pressed }) => [
+                  style={({ pressed, hovered }: PressState) => [
                     styles.menuItem,
-                    pressed && styles.pressed,
+                    (hovered || pressed) && styles.menuItemHover,
                   ]}
                   onPress={option.onPress}
                 >
@@ -230,18 +248,28 @@ export function LayoutPlanBanner({ job, kind }: Props) {
                   <Text style={styles.menuItemText}>{option.label}</Text>
                 </Pressable>
               ))}
-              {/* Deliberately quiet — the escape hatch, not a peer option. */}
+              {/* Deliberately quiet — the escape hatch, not a peer option.
+                  The label brightens on hover so it still reads as a button. */}
               <Pressable
                 style={({ pressed }) => [
                   styles.notNeededButton,
                   pressed && styles.pressed,
                 ]}
+                onHoverIn={() => setNotNeededHovered(true)}
+                onHoverOut={() => setNotNeededHovered(false)}
                 onPress={() => {
                   updateJob(job.id, meta.notNeededPatch);
                   close();
                 }}
               >
-                <Text style={styles.notNeededText}>{meta.notNeededLabel}</Text>
+                <Text
+                  style={[
+                    styles.notNeededText,
+                    notNeededHovered && styles.notNeededTextHover,
+                  ]}
+                >
+                  {meta.notNeededLabel}
+                </Text>
               </Pressable>
             </View>
           )}
@@ -295,7 +323,7 @@ export function LayoutPlanBanner({ job, kind }: Props) {
           )}
 
           {step === 'pick-image' && (
-            <View style={styles.card}>
+            <View style={[styles.card, styles.pickCard]}>
               <Text style={styles.cardTitle}>Choose a job image</Text>
               {photos.length === 0 ? (
                 <Text style={styles.emptyText}>This job has no photos.</Text>
@@ -335,9 +363,9 @@ export function LayoutPlanBanner({ job, kind }: Props) {
                     {assignableDocs.map((doc) => (
                       <Pressable
                         key={doc.id}
-                        style={({ pressed }) => [
+                        style={({ pressed, hovered }: PressState) => [
                           styles.menuItem,
-                          pressed && styles.pressed,
+                          (hovered || pressed) && styles.menuItemHover,
                         ]}
                         onPress={() => {
                           setJobDocumentType(doc.id, meta.docType);
@@ -384,13 +412,18 @@ const styles = themed(() =>
       fontFamily: fonts.medium,
       fontSize: 14,
     },
+    // Quiet neutral button (the old solid-blue pill read way too loud here).
     plusButton: {
-      width: 32,
-      height: 32,
-      borderRadius: radii.pill,
+      width: 26,
+      height: 26,
+      borderRadius: radii.md,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.primary,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    plusButtonHover: {
+      backgroundColor: colors.surfaceLight,
     },
     pressed: {
       opacity: 0.8,
@@ -433,6 +466,9 @@ const styles = themed(() =>
       backgroundColor: colors.surfaceLight,
       padding: spacing.md,
     },
+    menuItemHover: {
+      backgroundColor: colors.border,
+    },
     menuIcon: {
       width: 32,
       height: 32,
@@ -457,6 +493,9 @@ const styles = themed(() =>
       color: colors.textTertiary,
       fontFamily: fonts.medium,
       fontSize: 13,
+    },
+    notNeededTextHover: {
+      color: colors.textPrimary,
     },
     preview: {
       width: '100%',
@@ -512,6 +551,11 @@ const styles = themed(() =>
       fontFamily: fonts.regular,
       fontSize: 13,
     },
+    // The image picker gets a wider card + 3-across cells so the thumbnails
+    // are big enough to actually tell apart.
+    pickCard: {
+      maxWidth: 560,
+    },
     pickScroll: {
       flexShrink: 1,
     },
@@ -521,7 +565,7 @@ const styles = themed(() =>
       margin: -spacing.xs / 2,
     },
     pickCell: {
-      width: '25%',
+      width: '33.333%',
       aspectRatio: 1,
       padding: spacing.xs / 2,
     },

@@ -154,10 +154,12 @@ export interface Job {
    * The Field Super marked layout plans as not needed for this job ("Window
    * layout plans not necessary"). Suppresses the layout-plan warning on the
    * job details page; a Windows-scoped job with neither this flag nor a
-   * 'window_layout' document warns the Field Super. Mirror twin below.
+   * 'window_layout' document warns the Field Super. Mirror and Shower twins
+   * below.
    */
   windowLayoutNotNeeded?: boolean;
   mirrorLayoutNotNeeded?: boolean;
+  showerLayoutNotNeeded?: boolean;
   /**
    * Field Supers assigned to this job (worker ids, role `field_super`).
    * The Operator sets this; a job may have more than one Field Super. A Field
@@ -425,7 +427,7 @@ export interface WorkRequest {
 /** A permanent crew of installers. The default scheduling container. */
 export interface Crew {
   id: string;
-  /** e.g. "Crew Alpha". */
+  /** A single letter ("A"). */
   name: string;
   /** Members — MUST all be workers with role 'installer'. */
   installerIds: string[];
@@ -437,6 +439,11 @@ export interface Crew {
    * may not have one yet. Daily crews have no foreman.
    */
   foremanId?: string;
+  /**
+   * Scheduler-picked display color (#RRGGBB). Unset = the automatic palette
+   * assignment by alphabetical position (see buildCrewColorMap).
+   */
+  color?: string;
 }
 
 /**
@@ -448,9 +455,12 @@ export interface DailyCrew {
   id: string;
   /** The single day this override applies to (yyyy-MM-dd). */
   date: string;
+  /** Up to 20 characters (unlike permanent crews' single letter). */
   name: string;
   /** Members — installers only. */
   installerIds: string[];
+  /** Scheduler-picked display color (#RRGGBB); unset = automatic palette. */
+  color?: string;
 }
 
 /**
@@ -641,18 +651,20 @@ export type JobDocumentKind = 'photo' | 'pdf' | 'text';
  * label alongside the title ("Window Layout Plans · West face") so installers
  * can find the right plan fast. Having a 'window_layout' document (or the
  * job's {@link Job.windowLayoutNotNeeded} flag) clears the Field Super's
- * layout-plan warning on Windows-scoped jobs; 'mirror_layout' mirrors that
- * for Mirrors-scoped jobs.
+ * layout-plan warning on Windows-scoped jobs; 'mirror_layout' and
+ * 'shower_layout' mirror that for Mirrors- and Showers-scoped jobs.
  */
 export type JobDocumentType =
   | 'window_layout'
   | 'mirror_layout'
+  | 'shower_layout'
   | 'flashing_example';
 
 /** Display labels for {@link JobDocumentType}, in selector order. */
 export const JOB_DOCUMENT_TYPE_LABELS: Record<JobDocumentType, string> = {
   window_layout: 'Window Layout Plans',
   mirror_layout: 'Mirror Layout Plans',
+  shower_layout: 'Shower Layout Plans',
   flashing_example: 'Window Flashing Example',
 };
 

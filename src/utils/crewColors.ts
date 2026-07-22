@@ -15,13 +15,31 @@ export const CREW_PALETTE = [
   '#8FD14F', // lime
 ];
 
+/** The swatches offered by the Manage Crews color picker. */
+export const CREW_COLOR_CHOICES = [
+  ...CREW_PALETTE,
+  '#5C6BC0', // indigo
+  '#26A69A', // teal
+  '#FF7043', // deep orange
+  '#8D6E63', // brown
+  '#78909C', // blue gray
+  '#D4E157', // yellow-green
+  '#BA68C8', // orchid
+  '#F06292', // rose
+];
+
 /**
- * Build a stable crewId → color lookup keyed by position in the crews list, so
- * each crew gets a distinct, consistent color across the scheduler UI.
+ * Build a stable crewId → color lookup: a crew's own picked `color` wins;
+ * crews without one fall back to the palette by position in the (alphabetical)
+ * crews list, so every crew reads consistently across the scheduler UI.
  */
-export function buildCrewColorMap(crewIds: string[]): Map<string, string> {
+export function buildCrewColorMap(
+  crews: { id: string; color?: string }[]
+): Map<string, string> {
   const map = new Map<string, string>();
-  crewIds.forEach((id, i) => map.set(id, CREW_PALETTE[i % CREW_PALETTE.length]));
+  crews.forEach((crew, i) =>
+    map.set(crew.id, crew.color ?? CREW_PALETTE[i % CREW_PALETTE.length])
+  );
   return map;
 }
 

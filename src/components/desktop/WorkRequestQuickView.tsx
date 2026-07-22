@@ -374,7 +374,7 @@ export function WorkRequestQuickView({
   // match the scheduler calendar (same ordering as CalendarBoard).
   const cardAssignments = assignments.filter((a) => a.workRequestId === workRequest.id);
   const allCrews = [...crews, ...dailyCrews];
-  const crewColorMap = buildCrewColorMap(allCrews.map((c) => c.id));
+  const crewColorMap = buildCrewColorMap(allCrews);
   const assignedCrewIds = [...new Set(cardAssignments.map((a) => a.crewId))];
   const crewNameFor = (id: string) =>
     allCrews.find((c) => c.id === id)?.name ?? 'Unknown crew';

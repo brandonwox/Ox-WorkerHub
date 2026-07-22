@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -21,7 +21,11 @@ import {
   captureSingleJobPhoto,
   pickSingleJobPhoto,
 } from '@/lib/photoCapture';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import {
+  useAppStore,
+  useCurrentRole,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import {
   colors,
   darkColors,
@@ -56,13 +60,21 @@ const KIND_META: Record<
  * title. Everyone views; non-installers create via the + button (photo from
  * camera/library, PDF from the file picker, text typed in place). Files
  * upload immediately, so creating a photo/pdf document needs a connection.
+ *
+ * Documents are also editable (title / body / type) and deletable — by the
+ * creator, the Operator, and Field Supers (their job scope; RLS matches).
+ * Deleting a job's last layout-plan document brings that warning banner back
+ * (unless "layout plans not necessary" was chosen).
  */
 export function JobDocumentsSection({ jobId }: Props) {
   const { width, height } = useWindowDimensions();
   const role = useCurrentRole();
+  const me = useCurrentWorker();
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const workers = useAppStore((s) => s.workers);
   const addJobDocument = useAppStore((s) => s.addJobDocument);
+  const updateJobDocument = useAppStore((s) => s.updateJobDocument);
+  const deleteJobDocument = useAppStore((s) => s.deleteJobDocument);
   const isOnline = useAppStore((s) => s.isOnline);
 
   const docs = useMemo(
@@ -74,14 +86,22 @@ export function JobDocumentsSection({ jobId }: Props) {
   );
 
   const canCreate = role !== 'installer';
+  // Edit/delete: the creator, the Operator, or a Field Super (they only see
+  // their own jobs, so the role alone is the scope; RLS matches).
+  const canManage = (doc: JobDocument) =>
+    role === 'operator' ||
+    role === 'field_super' ||
+    (me != null && doc.workerId === me.id);
 
   // Which text document is unfolded to show its body.
   const [openTextId, setOpenTextId] = useState<string | null>(null);
   // Full-screen viewer for a photo document.
   const [photoView, setPhotoView] = useState<JobDocument | null>(null);
-  // Creation flow: the + menu, then the draft form for the picked kind.
+  // Creation flow: the + menu, then the draft form for the picked kind. The
+  // same form edits an existing document when `editingDoc` is set.
   const [kindMenuOpen, setKindMenuOpen] = useState(false);
   const [draftKind, setDraftKind] = useState<JobDocumentKind | null>(null);
+  const [editingDoc, setEditingDoc] = useState<JobDocument | null>(null);
   const [draftType, setDraftType] = useState<JobDocumentType | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -89,13 +109,35 @@ export function JobDocumentsSection({ jobId }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [contentType, setContentType] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Two-tap delete: the armed trash disarms after 4s if not tapped again.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!confirmDeleteId) return;
+    const timer = setTimeout(() => setConfirmDeleteId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmDeleteId]);
 
   const startDraft = (kind: JobDocumentKind) => {
     setKindMenuOpen(false);
+    setEditingDoc(null);
     setDraftKind(kind);
     setDraftType(null);
     setTitle('');
     setBody('');
+    setFileUri(null);
+    setFileName(null);
+    setContentType(null);
+  };
+
+  // Edit an existing document: same form, prefilled; the file itself isn't
+  // replaceable (delete + recreate for that).
+  const startEdit = (doc: JobDocument) => {
+    setKindMenuOpen(false);
+    setDraftKind(null);
+    setEditingDoc(doc);
+    setDraftType(doc.docType ?? null);
+    setTitle(doc.title);
+    setBody(doc.body ?? '');
     setFileUri(null);
     setFileName(null);
     setContentType(null);
@@ -132,25 +174,42 @@ export function JobDocumentsSection({ jobId }: Props) {
     }
   };
 
+  // The form either edits an existing document or authors a new one.
+  const formKind = editingDoc?.kind ?? draftKind;
   const canSave =
-    !!draftKind &&
+    !!formKind &&
     !!title.trim() &&
-    (draftKind === 'text' ? !!body.trim() : !!fileUri);
+    (formKind === 'text' ? !!body.trim() : editingDoc != null || !!fileUri);
+
+  const closeForm = () => {
+    setDraftKind(null);
+    setEditingDoc(null);
+  };
 
   const save = async () => {
-    if (!draftKind || !canSave || saving) return;
+    if (!formKind || !canSave || saving) return;
+    if (editingDoc) {
+      // Metadata-only edit — queues offline like other writes.
+      updateJobDocument(editingDoc.id, {
+        title,
+        body: editingDoc.kind === 'text' ? body.trim() : undefined,
+        docType: draftType ?? undefined,
+      });
+      closeForm();
+      return;
+    }
     setSaving(true);
     try {
       const ok = await addJobDocument({
         jobId,
-        kind: draftKind,
+        kind: formKind,
         docType: draftType ?? undefined,
         title,
-        body: draftKind === 'text' ? body.trim() : undefined,
+        body: formKind === 'text' ? body.trim() : undefined,
         localUri: fileUri ?? undefined,
         contentType: contentType ?? undefined,
       });
-      if (ok) setDraftKind(null);
+      if (ok) closeForm();
     } finally {
       setSaving(false);
     }
@@ -216,6 +275,58 @@ export function JobDocumentsSection({ jobId }: Props) {
                   {format(parseISO(doc.createdAt), 'MMM d, yyyy')}
                 </Text>
               </View>
+              {/* Edit + two-tap delete, only for viewers who may manage the
+                  document (nested Pressables capture their own taps). */}
+              {canManage(doc) && (
+                <>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.docActionButton,
+                      pressed && styles.pressed,
+                    ]}
+                    hitSlop={6}
+                    onPress={() => startEdit(doc)}
+                    accessibilityLabel={`Edit "${doc.title}"`}
+                  >
+                    <Feather
+                      name="edit-2"
+                      size={14}
+                      color={colors.textTertiary}
+                    />
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.docActionButton,
+                      confirmDeleteId === doc.id && styles.docDeleteArmed,
+                      pressed && styles.pressed,
+                    ]}
+                    hitSlop={6}
+                    onPress={() => {
+                      if (confirmDeleteId === doc.id) {
+                        setConfirmDeleteId(null);
+                        deleteJobDocument(doc.id);
+                      } else {
+                        setConfirmDeleteId(doc.id);
+                      }
+                    }}
+                    accessibilityLabel={
+                      confirmDeleteId === doc.id
+                        ? `Tap again to delete "${doc.title}"`
+                        : `Delete "${doc.title}"`
+                    }
+                  >
+                    <Feather
+                      name="trash-2"
+                      size={14}
+                      color={
+                        confirmDeleteId === doc.id
+                          ? colors.textOnAccent
+                          : colors.textTertiary
+                      }
+                    />
+                  </Pressable>
+                </>
+              )}
               <Feather
                 name={
                   doc.kind === 'text'
@@ -279,22 +390,20 @@ export function JobDocumentsSection({ jobId }: Props) {
         </View>
       </Modal>
 
-      {/* Draft form: title + kind-specific content. */}
+      {/* Draft form: title + kind-specific content. Also edits an existing
+          document (prefilled; the file itself isn't replaceable). */}
       <Modal
-        visible={draftKind != null}
+        visible={formKind != null}
         transparent
         animationType="fade"
-        onRequestClose={() => setDraftKind(null)}
+        onRequestClose={closeForm}
       >
         <View style={styles.modalOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setDraftKind(null)}
-          />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} />
           <View style={styles.formCard}>
             <Text style={styles.modalTitle}>
-              New {draftKind ? KIND_META[draftKind].label.toLowerCase() : ''}{' '}
-              document
+              {editingDoc ? 'Edit' : 'New'}{' '}
+              {formKind ? KIND_META[formKind].label.toLowerCase() : ''} document
             </Text>
 
             <TextInput
@@ -335,7 +444,7 @@ export function JobDocumentsSection({ jobId }: Props) {
               })}
             </View>
 
-            {draftKind === 'text' && (
+            {formKind === 'text' && (
               <TextInput
                 style={[styles.input, styles.bodyInput]}
                 value={body}
@@ -346,7 +455,7 @@ export function JobDocumentsSection({ jobId }: Props) {
               />
             )}
 
-            {draftKind === 'photo' && (
+            {!editingDoc && draftKind === 'photo' && (
               <View style={styles.fileArea}>
                 {fileUri ? (
                   <Image
@@ -384,7 +493,7 @@ export function JobDocumentsSection({ jobId }: Props) {
               </View>
             )}
 
-            {draftKind === 'pdf' && (
+            {!editingDoc && draftKind === 'pdf' && (
               <View style={styles.fileArea}>
                 {fileName ? (
                   <View style={styles.pdfChip}>
@@ -417,7 +526,7 @@ export function JobDocumentsSection({ jobId }: Props) {
                   styles.cancelButton,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => setDraftKind(null)}
+                onPress={closeForm}
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
@@ -431,7 +540,7 @@ export function JobDocumentsSection({ jobId }: Props) {
                 onPress={save}
               >
                 <Text style={styles.saveText}>
-                  {saving ? 'Saving…' : 'Create'}
+                  {saving ? 'Saving…' : editingDoc ? 'Save' : 'Create'}
                 </Text>
               </Pressable>
             </View>
@@ -569,6 +678,16 @@ const styles = themed(() =>
       color: colors.textTertiary,
       fontFamily: fonts.regular,
       fontSize: 11,
+    },
+    docActionButton: {
+      width: 26,
+      height: 26,
+      borderRadius: radii.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    docDeleteArmed: {
+      backgroundColor: colors.danger,
     },
     docBody: {
       color: colors.textPrimary,

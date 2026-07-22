@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -13,13 +13,13 @@ import { FormInput } from '@/components/FormInput';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
+import { buildCrewColorMap, CREW_COLOR_CHOICES } from '@/utils/crewColors';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** Crew names are a single letter — they tag work requests on the calendar. */
+/** Permanent crew names are a single letter — they tag calendar chips. */
 const CREW_NAME_RE = /^[A-Za-z]$/;
-
-const toggle = (ids: string[], id: string): string[] =>
-  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+/** Daily crew names are freer: anything up to this many characters. */
+const DAILY_NAME_MAX = 20;
 
 interface Props {
   visible: boolean;
@@ -41,12 +41,33 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   // Hard constraint: the picker only ever lists installers.
   const installers = workers.filter((w) => w.role === 'installer');
 
+  // The automatic (palette) color each crew currently reads as — the
+  // fallback shown on the "Auto" swatch. Same composition as CalendarBoard.
+  const autoColors = useMemo(
+    () => buildCrewColorMap([...crews, ...dailyCrews].map(({ id }) => ({ id }))),
+    [crews, dailyCrews]
+  );
+
+  // One permanent crew per installer: which OTHER crew holds each installer
+  // (excluding `exceptCrewId`'s own members) — drives the disabled "· on A"
+  // entries in the add picker. Daily crews don't restrict.
+  const heldByOtherCrew = (exceptCrewId?: string) => {
+    const map = new Map<string, string>();
+    crews.forEach((c) => {
+      if (c.id === exceptCrewId) return;
+      c.installerIds.forEach((wid) => map.set(wid, c.name));
+    });
+    return map;
+  };
+
   const [newCrewName, setNewCrewName] = useState('');
   const [newCrewMembers, setNewCrewMembers] = useState<string[]>([]);
   const [newCrewForeman, setNewCrewForeman] = useState<string | null>(null);
+  const [newCrewColor, setNewCrewColor] = useState<string | undefined>();
   const [newDailyName, setNewDailyName] = useState('');
   const [newDailyDate, setNewDailyDate] = useState('');
   const [newDailyMembers, setNewDailyMembers] = useState<string[]>([]);
+  const [newDailyColor, setNewDailyColor] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
 
   const createCrew = () => {
@@ -64,17 +85,19 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
       name,
       installerIds: newCrewMembers,
       foremanId: newCrewForeman,
+      color: newCrewColor,
     });
     setNewCrewName('');
     setNewCrewMembers([]);
     setNewCrewForeman(null);
+    setNewCrewColor(undefined);
     setError(null);
   };
 
   const createDailyCrew = () => {
-    const name = newDailyName.trim().toUpperCase();
-    if (!CREW_NAME_RE.test(name)) {
-      setError('Crew names must be a single letter (e.g. "A").');
+    const name = newDailyName.trim();
+    if (name.length === 0 || name.length > DAILY_NAME_MAX) {
+      setError(`Daily crew names can be 1–${DAILY_NAME_MAX} characters.`);
       return;
     }
     if (!DATE_RE.test(newDailyDate.trim())) {
@@ -85,10 +108,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
       name,
       date: newDailyDate.trim(),
       installerIds: newDailyMembers,
+      color: newDailyColor,
     });
     setNewDailyName('');
     setNewDailyDate('');
     setNewDailyMembers([]);
+    setNewDailyColor(undefined);
     setError(null);
   };
 
@@ -122,12 +147,18 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                       <Feather name="trash-2" size={15} color={colors.danger} />
                     </Pressable>
                   </View>
-                  <InstallerChips
+                  <MemberEditor
                     installers={installers}
                     selected={crew.installerIds}
-                    onToggle={(id) =>
+                    heldBy={heldByOtherCrew(crew.id)}
+                    onAdd={(id) =>
                       updateCrew(crew.id, {
-                        installerIds: toggle(crew.installerIds, id),
+                        installerIds: [...crew.installerIds, id],
+                      })
+                    }
+                    onRemove={(id) =>
+                      updateCrew(crew.id, {
+                        installerIds: crew.installerIds.filter((x) => x !== id),
                       })
                     }
                   />
@@ -150,6 +181,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                       This crew has no foreman yet — pick one.
                     </Text>
                   )}
+                  <Text style={styles.fieldLabel}>Color</Text>
+                  <ColorSwatches
+                    value={crew.color}
+                    fallback={autoColors.get(crew.id) ?? colors.textTertiary}
+                    onPick={(color) => updateCrew(crew.id, { color })}
+                  />
                 </View>
               ))
             )}
@@ -164,12 +201,14 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 maxLength={1}
               />
               <Text style={styles.fieldLabel}>Members (installers only)</Text>
-              <InstallerChips
+              <MemberEditor
                 installers={installers}
                 selected={newCrewMembers}
-                onToggle={(id) => {
-                  setNewCrewMembers((m) => toggle(m, id));
-                  // Deselecting the chosen foreman un-picks them.
+                heldBy={heldByOtherCrew()}
+                onAdd={(id) => setNewCrewMembers((m) => [...m, id])}
+                onRemove={(id) => {
+                  setNewCrewMembers((m) => m.filter((x) => x !== id));
+                  // Removing the chosen foreman un-picks them.
                   setNewCrewForeman((f) => (f === id ? null : f));
                 }}
               />
@@ -185,6 +224,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                   />
                 </>
               )}
+              <Text style={styles.fieldLabel}>Color</Text>
+              <ColorSwatches
+                value={newCrewColor}
+                fallback={colors.textTertiary}
+                onPick={setNewCrewColor}
+              />
               <Pressable
                 style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
                 onPress={createCrew}
@@ -216,14 +261,26 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                       <Feather name="trash-2" size={15} color={colors.danger} />
                     </Pressable>
                   </View>
-                  <InstallerChips
+                  {/* No heldBy: daily crews don't restrict membership. */}
+                  <MemberEditor
                     installers={installers}
                     selected={dc.installerIds}
-                    onToggle={(id) =>
+                    onAdd={(id) =>
                       updateDailyCrew(dc.id, {
-                        installerIds: toggle(dc.installerIds, id),
+                        installerIds: [...dc.installerIds, id],
                       })
                     }
+                    onRemove={(id) =>
+                      updateDailyCrew(dc.id, {
+                        installerIds: dc.installerIds.filter((x) => x !== id),
+                      })
+                    }
+                  />
+                  <Text style={styles.fieldLabel}>Color</Text>
+                  <ColorSwatches
+                    value={dc.color}
+                    fallback={autoColors.get(dc.id) ?? colors.textTertiary}
+                    onPick={(color) => updateDailyCrew(dc.id, { color })}
                   />
                 </View>
               ))
@@ -231,12 +288,11 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
             <View style={styles.formBlock}>
               <FormInput
-                label="New daily crew name (single letter)"
+                label={`New daily crew name (up to ${DAILY_NAME_MAX} characters)`}
                 value={newDailyName}
                 onChangeText={setNewDailyName}
-                placeholder="P"
-                autoCapitalize="characters"
-                maxLength={1}
+                placeholder="Punch list"
+                maxLength={DAILY_NAME_MAX}
               />
               <FormInput
                 label="Date"
@@ -246,10 +302,19 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 autoCapitalize="none"
               />
               <Text style={styles.fieldLabel}>Members (installers only)</Text>
-              <InstallerChips
+              <MemberEditor
                 installers={installers}
                 selected={newDailyMembers}
-                onToggle={(id) => setNewDailyMembers((m) => toggle(m, id))}
+                onAdd={(id) => setNewDailyMembers((m) => [...m, id])}
+                onRemove={(id) =>
+                  setNewDailyMembers((m) => m.filter((x) => x !== id))
+                }
+              />
+              <Text style={styles.fieldLabel}>Color</Text>
+              <ColorSwatches
+                value={newDailyColor}
+                fallback={colors.textTertiary}
+                onPick={setNewDailyColor}
               />
               <Pressable
                 style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
@@ -310,39 +375,153 @@ function ForemanChips({
   );
 }
 
-function InstallerChips({
+/**
+ * A crew's member list: only the SELECTED installers show as chips (tap one
+ * to remove it), with a "+ Add" chip that unfolds the pickable roster. On
+ * permanent-crew pickers, installers already on another permanent crew render
+ * disabled with that crew's letter — deselect them there first (one permanent
+ * crew per installer; daily crews pass no `heldBy` and don't restrict).
+ */
+function MemberEditor({
   installers,
   selected,
-  onToggle,
+  heldBy,
+  onAdd,
+  onRemove,
 }: {
   installers: Worker[];
   selected: string[];
-  onToggle: (id: string) => void;
+  /** installerId → the OTHER permanent crew's name holding them. */
+  heldBy?: Map<string, string>;
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
   if (installers.length === 0) {
     return <Text style={styles.muted}>No installers on the roster.</Text>;
   }
+  const selectedWorkers = selected
+    .map((id) => installers.find((w) => w.id === id))
+    .filter((w): w is Worker => w != null);
+  const addable = installers.filter((w) => !selected.includes(w.id));
   return (
-    <View style={styles.chips}>
-      {installers.map((w) => {
-        const active = selected.includes(w.id);
-        return (
+    <View style={styles.memberEditor}>
+      <View style={styles.chips}>
+        {selectedWorkers.map((w) => (
           <Pressable
             key={w.id}
             style={({ pressed }) => [
               styles.chip,
-              active && styles.chipActive,
+              styles.chipActive,
               pressed && styles.pressed,
             ]}
-            onPress={() => onToggle(w.id)}
+            onPress={() => onRemove(w.id)}
+            accessibilityLabel={`Remove ${w.name}`}
           >
-            {active && <Feather name="check" size={12} color={colors.primary} />}
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
+            <Text style={[styles.chipText, styles.chipTextActive]}>
               {w.name}
             </Text>
+            <Feather name="x" size={12} color={colors.textSecondary} />
           </Pressable>
-        );
-      })}
+        ))}
+        <Pressable
+          style={({ pressed }) => [
+            styles.chip,
+            styles.addChip,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => setAdding((v) => !v)}
+        >
+          <Feather
+            name={adding ? 'chevron-up' : 'plus'}
+            size={12}
+            color={colors.primary}
+          />
+          <Text style={styles.addChipText}>{adding ? 'Done' : 'Add'}</Text>
+        </Pressable>
+      </View>
+      {adding &&
+        (addable.length === 0 ? (
+          <Text style={styles.muted}>
+            Every installer is already on this crew.
+          </Text>
+        ) : (
+          <View style={styles.chips}>
+            {addable.map((w) => {
+              const holder = heldBy?.get(w.id);
+              if (holder) {
+                return (
+                  <View key={w.id} style={[styles.chip, styles.chipDisabled]}>
+                    <Text style={styles.chipTextDisabled}>
+                      {w.name} · on {holder}
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <Pressable
+                  key={w.id}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => onAdd(w.id)}
+                  accessibilityLabel={`Add ${w.name}`}
+                >
+                  <Feather name="plus" size={12} color={colors.textTertiary} />
+                  <Text style={styles.chipText}>{w.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+    </View>
+  );
+}
+
+/**
+ * Crew color picker: the leading "Auto" swatch (dashed ring, showing the
+ * automatic palette color) clears the custom pick; the rest set it. The
+ * active choice carries a ring.
+ */
+function ColorSwatches({
+  value,
+  fallback,
+  onPick,
+}: {
+  value?: string;
+  /** The automatic color the crew reads as while nothing is picked. */
+  fallback: string;
+  onPick: (color?: string) => void;
+}) {
+  return (
+    <View style={styles.swatchRow}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.swatch,
+          styles.swatchAuto,
+          { backgroundColor: fallback },
+          !value && styles.swatchActive,
+          pressed && styles.pressed,
+        ]}
+        onPress={() => onPick(undefined)}
+        accessibilityLabel="Automatic color"
+      >
+        <Text style={styles.swatchAutoText}>A</Text>
+      </Pressable>
+      {CREW_COLOR_CHOICES.map((color) => (
+        <Pressable
+          key={color}
+          style={({ pressed }) => [
+            styles.swatch,
+            { backgroundColor: color },
+            value === color && styles.swatchActive,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => onPick(color)}
+          accessibilityLabel={`Crew color ${color}`}
+        />
+      ))}
     </View>
   );
 }
@@ -461,6 +640,9 @@ const styles = themed(() => StyleSheet.create({
     backgroundColor: colors.primaryDim,
     borderColor: colors.primary,
   },
+  chipDisabled: {
+    opacity: 0.55,
+  },
   chipText: {
     color: colors.textSecondary,
     fontFamily: fonts.medium,
@@ -469,6 +651,50 @@ const styles = themed(() => StyleSheet.create({
   chipTextActive: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
+  },
+  chipTextDisabled: {
+    color: colors.textTertiary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  memberEditor: {
+    gap: spacing.sm,
+  },
+  addChip: {
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
+    backgroundColor: 'transparent',
+  },
+  addChipText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  swatchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  swatch: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.pill,
+  },
+  swatchActive: {
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+  },
+  swatchAuto: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.textSecondary,
+  },
+  swatchAutoText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 10,
   },
   addBtn: {
     flexDirection: 'row',

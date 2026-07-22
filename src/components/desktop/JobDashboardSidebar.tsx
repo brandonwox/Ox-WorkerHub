@@ -504,6 +504,7 @@ export function JobDashboardSidebar({
           {/* Field-Super-only layout-plan warnings (component gates itself). */}
           <LayoutPlanBanner job={job} kind="window" />
           <LayoutPlanBanner job={job} kind="mirror" />
+          <LayoutPlanBanner job={job} kind="shower" />
           {/* Missing flashing material blocks work request creation — warn
               the roles that can fix it (component gates itself). */}
           <FlashingMaterialBanner job={job} />

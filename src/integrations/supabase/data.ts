@@ -67,6 +67,7 @@ interface JobRow {
   igu_count_total: number | null;
   window_layout_not_needed: boolean | null;
   mirror_layout_not_needed: boolean | null;
+  shower_layout_not_needed: boolean | null;
 }
 
 interface JobFieldSuperRow {
@@ -115,6 +116,7 @@ interface WorkRequestRow {
 interface CrewRow {
   id: string;
   name: string;
+  color: string | null;
 }
 interface CrewMemberRow {
   crew_id: string;
@@ -126,6 +128,7 @@ interface DailyCrewRow {
   id: string;
   date: string;
   name: string;
+  color: string | null;
 }
 interface DailyCrewMemberRow {
   daily_crew_id: string;
@@ -239,6 +242,7 @@ function rowToJob(r: JobRow): Job {
     iguCountTotal: r.igu_count_total ?? undefined,
     windowLayoutNotNeeded: r.window_layout_not_needed || undefined,
     mirrorLayoutNotNeeded: r.mirror_layout_not_needed || undefined,
+    showerLayoutNotNeeded: r.shower_layout_not_needed || undefined,
   };
 }
 
@@ -526,6 +530,7 @@ export async function fetchAllData(): Promise<BackendData> {
   const crews: Crew[] = ((crewsR.data ?? []) as CrewRow[]).map((c) => ({
     id: c.id,
     name: c.name,
+    color: c.color ?? undefined,
     installerIds: crewMembers
       .filter((m) => m.crew_id === c.id)
       .map((m) => m.installer_id),
@@ -540,6 +545,7 @@ export async function fetchAllData(): Promise<BackendData> {
     id: c.id,
     date: c.date,
     name: c.name,
+    color: c.color ?? undefined,
     installerIds: dailyMembers
       .filter((m) => m.daily_crew_id === c.id)
       .map((m) => m.installer_id),
@@ -624,6 +630,7 @@ function jobToRow(job: Job) {
     igu_count_total: job.iguCountTotal ?? null,
     window_layout_not_needed: job.windowLayoutNotNeeded ?? false,
     mirror_layout_not_needed: job.mirrorLayoutNotNeeded ?? false,
+    shower_layout_not_needed: job.showerLayoutNotNeeded ?? false,
   };
 }
 
@@ -816,7 +823,13 @@ async function replaceMembers(
 }
 
 export async function insertCrew(crew: Crew): Promise<void> {
-  check((await getSupabase().from('crews').insert({ id: crew.id, name: crew.name })).error);
+  check(
+    (
+      await getSupabase()
+        .from('crews')
+        .insert({ id: crew.id, name: crew.name, color: crew.color ?? null })
+    ).error
+  );
   await replaceMembers(
     'crew_members',
     'crew_id',
@@ -827,7 +840,12 @@ export async function insertCrew(crew: Crew): Promise<void> {
 }
 export async function updateCrew(crew: Crew): Promise<void> {
   check(
-    (await getSupabase().from('crews').update({ name: crew.name }).eq('id', crew.id)).error
+    (
+      await getSupabase()
+        .from('crews')
+        .update({ name: crew.name, color: crew.color ?? null })
+        .eq('id', crew.id)
+    ).error
   );
   await replaceMembers(
     'crew_members',
@@ -843,8 +861,11 @@ export async function deleteCrew(id: string): Promise<void> {
 
 export async function insertDailyCrew(dc: DailyCrew): Promise<void> {
   check(
-    (await getSupabase().from('daily_crews').insert({ id: dc.id, date: dc.date, name: dc.name }))
-      .error
+    (
+      await getSupabase()
+        .from('daily_crews')
+        .insert({ id: dc.id, date: dc.date, name: dc.name, color: dc.color ?? null })
+    ).error
   );
   await replaceMembers('daily_crew_members', 'daily_crew_id', dc.id, dc.installerIds);
 }
@@ -853,7 +874,7 @@ export async function updateDailyCrew(dc: DailyCrew): Promise<void> {
     (
       await getSupabase()
         .from('daily_crews')
-        .update({ date: dc.date, name: dc.name })
+        .update({ date: dc.date, name: dc.name, color: dc.color ?? null })
         .eq('id', dc.id)
     ).error
   );
@@ -1106,6 +1127,31 @@ export async function updateJobDocumentType(
         .from('job_documents')
         .update({ doc_type: docType ?? null })
         .eq('id', id)
+    ).error
+  );
+}
+
+/**
+ * Edit a document's user-authored fields: title, body (text kind), and the
+ * type tag. RLS: the creator, the Operator, or a Field Super scoped to the
+ * document's job.
+ */
+export async function updateJobDocument(doc: {
+  id: string;
+  title: string;
+  body?: string;
+  docType?: JobDocumentType;
+}): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_documents')
+        .update({
+          title: doc.title,
+          body: doc.body ?? null,
+          doc_type: doc.docType ?? null,
+        })
+        .eq('id', doc.id)
     ).error
   );
 }

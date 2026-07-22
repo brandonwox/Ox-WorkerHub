@@ -182,11 +182,9 @@ export function CalendarBoard({
     return name.replace(/^crew\s+/i, '');
   };
 
-  // Distinct, stable color per crew for tinting cards and chips.
-  const crewColorMap = useMemo(
-    () => buildCrewColorMap(allCrews.map((c) => c.id)),
-    [allCrews]
-  );
+  // Distinct, stable color per crew for tinting cards and chips (a crew's
+  // scheduler-picked color wins over the automatic palette).
+  const crewColorMap = useMemo(() => buildCrewColorMap(allCrews), [allCrews]);
   const colorForCrew = (crewId: string) => crewColorFrom(crewColorMap, crewId);
 
   const activeCrews = useMemo(
