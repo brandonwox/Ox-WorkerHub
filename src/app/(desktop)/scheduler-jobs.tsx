@@ -22,15 +22,24 @@ import { workRequestLinksJob } from '@/utils/workRequestJobs';
 /**
  * Scheduler → Jobs: searchable list of every job; clicking one opens the job
  * dashboard sidebar. Read-only on job fields (the pencil is hidden), but
- * schedulers may create jobs and manage sub-jobs — RLS matches. New jobs
- * carry no QBT jobcode; the Finance Manager fills it in later.
+ * schedulers may create jobs (assigning Field Supers right on the form) and
+ * manage sub-jobs — RLS matches. New jobs carry no QBT jobcode; the Finance
+ * Manager fills it in later.
  */
 export default function SchedulerJobsScreen() {
   const role = useCurrentRole();
   const jobs = useAppStore((s) => s.jobs);
+  const workers = useAppStore((s) => s.workers);
   const workRequests = useAppStore((s) => s.workRequests);
   const addJob = useAppStore((s) => s.addJob);
   const flash = useAppStore((s) => s.flash);
+
+  // Roster for the create form's Field Super picker — schedulers may assign
+  // supers at creation (RLS matches).
+  const fieldSupers = useMemo(
+    () => workers.filter((w) => w.role === 'field_super'),
+    [workers]
+  );
 
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -177,6 +186,7 @@ export default function SchedulerJobsScreen() {
       <CreateJobModal
         visible={createOpen}
         mode="field"
+        fieldSupers={fieldSupers}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
       />

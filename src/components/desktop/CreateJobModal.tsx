@@ -26,11 +26,15 @@ interface Props {
   /**
    * Who is creating: the Operator's full form (default), or the trimmed
    * 'field' form for Schedulers / Field Supers — no QBT jobcode (the Finance
-   * Manager fills it in later) and no Field Super picker (a creating Field
-   * Super is auto-assigned), but with a jobsite address input.
+   * Manager fills it in later), but with a jobsite address input.
    */
   mode?: 'operator' | 'field';
-  /** Roster of field supers the Operator can assign to this job. */
+  /**
+   * Roster of field supers the creator can assign to this job. Passing a
+   * non-empty roster shows the picker — the Operator always does; Schedulers
+   * do too (they may assign supers at creation; RLS matches). Field Super
+   * callers omit it (a creating Field Super is auto-assigned).
+   */
   fieldSupers?: Worker[];
   onClose: () => void;
   onSubmit: (job: NewJobInput) => void;
@@ -66,6 +70,9 @@ export function CreateJobModal({
     onClose();
   };
 
+  // The picker shows whenever a roster was passed (Operator and Schedulers).
+  const showFieldSuperPicker = fieldSupers.length > 0;
+
   const submit = () => {
     if (!name.trim()) {
       setError('Job name is required.');
@@ -83,7 +90,7 @@ export function CreateJobModal({
       location: mode === 'field' ? location.trim() : '',
       qbtJobcodeId:
         mode === 'operator' ? qbtJobcodeId.trim() || undefined : undefined,
-      fieldSuperIds: mode === 'operator' ? fieldSuperIds : [],
+      fieldSuperIds: showFieldSuperPicker ? fieldSuperIds : [],
       scopes: scopes.length > 0 ? scopes : undefined,
     });
     close();
@@ -160,7 +167,7 @@ export function CreateJobModal({
             </Text>
           </View>
 
-          {mode === 'operator' && (
+          {showFieldSuperPicker && (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Field supers</Text>
               <FieldSuperPicker

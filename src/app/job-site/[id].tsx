@@ -33,7 +33,7 @@ import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
 import { StatusPill } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import {
   colors,
   fonts,
@@ -71,6 +71,9 @@ export default function JobSiteScreen() {
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const updateJob = useAppStore((s) => s.updateJob);
   const jobIssues = useAppStore((s) => s.jobIssues);
+  const me = useCurrentWorker();
+  const assignFieldSuperToJob = useAppStore((s) => s.assignFieldSuperToJob);
+  const flash = useAppStore((s) => s.flash);
   const photos = useJobPhotos(job?.id);
   // Pictures filters: by work-request scope, plus SGD videos.
   const photoFilter = usePhotoScopeFilter(photos);
@@ -355,11 +358,33 @@ export default function JobSiteScreen() {
           <View style={styles.infoRow}>
             <Feather name="user" size={14} color={colors.textSecondary} />
             <Text style={styles.infoValue} numberOfLines={2}>
-              {fieldSupers.length
-                ? fieldSupers.join(', ')
-                : 'No Field Super assigned'}
+              {/* The FIRST-assigned super is the job's displayed name; when
+                  they're unassigned the next-oldest takes over (the list is
+                  ordered by assignment date and only holds current supers). */}
+              {fieldSupers.length ? fieldSupers[0] : 'No Field Super assigned'}
             </Text>
           </View>
+          {/* A Field Super viewing a job they're NOT on (the Jobs tab's "All
+              jobs" toggle gets them here) can put themselves on it — edits,
+              work requests, photos, and documents unlock once assigned. */}
+          {me?.role === 'field_super' &&
+            !(job.fieldSuperIds ?? []).includes(me.id) && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.assignSelfButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => {
+                  assignFieldSuperToJob(job.id, me.id);
+                  flash('You are now assigned to this job', 'success');
+                }}
+              >
+                <Feather name="user-plus" size={14} color={colors.primary} />
+                <Text style={styles.assignSelfText}>
+                  Assign myself to this job
+                </Text>
+              </Pressable>
+            )}
           {/* Scope counts, "done/total" — shown once a total is set (totals
               are edited from the office surfaces; done from work requests). */}
           {counts.length > 0 && (
@@ -877,6 +902,23 @@ const styles = themed(() => StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs + 2,
     maxWidth: '90%',
+  },
+  assignSelfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    marginTop: spacing.xs,
+  },
+  assignSelfText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
   infoValue: {
     flexShrink: 1,

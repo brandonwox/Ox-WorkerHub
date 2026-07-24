@@ -30,6 +30,7 @@ import { workRequestLinksJob } from '@/utils/workRequestJobs';
 export function FieldSuperJobsMobile() {
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
+  const workers = useAppStore((s) => s.workers);
   const workRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
   const updateJob = useAppStore((s) => s.updateJob);
@@ -37,16 +38,26 @@ export function FieldSuperJobsMobile() {
   const flash = useAppStore((s) => s.flash);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // "All jobs" widens the list from assigned-only to EVERY job — each row
+  // then shows its assigned supers, and tapping an unassigned job opens its
+  // details page, which offers "Assign myself".
+  const [showAll, setShowAll] = useState(false);
 
   // Sub-jobs stay out of this office list — they're managed from the web job
   // details sidebar (their work requests still show on the Work Requests tab).
   const myJobs = useMemo(
     () =>
-      (me ? jobsForFieldSuper(jobs, me.id) : []).filter(
+      (showAll ? jobs : me ? jobsForFieldSuper(jobs, me.id) : []).filter(
         (job) => !job.parentJobId
       ),
-    [jobs, me]
+    [jobs, me, showAll]
   );
+
+  const superNamesFor = (job: Job) =>
+    (job.fieldSuperIds ?? [])
+      .map((id) => workers.find((w) => w.id === id)?.name)
+      .filter((name): name is string => !!name)
+      .join(', ');
 
   const scheduledIds = useMemo(
     () => new Set(assignments.map((a) => a.workRequestId)),
@@ -67,16 +78,36 @@ export function FieldSuperJobsMobile() {
       >
         <View style={styles.headingRow}>
           <Text style={styles.heading}>Jobs</Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.newJobButton,
-              pressed && styles.saveDim,
-            ]}
-            onPress={() => setCreateOpen(true)}
-          >
-            <Feather name="plus" size={15} color={colors.textOnAccent} />
-            <Text style={styles.newJobText}>New job</Text>
-          </Pressable>
+          <View style={styles.headingActions}>
+            <Pressable
+              style={[styles.allToggle, showAll && styles.allToggleOn]}
+              onPress={() => setShowAll((v) => !v)}
+            >
+              <Feather
+                name="eye"
+                size={13}
+                color={showAll ? colors.primary : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.allToggleText,
+                  showAll && styles.allToggleTextOn,
+                ]}
+              >
+                All jobs
+              </Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.newJobButton,
+                pressed && styles.saveDim,
+              ]}
+              onPress={() => setCreateOpen(true)}
+            >
+              <Feather name="plus" size={15} color={colors.textOnAccent} />
+              <Text style={styles.newJobText}>New job</Text>
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.hint}>
           Tap a job to open it. Use the arrow to edit its address and flashing
@@ -89,7 +120,9 @@ export function FieldSuperJobsMobile() {
               <Feather name="briefcase" size={32} color={colors.textTertiary} />
               <Text style={styles.emptyTitle}>No jobs</Text>
               <Text style={styles.emptySubtitle}>
-                Jobs the Operator assigns to you show up here.
+                {showAll
+                  ? 'No jobs yet.'
+                  : 'Jobs you’re assigned to show up here — turn on "All jobs" to browse every job and assign yourself.'}
               </Text>
             </View>
           ) : (
@@ -98,6 +131,16 @@ export function FieldSuperJobsMobile() {
                 key={job.id}
                 job={job}
                 counts={countsFor(job)}
+                // With "All jobs" on, each row shows who's assigned.
+                supersLine={
+                  showAll
+                    ? superNamesFor(job) || 'No Field Super assigned'
+                    : undefined
+                }
+                // The inline address/flashing editor only works on assigned
+                // jobs (RLS matches) — unassigned rows hide the chevron; the
+                // details page offers "Assign myself".
+                editable={!!me && (job.fieldSuperIds ?? []).includes(me.id)}
                 expanded={expandedId === job.id}
                 onToggle={() =>
                   setExpandedId((id) => (id === job.id ? null : job.id))
@@ -289,12 +332,18 @@ const parseCount = (text: string): number | undefined => {
 function JobRow({
   job,
   counts,
+  supersLine,
+  editable,
   expanded,
   onToggle,
   onSave,
 }: {
   job: Job;
   counts: { total: number; scheduled: number };
+  /** Assigned supers, rendered under the counts ("All jobs" mode only). */
+  supersLine?: string;
+  /** Whether the viewer may use the inline editor (assigned jobs only). */
+  editable: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSave: (changes: Partial<Job>) => void;
@@ -376,21 +425,28 @@ function JobRow({
             {counts.scheduled} on calendar
             {archived ? ' · Finished' : ''}
           </Text>
+          {supersLine ? (
+            <Text style={styles.cardSupers} numberOfLines={1}>
+              {supersLine}
+            </Text>
+          ) : null}
         </Pressable>
-        <Pressable
-          hitSlop={12}
-          style={({ pressed }) => [pressed && styles.saveDim]}
-          onPress={onToggle}
-        >
-          <Feather
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={colors.textSecondary}
-          />
-        </Pressable>
+        {editable && (
+          <Pressable
+            hitSlop={12}
+            style={({ pressed }) => [pressed && styles.saveDim]}
+            onPress={onToggle}
+          >
+            <Feather
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+        )}
       </View>
 
-      {expanded && (
+      {editable && expanded && (
         <View style={styles.cardBody}>
           <FormInput
             label="Jobsite address"
@@ -477,6 +533,33 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 24,
   },
+  headingActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  allToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  allToggleOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  allToggleText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  allToggleTextOn: {
+    color: colors.primary,
+  },
   newJobButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,6 +629,11 @@ const styles = themed(() => StyleSheet.create({
   },
   cardSub: {
     color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  cardSupers: {
+    color: colors.textTertiary,
     fontFamily: fonts.regular,
     fontSize: 12,
   },

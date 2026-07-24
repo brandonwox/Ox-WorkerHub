@@ -75,8 +75,9 @@ export function JobPhotosModal({ job, onClose }: Props) {
               </Text>
               <Text style={styles.subtitle} numberOfLines={1}>
                 {job?.location || 'No location set'}
+                {/* First-assigned super only — same rule as job details. */}
                 {fieldSupers.length
-                  ? ` · Field Super: ${fieldSupers.join(', ')}`
+                  ? ` · Field Super: ${fieldSupers[0]}`
                   : ''}
               </Text>
             </View>

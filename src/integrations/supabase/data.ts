@@ -466,7 +466,9 @@ export async function fetchAllData(): Promise<BackendData> {
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
-    sb.from('job_field_supers').select('*'),
+    // Ordered oldest-first: a job's displayed Field Super is the FIRST one
+    // assigned (fieldSuperIds[0]), so assignment order must survive the trip.
+    sb.from('job_field_supers').select('*').order('assigned_at'),
     sb.from('work_requests').select('*'),
     sb.from('crews').select('*'),
     sb.from('crew_members').select('*'),
@@ -641,9 +643,8 @@ export async function insertJob(job: Job): Promise<void> {
   if (job.parentJobId) return;
   // Field Super assignments live in the job_field_supers join table, not on
   // the jobs row. Only written when there are assignments to record (the
-  // Operator's create flow) — scheduler/field-super creations pass none, and
-  // they couldn't write the operator-only table anyway (a creating Field
-  // Super is auto-assigned by a DB trigger instead).
+  // Operator's and Scheduler's create flows — both may write the table). A
+  // creating Field Super passes none; a DB trigger auto-assigns them instead.
   const supers = job.fieldSuperIds ?? [];
   if (supers.length > 0) await setJobFieldSupers(job.id, supers);
 }
@@ -662,29 +663,72 @@ export async function deleteJob(id: string): Promise<void> {
 }
 
 /**
- * Replace a job's Field Super assignments (operator-only; mirrors crew member
- * replace).
+ * Set a job's Field Super assignments (operator + scheduler). Diffed — only
+ * missing rows are inserted and dropped ones deleted — so a surviving
+ * assignment keeps its original assigned_at (the "first assigned" super stays
+ * first no matter how often the list is edited around them).
  */
 export async function setJobFieldSupers(
   jobId: string,
   fieldSuperIds: string[]
 ): Promise<void> {
   const sb = getSupabase();
-  check((await sb.from('job_field_supers').delete().eq('job_id', jobId)).error);
-  if (fieldSuperIds.length) {
+  const current = await sb
+    .from('job_field_supers')
+    .select('field_super_id')
+    .eq('job_id', jobId);
+  check(current.error);
+  const existing = new Set(
+    ((current.data ?? []) as { field_super_id: string }[]).map(
+      (r) => r.field_super_id
+    )
+  );
+  const wanted = new Set(fieldSuperIds);
+  const toRemove = [...existing].filter((id) => !wanted.has(id));
+  const toAdd = fieldSuperIds.filter((id) => !existing.has(id));
+  if (toRemove.length) {
+    check(
+      (
+        await sb
+          .from('job_field_supers')
+          .delete()
+          .eq('job_id', jobId)
+          .in('field_super_id', toRemove)
+      ).error
+    );
+  }
+  if (toAdd.length) {
     check(
       (
         await sb
           .from('job_field_supers')
           .insert(
-            fieldSuperIds.map((field_super_id) => ({
-              job_id: jobId,
-              field_super_id,
-            }))
+            toAdd.map((field_super_id) => ({ job_id: jobId, field_super_id }))
           )
       ).error
     );
   }
+}
+
+/**
+ * Additively assign ONE Field Super to a job — the self-assign path (a field
+ * super may only write their own row; RLS enforces it). Already-assigned is a
+ * no-op instead of an error so an offline-queued tap can't fail on replay.
+ */
+export async function assignJobFieldSuper(
+  jobId: string,
+  fieldSuperId: string
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_field_supers')
+        .upsert(
+          { job_id: jobId, field_super_id: fieldSuperId },
+          { onConflict: 'job_id,field_super_id', ignoreDuplicates: true }
+        )
+    ).error
+  );
 }
 
 function workRequestToRow(card: WorkRequest) {

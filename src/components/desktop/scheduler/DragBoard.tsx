@@ -12,6 +12,7 @@ import {
 import {
   Animated,
   GestureResponderEvent,
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -143,6 +144,19 @@ function measureRect(ref: RefObject<View | null>): Promise<Rect | null> {
 
 const keyOf = (item: DragItem) => `${item.kind}:${item.id}`;
 
+/**
+ * The responder system doesn't stop the browser's native text selection, so a
+ * mouse drag would also sweep a selection across the whole board. Kill
+ * selection for the duration of the drag (and drop whatever got selected
+ * during the pre-threshold pixels).
+ */
+function suppressTextSelection(on: boolean) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  document.body.style.userSelect = on ? 'none' : '';
+  document.body.style.webkitUserSelect = on ? 'none' : '';
+  if (on) window.getSelection?.()?.removeAllRanges();
+}
+
 interface ProviderProps {
   /** Drag is offered only to schedulers on the web console. */
   enabled: boolean;
@@ -167,6 +181,9 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
     null
   );
   const ghostPos = useRef(new Animated.ValueXY({ x: -1000, y: -1000 })).current;
+
+  // Unmounting mid-drag would otherwise leave the page unselectable.
+  useEffect(() => () => suppressTextSelection(false), []);
 
   const registerZone = useCallback(
     (zoneId: string, ref: RefObject<View | null>, meta: ZoneMeta) => {
@@ -197,6 +214,7 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
     (item: DragItem, ghostSpec: Ghost, x: number, y: number) => {
       dragRef.current = item;
       hoverRef.current = null;
+      suppressTextSelection(true);
       setGhost(ghostSpec);
       setDraggingKey(keyOf(item));
       setHover(null);
@@ -286,6 +304,7 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
   );
 
   const finish = useCallback(() => {
+    suppressTextSelection(false);
     dragRef.current = null;
     hoverRef.current = null;
     snapshotRef.current = null;

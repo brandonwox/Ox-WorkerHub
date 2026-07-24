@@ -33,6 +33,7 @@ export default function FieldSuperJobsScreen() {
   const role = useCurrentRole();
   const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
+  const workers = useAppStore((s) => s.workers);
   const workRequests = useAppStore((s) => s.workRequests);
   const addJob = useAppStore((s) => s.addJob);
   const flash = useAppStore((s) => s.flash);
@@ -40,8 +41,13 @@ export default function FieldSuperJobsScreen() {
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // "All jobs" widens the list from assigned-only to EVERY job — each row
+  // then shows its assigned supers, and an unassigned job opens read-only
+  // with an "Assign myself" button in the sidebar.
+  const [showAll, setShowAll] = useState(false);
 
-  // A Field Super sees ONLY the jobs they're assigned to, Active first.
+  // By default a Field Super sees ONLY the jobs they're assigned to, Active
+  // first.
   const myJobs = useMemo(
     () =>
       (me ? jobsForFieldSuper(jobs, me.id) : []).sort((a, b) =>
@@ -49,12 +55,19 @@ export default function FieldSuperJobsScreen() {
       ),
     [jobs, me]
   );
+  const allJobs = useMemo(
+    () =>
+      [...jobs].sort((a, b) =>
+        a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
+      ),
+    [jobs]
+  );
 
   // Sub-jobs stay out of the top-level list — they live inside their parent's
   // Sub-Jobs section (myJobs keeps them for the sidebar/quick-view lookups).
   const listJobs = useMemo(
-    () => myJobs.filter((job) => !job.parentJobId),
-    [myJobs]
+    () => (showAll ? allJobs : myJobs).filter((job) => !job.parentJobId),
+    [showAll, allJobs, myJobs]
   );
 
   const visibleJobs = useMemo(() => {
@@ -68,12 +81,25 @@ export default function FieldSuperJobsScreen() {
     );
   }, [listJobs, query]);
 
+  // Looked up in the FULL list — with "All jobs" on, an unassigned job can be
+  // open in the sidebar too.
   const selectedJob = useMemo(
-    () => myJobs.find((job) => job.id === selectedJobId) ?? null,
-    [myJobs, selectedJobId]
+    () => jobs.find((job) => job.id === selectedJobId) ?? null,
+    [jobs, selectedJobId]
+  );
+  // Assignment gates every edit affordance on the open job (RLS matches);
+  // the sidebar itself offers "Assign myself" while unassigned.
+  const meAssigned = !!(
+    me && selectedJob?.fieldSuperIds?.includes(me.id)
   );
 
   if (role !== 'field_super') return <AccessDenied />;
+
+  const superNamesFor = (jobFieldSuperIds?: string[]) =>
+    (jobFieldSuperIds ?? [])
+      .map((id) => workers.find((w) => w.id === id)?.name)
+      .filter((name): name is string => !!name)
+      .join(', ');
 
   const workRequestCountFor = (jobId: string) =>
     workRequests.filter((c) => workRequestLinksJob(c, jobId)).length;
@@ -111,6 +137,19 @@ export default function FieldSuperJobsScreen() {
             )}
           </View>
           <Pressable
+            style={[styles.toggle, showAll && styles.toggleOn]}
+            onPress={() => setShowAll((v) => !v)}
+          >
+            <Feather
+              name="eye"
+              size={15}
+              color={showAll ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.toggleText, showAll && styles.toggleTextOn]}>
+              All jobs
+            </Text>
+          </Pressable>
+          <Pressable
             style={({ pressed }) => [
               styles.addButton,
               pressed && styles.pressed,
@@ -124,8 +163,9 @@ export default function FieldSuperJobsScreen() {
 
         {listJobs.length === 0 ? (
           <Text style={styles.emptyText}>
-            No jobs assigned to you yet — the Operator assigns Field Supers to
-            jobs.
+            {showAll
+              ? 'No jobs yet.'
+              : 'No jobs assigned to you yet — turn on "All jobs" to browse every job and assign yourself.'}
           </Text>
         ) : visibleJobs.length === 0 ? (
           <Text style={styles.emptyText}>No jobs match “{query.trim()}”.</Text>
@@ -170,6 +210,13 @@ export default function FieldSuperJobsScreen() {
                     <Text style={styles.jobLocation} numberOfLines={1}>
                       {job.location || 'No location set'}
                     </Text>
+                    {/* With "All jobs" on, each row shows who's assigned. */}
+                    {showAll && (
+                      <Text style={styles.jobSupers} numberOfLines={1}>
+                        {superNamesFor(job.fieldSuperIds) ||
+                          'No Field Super assigned'}
+                      </Text>
+                    )}
                   </View>
                   <Text style={styles.workRequestCount}>
                     {count} {count === 1 ? 'work request' : 'work requests'}
@@ -196,9 +243,12 @@ export default function FieldSuperJobsScreen() {
       <JobDashboardSidebar
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
-        editable
-        canCreateWorkRequests
-        canDelete
+        // Everything editable is gated on being assigned to the open job —
+        // an unassigned job (reachable with "All jobs" on) is read-only until
+        // the super assigns themselves from the sidebar.
+        editable={meAssigned}
+        canCreateWorkRequests={meAssigned}
+        canDelete={meAssigned}
         quickViewJobs={myJobs}
         onOpenJob={setSelectedJobId}
       />
@@ -239,6 +289,30 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     maxWidth: 480,
+  },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  toggleOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  toggleText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  toggleTextOn: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
   },
   addButton: {
     flexDirection: 'row',
@@ -312,6 +386,11 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 13,
+  },
+  jobSupers: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   workRequestCount: {
     color: colors.textSecondary,

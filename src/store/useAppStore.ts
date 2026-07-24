@@ -309,6 +309,8 @@ const OUTBOX_EXECUTORS = {
   deleteJob: (p: string) => backend.deleteJob(p),
   setJobFieldSupers: (p: { jobId: string; fieldSuperIds: string[] }) =>
     backend.setJobFieldSupers(p.jobId, p.fieldSuperIds),
+  assignJobFieldSuper: (p: { jobId: string; fieldSuperId: string }) =>
+    backend.assignJobFieldSuper(p.jobId, p.fieldSuperId),
   insertWorkRequest: (p: WorkRequest) => backend.insertWorkRequest(p),
   updateWorkRequest: (p: WorkRequest) => backend.updateWorkRequest(p),
   deleteWorkRequest: (p: string) => backend.deleteWorkRequest(p),
@@ -848,6 +850,13 @@ interface AppState {
     flashingMaterial?: string;
   }) => Job | null;
   updateJob: (id: string, changes: Partial<Job>) => void;
+  /**
+   * Additively assign ONE Field Super to a job — the jobs pages' "Assign
+   * myself" button (a field super may only write their own row; RLS matches).
+   * Mirrors onto the job's sub-jobs locally the way the DB trigger does.
+   * Already assigned = no-op.
+   */
+  assignFieldSuperToJob: (jobId: string, fieldSuperId: string) => void;
   /**
    * Delete a jobsite and everything hanging off it. Mirrors the DB's
    * `on delete cascade`: locally drops the job's work requests and any schedule
@@ -1602,8 +1611,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         : created;
     set((s) => ({ jobs: [local, ...s.jobs] }));
-    // insertJob writes the job row and, for the Operator, its Field Super
-    // assignments (job_field_supers).
+    // insertJob writes the job row and, for the Operator and Schedulers, its
+    // Field Super assignments (job_field_supers).
     if (isBackend) write('insertJob', created);
     return local;
   },
@@ -1660,10 +1669,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     if (backendActive(get()) && updated) {
       // Job-column edits go to the jobs table. The Field-Super-assignment join
-      // table is a separate, operator-only write, so only touch it when
-      // fieldSuperIds is actually part of this edit — a Field Super saving
-      // flashing material must not hit job_field_supers (they have no write
-      // grant there).
+      // table is a separate office-only (operator + scheduler) write, so only
+      // touch it when fieldSuperIds is actually part of this edit — a Field
+      // Super saving flashing material must not hit job_field_supers (they may
+      // only self-assign there).
       write('updateJob', updated);
       if ('fieldSuperIds' in changes) {
         write('setJobFieldSupers', {
@@ -1671,6 +1680,24 @@ export const useAppStore = create<AppState>((set, get) => ({
           fieldSuperIds: updated.fieldSuperIds ?? [],
         });
       }
+    }
+  },
+
+  assignFieldSuperToJob: (jobId, fieldSuperId) => {
+    let changed = false;
+    set((state) => ({
+      jobs: state.jobs.map((job) => {
+        // The job itself + its sub-jobs (the DB trigger mirrors parent
+        // assignments onto sub-jobs; keep local state matching).
+        if (job.id !== jobId && job.parentJobId !== jobId) return job;
+        const ids = job.fieldSuperIds ?? [];
+        if (ids.includes(fieldSuperId)) return job;
+        if (job.id === jobId) changed = true;
+        return { ...job, fieldSuperIds: [...ids, fieldSuperId] };
+      }),
+    }));
+    if (changed && backendActive(get())) {
+      write('assignJobFieldSuper', { jobId, fieldSuperId });
     }
   },
 
