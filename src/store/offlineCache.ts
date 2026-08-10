@@ -4,7 +4,6 @@ import { Image } from 'expo-image';
 import { Platform } from 'react-native';
 
 import {
-  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -50,8 +49,6 @@ export interface CachedCollections {
    * the documents feature — readers default to [].
    */
   jobDocuments?: JobDocument[];
-  /** Scheduler day notes. Absent in caches written before events existed. */
-  calendarEvents?: CalendarEvent[];
   cachedAt: string;
 }
 
@@ -75,7 +72,6 @@ export function persistDataCache(
     ),
     jobIssues: data.jobIssues,
     jobDocuments: data.jobDocuments,
-    calendarEvents: data.calendarEvents,
     cachedAt: new Date().toISOString(),
   };
   AsyncStorage.setItem(

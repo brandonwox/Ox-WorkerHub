@@ -1,7 +1,6 @@
 import { addDays, format, set, subDays } from 'date-fns';
 
 import {
-  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -467,16 +466,4 @@ export const mockLogs: TimesheetLog[] = [
   makeLog('t-12', M, 21, 8, 14, 0, { customProjectName: 'Shop Fabrication' }),
   makeLog('t-13', M, 24, 7, 15, 0, { customProjectName: 'Condo Balcony Rails' }),
   makeLog('t-14', M, 28, 8, 16, 30, { customProjectName: 'Condo Balcony Rails' }),
-];
-
-/** A sample scheduler day note so the calendars render an Event in dev mode. */
-export const mockCalendarEvents: CalendarEvent[] = [
-  {
-    id: 'evt-1',
-    title: 'Brandon off all day',
-    description: 'Out of office — do not schedule him on anything.',
-    date: day(1),
-    priorityOrder: 1,
-    createdById: 'w-sch',
-  },
 ];

@@ -365,8 +365,9 @@ export default function JobSiteScreen() {
             </Text>
           </View>
           {/* A Field Super viewing a job they're NOT on (the Jobs tab's "All
-              jobs" toggle gets them here) can put themselves on it — edits,
-              work requests, photos, and documents unlock once assigned. */}
+              jobs" toggle gets them here) can take responsibility for it —
+              assignment puts it on their default jobs list and in the
+              displayed-super line-up. Editing never requires it. */}
           {me?.role === 'field_super' &&
             !(job.fieldSuperIds ?? []).includes(me.id) && (
               <Pressable

@@ -464,28 +464,6 @@ export interface DailyCrew {
 }
 
 /**
- * A scheduler-authored day note ("Brandon off all day"). Renders like a work
- * request chip on the calendars, but carries only a date, title, and
- * description — no crew, tasks, or status. Everyone signed in can see events
- * (installers get them on their agenda); only schedulers create/edit/move
- * them. Shares the per-day ordering space with work requests via
- * {@link priorityOrder}, so events drag-and-drop like requests.
- */
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  description?: string;
-  /** The day the event sits on (yyyy-MM-dd). */
-  date: string;
-  /** Intra-day sort key (same space as {@link WorkRequest.priorityOrder}). */
-  priorityOrder: number;
-  /** Scheduler who created the event. */
-  createdById?: string;
-  /** ISO timestamp (DB-stamped). */
-  createdAt?: string;
-}
-
-/**
  * Single-source-of-truth link: a Work Request placed on a crew for a date. The
  * Work Request itself is never duplicated; multiple assignments fan it out to
  * multiple crews/dates.

@@ -42,8 +42,9 @@ export default function FieldSuperJobsScreen() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   // "All jobs" widens the list from assigned-only to EVERY job — each row
-  // then shows its assigned supers, and an unassigned job opens read-only
-  // with an "Assign myself" button in the sidebar.
+  // then shows its assigned supers. Unassigned jobs are fully viewable AND
+  // editable (helping out needs no assignment); the sidebar still offers
+  // "Assign myself" to take responsibility for one.
   const [showAll, setShowAll] = useState(false);
 
   // By default a Field Super sees ONLY the jobs they're assigned to, Active
@@ -87,8 +88,8 @@ export default function FieldSuperJobsScreen() {
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
     [jobs, selectedJobId]
   );
-  // Assignment gates every edit affordance on the open job (RLS matches);
-  // the sidebar itself offers "Assign myself" while unassigned.
+  // Assignment only gates DELETING a job — the responsible supers' call (RLS
+  // matches). Everything else is editable on any job.
   const meAssigned = !!(
     me && selectedJob?.fieldSuperIds?.includes(me.id)
   );
@@ -243,11 +244,10 @@ export default function FieldSuperJobsScreen() {
       <JobDashboardSidebar
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
-        // Everything editable is gated on being assigned to the open job —
-        // an unassigned job (reachable with "All jobs" on) is read-only until
-        // the super assigns themselves from the sidebar.
-        editable={meAssigned}
-        canCreateWorkRequests={meAssigned}
+        editable
+        canCreateWorkRequests
+        // Deleting a job stays with the supers assigned to it (RLS matches);
+        // everything else is open to any super helping out.
         canDelete={meAssigned}
         quickViewJobs={myJobs}
         onOpenJob={setSelectedJobId}

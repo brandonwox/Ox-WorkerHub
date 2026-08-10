@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { useCurrentRole, useCurrentWorker } from '@/store/useAppStore';
+import { useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { jobAllowsWindows } from '@/utils/jobScopes';
@@ -15,15 +15,8 @@ import { jobAllowsWindows } from '@/utils/jobScopes';
  */
 export function FlashingMaterialBanner({ job }: { job: Job }) {
   const role = useCurrentRole();
-  const me = useCurrentWorker();
-  // A Field Super only sees the nag on jobs they're ON — they can browse any
-  // job ("All jobs" toggle) but can't fix this one until they self-assign.
-  const fieldSuperOffJob =
-    role === 'field_super' &&
-    (!me || !(job.fieldSuperIds ?? []).includes(me.id));
   if (
     !['field_super', 'operator', 'scheduler'].includes(role ?? '') ||
-    fieldSuperOffJob ||
     !jobAllowsWindows(job) ||
     job.flashingMaterial?.trim()
   ) {

@@ -7,8 +7,8 @@
 --    job_field_supers row, so a super who needs a job they weren't given can
 --    add themselves from the jobs pages.
 -- 3) Field Supers can now SEE every job — the jobs pages gained a "view all
---    jobs" toggle. Their work requests, photos, issues, and documents stay
---    scoped to ASSIGNED jobs; full detail unlocks by self-assigning.
+--    jobs" toggle. (20260724150000 then opens every job's content to them
+--    too: assignment records responsibility, it no longer gates access.)
 -- 4) job_field_supers.assigned_at records WHEN each assignment was made. The
 --    job details surfaces now display the FIRST-assigned Field Super (falling
 --    back to the next-oldest when the first is unassigned), so the order has

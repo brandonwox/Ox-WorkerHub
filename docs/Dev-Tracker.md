@@ -4,6 +4,8 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+deleting a job should only archive it. once a job is archived, it can be deleted from the archive to permanently delete it. (both deletes require confirmation.)
+
 i noticed the mobile keyboard doesn't have a button to hide the mobile keyboard, are we able to add one?
 
 mobile (installer):
@@ -12,10 +14,6 @@ mobile (installer):
 - in light mode: viewing the daily schedule: the bg color of the work request cards in the schedule list is the same as the bg color behind them. can you make it slightly darker. (but do not affect the bg color of the work requests when they're open)
 - in work requests: clicking the location should open a menu to open the location in any installed maps apps (I thought this functionality was already implemented, is it not?)
 - when inside an open work request I want to be able to swipe down to close the work request (right now I have to click the x button to close it, but i also want to be able to swipe down)
-
-scheduler-calendar: get rid of events. (Do not touch the work requests or anything else, only the event feature.)
-
-work requests need to be able to be assigned across multiple days. (it cannot be split up(the 10th and the 12th), but it can be stretched (the 10th to the 12th)). when the scheduler drags and drops the work request to a new location, the work request remembers its length (if the work request spanned 5 days, it stays that way where it was moved to.) (visually it should overlap the borders of the days on the calendars.) (I will attach a screenshot of a good visual example of this from google calendar) (This edit needs to be done soon. ask for a screenshot if and when you plan this edit.)
 
 on the job details page -> issues section -> add a "+ Issue" button on the right side of the "Issues" title, so that issues can be created for the job, without having to be created and assigned to a work request.
 
@@ -31,8 +29,6 @@ job details page -> The additional info section that is only accessible from the
 
 "Service" should not be a scope.
 
-events on the calendar should be drag and droppable, and if created from the "+ Event" button at the top of the page (not inside the daily list): then the event should be created in the work requests backlog.
-
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
 
 improve the notifications system. Right now the notification dropdown seems like it could use a lot of improvements. (find weakspots or missing functionality, and make a list. Also look at what notifications we should set up (right now we have some good notifications like when a work request changes priority to Now. But we need to make a list of more notifications that I can decide yes or no to.))
@@ -40,8 +36,6 @@ improve the notifications system. Right now the notification dropdown seems like
 in the notifications section: i try to hover over a notification and click on the x button to dismiss the notification and delete it, but the x button disappears whenever i get close.
 
 web users -> the settings page should not show up in the left sidebar. accessing the settings page is done by clicking the profile chip in the top right of the screen.
-
-work request -> rounded square that shows the crews -> add a "Assign Multiple" button at the bottom of the list of crews so the scheduler can assign multiple crews to the work request from here. while the dropdown remains open and the assign multiple button is active, the user can now click on as many crews as they want. also, clicking a crew that's assigned unassigns it.
 
 add small radius drop shadow around popups in web view, such as when a scheduler opens a jobcard popup (there should be a box/drop shadow around the popup, just dont make it too big or too strong.)
 
@@ -73,10 +67,17 @@ use font Quantico for the "WorkerHub" text in the header. here's the import code
 
 # DONE
 
-Pass 9 — Field Super assignment overhaul + drag-selection fix (REQUIRES: apply the new field-super-assignment Supabase migration — the app now orders assignments by the new job_field_supers.assigned_at column, so jobs will not load against the old schema):
+Pass 10 — Events removed + multi-day (stretched) work requests + Assign Multiple in the crew menu (REQUIRES: apply the new drop-calendar-events Supabase migration — it deletes the calendar_events table; NO migration needed for multi-day, the existing schedule_assignments schema already allows one row per request/crew/day):
+- EVENTS REMOVED ENTIRELY (work requests untouched): the "+ Event" toolbar and day-sidebar buttons, the event popup, the calendar/day-sidebar event chips, the installer-agenda pinned day notes, the store actions, the offline cache slot, the realtime subscription, the mock seed, and the calendar_events table are all gone. The separate Awaiting note asking for events to be drag-droppable / backlog-creatable was superseded by this removal and moved here with it.
+- MULTI-DAY WORK REQUESTS (Google-Calendar style, per the provided screenshot): a scheduled request can be STRETCHED across consecutive days — never split. Data model: one schedule_assignments row per crew per covered day (so the day sidebar, installer agendas, and mobile calendars show the request on every covered day with no extra logic); the scheduler month calendar merges a request's contiguous days into ONE continuous bar overlapping the day-cell borders (week-aligned segments; a span crossing a week boundary squares off the continuing edge; overlapping bars stack in lanes and that week's single-day chips start below them).
+- STRETCHING: every placed chip/bar grows a small grip on its right edge (web scheduler only) — drag it onto any calendar day to set the stretch's END day (dropping before the start collapses back to a single day). Dragging the bar itself MOVES the whole stretch: a 3-day request stays 3 days wherever it lands (drop day = new start). Unassigning (×, or dropping on the Work Requests pool) removes the whole stretch from every crew — the mobile scheduler's × now fans out the same way so a span can never be left half-removed. The quick view's calendar row shows the full range ("August 10 – August 12").
+- ASSIGN MULTIPLE (work request crew square): the crew dropdown in the quick view has an "Assign Multiple" button at the bottom; while active the menu stays open and clicking crews toggles them onto/off the card (assigned crew click = unassign; the card's scheduled days are kept for every crew). Removing the LAST crew this way is refused — that's the unassign flow's job.
+
+Pass 9 — Field Super assignment overhaul + drag-selection fix (REQUIRES: apply BOTH new Supabase migrations — field-super-assignment and field-super-edit-all; the app now orders assignments by the new job_field_supers.assigned_at column, so jobs will not load against the old schema). REVISED in-session: assignment now records RESPONSIBILITY only — it no longer gates what a field super can see or do:
 - SCHEDULERS ASSIGN FIELD SUPERS: the scheduler's Create job form now has the same Field supers picker the Operator gets (multi-select; RLS widened from operator-only to operator + scheduler on the assignment table, so schedulers could also be given post-creation assignment UI later without another migration).
-- ALL JOBS TOGGLE (field-super jobs pages, web + mobile): an "All jobs" toggle widens the list from assigned-only to every job; with it on, each row also shows the field supers assigned to that job. Field supers can now SELECT every job at the DB level — but a job's work requests, photos, issues, and documents stay scoped to ASSIGNED supers, so an unassigned job's details read as empty until they join it.
-- SELF-ASSIGN: viewing a job they're not assigned to (web sidebar + mobile job details) shows an "Assign myself to this job" button — assignment applies instantly (queues offline like other writes; RLS lets a field super insert/remove only their OWN assignment row) and unlocks editing, work request creation, and the rest. Until then the job is read-only (edit pencil, inline editors, delete, "+ Work Request", and the layout-plan/flashing nag banners are all hidden on unassigned jobs).
+- FIELD SUPERS SEE + EDIT EVERY JOB (decision revised mid-pass from "view-only until assigned"): every job and all of its content — work requests, photos, issues, documents — is fully visible AND editable to any field super, assigned or not, so one can help on another's job for a day without an assign/unassign dance. The ONLY thing still assignment-gated is DELETING a job (the responsible supers' call). Sub-job creation also opened to any parent for them.
+- ALL JOBS TOGGLE (field-super jobs pages, web + mobile): the jobs lists still show ONLY assigned jobs by default; an "All jobs" toggle widens to every job, and with it on each row also shows the field supers assigned to that job.
+- SELF-ASSIGN: viewing a job they're not assigned to (web sidebar + mobile job details) shows an "Assign myself to this job" button — taking responsibility puts the job on their default list and into the displayed-super lineup (queues offline; RLS lets a field super insert/remove only their OWN assignment row).
 - MULTIPLE FIELD SUPERS PER JOB (rule change): the displayed name on job details (mobile page + web sidebar) is now the FIRST-assigned field super still on the job — if they're unassigned, the next-oldest takes over. Backed by the new assigned_at column (clock_timestamp so same-statement adds stay ordered); the Operator's assignment edits now diff instead of delete-all-then-reinsert so surviving supers keep their original assignment date.
 - DRAG-SELECTION FIX (scheduler board): dragging a chip no longer sweeps text selection across the page — text selection is disabled on the document for the duration of the drag (and whatever got selected during the first few pre-drag pixels is cleared), restored on drop/cancel.
 

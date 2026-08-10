@@ -28,7 +28,6 @@ import {
   ActiveShift,
   AppNotification,
   AppRole,
-  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -346,9 +345,6 @@ const OUTBOX_EXECUTORS = {
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
-  insertCalendarEvent: (p: CalendarEvent) => backend.insertCalendarEvent(p),
-  updateCalendarEvent: (p: CalendarEvent) => backend.updateCalendarEvent(p),
-  deleteCalendarEvent: (p: string) => backend.deleteCalendarEvent(p),
   insertNotification: (p: AppNotification) =>
     notificationsBackend.insertNotification(p),
   markNotificationRead: (p: string) =>
@@ -735,8 +731,6 @@ interface AppState {
   dailyCrews: DailyCrew[];
   /** Work Request→crew→date links (single source of truth; never duplicates a card). */
   assignments: ScheduleAssignment[];
-  /** Scheduler-authored day notes, shown on the calendars like requests. */
-  calendarEvents: CalendarEvent[];
   logs: TimesheetLog[];
   /** Jobsite photos hydrated from the backend (see also pendingPhotos). */
   jobPhotos: JobPhoto[];
@@ -927,25 +921,12 @@ interface AppState {
     date: string
   ) => ScheduleAssignment;
   unassignWorkRequest: (assignmentId: string) => void;
-
-  // --- Calendar events (Scheduler day notes) ---
-  /** Create an event on a day. Returns the record, or null when signed out. */
-  addCalendarEvent: (input: {
-    title: string;
-    description?: string;
-    date: string;
-  }) => CalendarEvent | null;
-  updateCalendarEvent: (id: string, changes: Partial<CalendarEvent>) => void;
-  deleteCalendarEvent: (id: string) => void;
   /**
    * Persist a day's drag-reordered schedule: renumbers priorityOrder (1…n)
-   * across the day's work requests AND events in the given order. Only rows
-   * whose order actually changed are written.
+   * across the day's work requests in the given order. Only rows whose order
+   * actually changed are written.
    */
-  reorderDaySchedule: (
-    date: string,
-    ordered: { kind: 'request' | 'event'; id: string }[]
-  ) => void;
+  reorderDaySchedule: (date: string, orderedRequestIds: string[]) => void;
 
   clockIn: (ref: { workRequestId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
@@ -1111,7 +1092,6 @@ let nextCrewId = 100;
 let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
 let nextNotificationId = 100;
-let nextEventId = 100;
 
 // Coalesces the burst of realtime row events one logical change can emit into a
 // single collection refetch. Module-level so it survives across store calls.
@@ -1146,7 +1126,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   crews: [],
   dailyCrews: [],
   assignments: [],
-  calendarEvents: [],
   logs: [],
   jobPhotos: [],
   jobIssues: [],
@@ -1238,7 +1217,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: sortCrews(seed.mockCrews),
       dailyCrews: sortDailyCrews(seed.mockDailyCrews),
       assignments: seed.mockAssignments,
-      calendarEvents: seed.mockCalendarEvents,
       logs: seed.mockLogs,
       jobPhotos: [],
       jobIssues: [],
@@ -1273,7 +1251,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           crews: sortCrews(cached.crews),
           dailyCrews: sortDailyCrews(cached.dailyCrews),
           assignments: cached.assignments,
-          calendarEvents: cached.calendarEvents ?? [],
           logs: cached.logs,
           jobIssues: cached.jobIssues,
           // Older caches predate documents — tolerate their absence.
@@ -1295,7 +1272,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         crews: sortCrews(data.crews),
         dailyCrews: sortDailyCrews(data.dailyCrews),
         assignments: data.assignments,
-        calendarEvents: data.calendarEvents,
         logs: data.logs,
         jobPhotos: data.jobPhotos,
         jobIssues: data.jobIssues,
@@ -1391,7 +1367,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: sortCrews(data.crews),
       dailyCrews: sortDailyCrews(data.dailyCrews),
       assignments: data.assignments,
-      calendarEvents: data.calendarEvents,
       logs: data.logs,
       // Photos with a queued note write keep the LOCAL note. (No local row —
       // e.g. right after a fresh launch restored the queue — keeps fetched.)
@@ -1487,7 +1462,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       crews: [],
       dailyCrews: [],
       assignments: [],
-      calendarEvents: [],
       logs: [],
       // Pending photo files/queue stay stashed on disk — they resume when
       // their owner signs back in (restorePendingPhotos filters by worker).
@@ -2143,59 +2117,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  addCalendarEvent: ({ title, description, date }) => {
-    const state = get();
-    const me = currentWorkerOf(state);
-    if (!me) return null;
-    const isBackend = backendActive(state);
-    // New events land at the bottom of their day's stack.
-    const maxOrder = state.calendarEvents
-      .filter((e) => e.date === date)
-      .reduce((max, e) => Math.max(max, e.priorityOrder), 0);
-    const created: CalendarEvent = {
-      id: isBackend ? uuid() : `evt-${nextEventId++}`,
-      title: title.trim(),
-      description: description?.trim() || undefined,
-      date,
-      priorityOrder: maxOrder + 1,
-      createdById: me.id,
-      createdAt: new Date().toISOString(),
-    };
-    set({ calendarEvents: [...state.calendarEvents, created] });
-    if (isBackend) write('insertCalendarEvent', created);
-    return created;
-  },
-
-  updateCalendarEvent: (id, changes) => {
-    let updated: CalendarEvent | undefined;
-    set((state) => ({
-      calendarEvents: state.calendarEvents.map((event) => {
-        if (event.id !== id) return event;
-        updated = { ...event, ...changes };
-        return updated;
-      }),
-    }));
-    if (backendActive(get()) && updated) write('updateCalendarEvent', updated);
-  },
-
-  deleteCalendarEvent: (id) => {
-    set((state) => ({
-      calendarEvents: state.calendarEvents.filter((event) => event.id !== id),
-    }));
-    if (backendActive(get())) write('deleteCalendarEvent', id);
-  },
-
-  reorderDaySchedule: (date, ordered) => {
+  reorderDaySchedule: (date, orderedRequestIds) => {
     void date; // The order list is authoritative; date is for the caller's clarity.
-    ordered.forEach(({ kind, id }, index) => {
+    orderedRequestIds.forEach((id, index) => {
       const order = index + 1;
-      if (kind === 'event') {
-        const event = get().calendarEvents.find((e) => e.id === id);
-        if (event && event.priorityOrder !== order) {
-          get().updateCalendarEvent(id, { priorityOrder: order });
-        }
-        return;
-      }
       const card = get().workRequests.find((c) => c.id === id);
       if (card && card.priorityOrder !== order) {
         get().updateWorkRequest(id, { priorityOrder: order });

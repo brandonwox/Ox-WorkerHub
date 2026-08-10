@@ -86,8 +86,8 @@ export function JobDocumentsSection({ jobId }: Props) {
   );
 
   const canCreate = role !== 'installer';
-  // Edit/delete: the creator, the Operator, or a Field Super (they only see
-  // their own jobs, so the role alone is the scope; RLS matches).
+  // Edit/delete: the creator, the Operator, or a Field Super (any job — a
+  // super helping out on someone else's job works unrestricted; RLS matches).
   const canManage = (doc: JobDocument) =>
     role === 'operator' ||
     role === 'field_super' ||

@@ -17,11 +17,7 @@ import {
   captureSingleJobPhoto,
   pickSingleJobPhoto,
 } from '@/lib/photoCapture';
-import {
-  useAppStore,
-  useCurrentRole,
-  useCurrentWorker,
-} from '@/store/useAppStore';
+import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import {
   colors,
   fonts,
@@ -82,7 +78,6 @@ const KIND_META = {
 export function LayoutPlanBanner({ job, kind }: Props) {
   const meta = KIND_META[kind];
   const role = useCurrentRole();
-  const me = useCurrentWorker();
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const addJobDocument = useAppStore((s) => s.addJobDocument);
   const setJobDocumentType = useAppStore((s) => s.setJobDocumentType);
@@ -119,10 +114,6 @@ export function LayoutPlanBanner({ job, kind }: Props) {
 
   if (
     role !== 'field_super' ||
-    // Only supers ON the job — others can browse it ("All jobs" toggle) but
-    // can't write its documents until they assign themselves.
-    !me ||
-    !(job.fieldSuperIds ?? []).includes(me.id) ||
     !job.scopes?.includes(meta.scope) ||
     meta.notNeeded(job) ||
     hasPlan

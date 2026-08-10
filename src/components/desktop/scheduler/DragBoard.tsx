@@ -39,10 +39,11 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
  * how a mouse drag naturally works.
  */
 
-/** What is being dragged. */
-export type DragItem =
-  | { kind: 'request'; id: string }
-  | { kind: 'event'; id: string };
+/**
+ * What is being dragged: a request chip being moved, or a request's stretch
+ * handle being pulled to a new END day (multi-day span).
+ */
+export type DragItem = { kind: 'request' | 'resize'; id: string };
 
 /** Where a drag can land. */
 export type DropTarget =
@@ -98,7 +99,7 @@ interface Snapshot {
 
 interface DragBoardContextValue {
   enabled: boolean;
-  /** Key of the chip being dragged ("request:<id>" / "event:<id>"), or null. */
+  /** Key of the chip being dragged ("request:<id>"), or null. */
   draggingKey: string | null;
   /** The hovered drop position (zone + insertion index), or null. */
   hover: { zoneId: string; index: number } | null;
@@ -410,6 +411,8 @@ interface DragSourceProps {
   zoneId?: string;
   /** Plain click (no drag) — e.g. open the quick view. */
   onPress?: () => void;
+  /** Web cursor while hovering the source (default 'grab'). */
+  cursor?: string;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }
@@ -429,6 +432,7 @@ export function DragSource({
   ghost,
   zoneId,
   onPress,
+  cursor = 'grab',
   style,
   children,
 }: DragSourceProps) {
@@ -507,7 +511,7 @@ export function DragSource({
       collapsable={false}
       {...handlers}
       // @ts-expect-error — react-native-web honors `cursor` in styles.
-      style={[style, { cursor: 'grab' }, dimmed && styles.dimmed]}
+      style={[style, { cursor }, dimmed && styles.dimmed]}
     >
       {children}
     </View>

@@ -1,5 +1,13 @@
 import { Feather } from '@expo/vector-icons';
-import { addMonths, format, parseISO, subMonths } from 'date-fns';
+import {
+  addDays,
+  addMonths,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  format,
+  parseISO,
+  subMonths,
+} from 'date-fns';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -15,10 +23,6 @@ import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
 import { Backlog } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
-import {
-  CalendarEventModal,
-  EventModalState,
-} from '@/components/desktop/scheduler/CalendarEventModal';
 import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
 import {
   DragBoardProvider,
@@ -78,8 +82,6 @@ export function CalendarBoard({
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
-  const calendarEvents = useAppStore((s) => s.calendarEvents);
-  const updateCalendarEvent = useAppStore((s) => s.updateCalendarEvent);
   const reorderDaySchedule = useAppStore((s) => s.reorderDaySchedule);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
@@ -101,8 +103,6 @@ export function CalendarBoard({
   // The day whose schedule shows in the sidebar, or null when closed.
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
-  // The Event popup: creating on a day, or viewing/editing an existing one.
-  const [eventModal, setEventModal] = useState<EventModalState | null>(null);
   // A work request popup's parent-job link opens the job dashboard OVER the popup;
   // its back arrow returns to the (still-open) work request.
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -191,8 +191,6 @@ export function CalendarBoard({
     () => allCrews.filter((c) => activeCrewIds.has(c.id)),
     [allCrews, activeCrewIds]
   );
-  // The primary target, used for single-target visuals (banner tint, etc.).
-  const activeCrew = activeCrews[0] ?? null;
 
   // Seed / repair the assign targets: drop stale ids (crew removed) and, when
   // the set empties, seed the first visible crew so there's always a target.
@@ -338,52 +336,72 @@ export function CalendarBoard({
   const dragEnabled = canAssign && Platform.OS === 'web';
 
   /**
-   * Renumber `date`'s schedule with `moved` inserted at `index` (the index
-   * is counted against the day's items EXCLUDING the moved one — exactly how
-   * the drag layer computed it). Reads fresh store state: the drop handler
-   * may have just created/moved assignments synchronously.
+   * Renumber `date`'s schedule with the moved request inserted at `index`
+   * (the index is counted against the day's items EXCLUDING the moved one —
+   * exactly how the drag layer computed it). Reads fresh store state: the
+   * drop handler may have just created/moved assignments synchronously.
    */
-  const applyDayOrder = (
-    date: string,
-    moved: { kind: 'request' | 'event'; id: string },
-    index: number
-  ) => {
+  const applyDayOrder = (date: string, movedId: string, index: number) => {
     const s = useAppStore.getState();
-    const items = buildDayItems(
+    const ids = buildDayItems(
       s.assignments.filter((a) => a.date === date),
-      s.workRequests,
-      s.calendarEvents.filter((e) => e.date === date)
+      s.workRequests
     )
-      .map((item) => ({
-        kind: item.kind,
-        id: item.kind === 'request' ? item.card.id : item.event.id,
-      }))
-      .filter((item) => !(item.kind === moved.kind && item.id === moved.id));
-    const clamped = Math.max(0, Math.min(index, items.length));
-    items.splice(clamped, 0, moved);
-    reorderDaySchedule(date, items);
+      .map((item) => item.card.id)
+      .filter((id) => id !== movedId);
+    const clamped = Math.max(0, Math.min(index, ids.length));
+    ids.splice(clamped, 0, movedId);
+    reorderDaySchedule(date, ids);
+  };
+
+  /**
+   * Rewrite a placed request's covered days to exactly `start`…`end` on every
+   * crew it's assigned to: missing day rows are created (assign is idempotent)
+   * and rows outside the range are removed. This is what keeps a stretched
+   * request CONTIGUOUS — every write path funnels through a full range.
+   */
+  const applySpan = (workRequestId: string, start: string, end: string) => {
+    const s = useAppStore.getState();
+    const rows = s.assignments.filter((a) => a.workRequestId === workRequestId);
+    const crewIds = [...new Set(rows.map((a) => a.crewId))];
+    const wanted = new Set(
+      eachDayOfInterval({ start: parseISO(start), end: parseISO(end) }).map(
+        (d) => format(d, 'yyyy-MM-dd')
+      )
+    );
+    rows
+      .filter((a) => !wanted.has(a.date))
+      .forEach((a) => unassignWorkRequest(a.id));
+    crewIds.forEach((crewId) =>
+      wanted.forEach((date) => assignWorkRequest(workRequestId, crewId, date))
+    );
   };
 
   /** Every completed drag lands here (see DragBoard's DropTarget). */
   const handleDrop = (item: DragItem, target: DropTarget) => {
-    if (item.kind === 'event') {
-      // Events live on days — the pool is not a valid target for them.
-      if (target.kind !== 'day') {
-        flash('Events sit on calendar days — drop them on a day.', 'info');
-        return;
-      }
-      const event = calendarEvents.find((e) => e.id === item.id);
-      if (!event) return;
-      if (event.date !== target.date) {
-        updateCalendarEvent(item.id, { date: target.date });
-      }
-      applyDayOrder(target.date, { kind: 'event', id: item.id }, target.index);
-      return;
-    }
-
     const card = workRequests.find((c) => c.id === item.id);
     if (!card) return;
     const existing = assignments.filter((a) => a.workRequestId === item.id);
+
+    if (item.kind === 'resize') {
+      // The stretch grip: dropping on a day re-dates the END of the request's
+      // stretch (never before its start — that collapses back to one day).
+      if (existing.length === 0) return;
+      if (target.kind !== 'day') {
+        flash('Drop the stretch handle on a calendar day.', 'info');
+        return;
+      }
+      const start = existing.map((a) => a.date).sort()[0];
+      const end = target.date < start ? start : target.date;
+      applySpan(item.id, start, end);
+      flash(
+        end === start
+          ? `"${card.title}" scheduled for ${start} only`
+          : `"${card.title}" stretched ${start} – ${end}`,
+        'success'
+      );
+      return;
+    }
 
     if (target.kind === 'backlog') {
       // Into the pool = off the calendar entirely (every crew, every date).
@@ -410,13 +428,19 @@ export function CalendarBoard({
 
     // A crew-calendar (or day-sidebar) day.
     if (existing.length > 0) {
-      // Move: keep the same crews, land on the new date. A shared card moves
-      // everywhere at once (same rule as unassigning).
-      const crewIds = [...new Set(existing.map((a) => a.crewId))];
-      existing
-        .filter((a) => a.date !== target.date)
-        .forEach((a) => unassignWorkRequest(a.id));
-      crewIds.forEach((crewId) => assignWorkRequest(item.id, crewId, target.date));
+      // Move: keep the same crews, land the stretch's START on the new date —
+      // a request spanning 3 days spans 3 days wherever it's dropped. A shared
+      // card moves everywhere at once (same rule as unassigning).
+      const dates = [...new Set(existing.map((a) => a.date))].sort();
+      const length = differenceInCalendarDays(
+        parseISO(dates[dates.length - 1]),
+        parseISO(dates[0])
+      );
+      applySpan(
+        item.id,
+        target.date,
+        format(addDays(parseISO(target.date), length), 'yyyy-MM-dd')
+      );
     } else {
       // From the pool: same crew-target rules as the Schedule button.
       if (activeCrews.length === 0) {
@@ -432,7 +456,7 @@ export function CalendarBoard({
       const names = activeCrews.map((c) => c.name).join(', ');
       flash(`Assigned "${card.title}" to ${names}`, 'success');
     }
-    applyDayOrder(target.date, { kind: 'request', id: item.id }, target.index);
+    applyDayOrder(target.date, item.id, target.index);
   };
 
   return (
@@ -492,18 +516,6 @@ export function CalendarBoard({
           <View style={styles.toolbarRight}>
             <Pressable
               style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
-              onPress={() =>
-                setEventModal({
-                  mode: 'create',
-                  date: format(new Date(), 'yyyy-MM-dd'),
-                })
-              }
-            >
-              <Feather name="plus" size={15} color={colors.textPrimary} />
-              <Text style={styles.manageText}>Event</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
               onPress={() => setManageOpen(true)}
             >
               <Feather name="users" size={15} color={colors.textPrimary} />
@@ -531,7 +543,6 @@ export function CalendarBoard({
             activeCrews={activeCrews}
             visibleAssignments={visibleAssignments}
             workRequests={workRequests}
-            calendarEvents={calendarEvents}
             colorForCrew={colorForCrew}
             placing={canAssign && placingCardId !== null}
             onAssignToDate={assignToDate}
@@ -544,7 +555,6 @@ export function CalendarBoard({
               setViewingId(id);
               setDayFocus(null);
             }}
-            onOpenEvent={(id) => setEventModal({ mode: 'view', eventId: id })}
             canUnassign={canAssign}
             canAssign={canAssign}
             crewNameFor={crewTagFor}
@@ -556,17 +566,10 @@ export function CalendarBoard({
             date={dayFocus}
             assignments={visibleAssignments.filter((a) => a.date === dayFocus)}
             workRequests={workRequests}
-            calendarEvents={calendarEvents}
             jobNameFor={jobNameFor}
             colorForCrew={colorForCrew}
             crewNameFor={crewTagFor}
             onOpenCard={setViewingId}
-            onOpenEvent={(id) => setEventModal({ mode: 'view', eventId: id })}
-            onCreateEvent={
-              canAssign
-                ? () => setEventModal({ mode: 'create', date: dayFocus })
-                : undefined
-            }
             onClose={() => setDayFocus(null)}
           />
         )}
@@ -611,12 +614,6 @@ export function CalendarBoard({
           onClose={() => setManageOpen(false)}
         />
       )}
-
-      <CalendarEventModal
-        state={eventModal}
-        canEdit={canAssign}
-        onClose={() => setEventModal(null)}
-      />
 
       <WorkRequestQuickView
         workRequestId={viewingId}

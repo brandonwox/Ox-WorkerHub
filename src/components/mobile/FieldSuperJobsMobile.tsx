@@ -39,8 +39,9 @@ export function FieldSuperJobsMobile() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   // "All jobs" widens the list from assigned-only to EVERY job — each row
-  // then shows its assigned supers, and tapping an unassigned job opens its
-  // details page, which offers "Assign myself".
+  // then shows its assigned supers. Unassigned jobs are fully editable too
+  // (helping out needs no assignment); the details page still offers
+  // "Assign myself" to take responsibility for one.
   const [showAll, setShowAll] = useState(false);
 
   // Sub-jobs stay out of this office list — they're managed from the web job
@@ -137,10 +138,6 @@ export function FieldSuperJobsMobile() {
                     ? superNamesFor(job) || 'No Field Super assigned'
                     : undefined
                 }
-                // The inline address/flashing editor only works on assigned
-                // jobs (RLS matches) — unassigned rows hide the chevron; the
-                // details page offers "Assign myself".
-                editable={!!me && (job.fieldSuperIds ?? []).includes(me.id)}
                 expanded={expandedId === job.id}
                 onToggle={() =>
                   setExpandedId((id) => (id === job.id ? null : job.id))
@@ -333,7 +330,6 @@ function JobRow({
   job,
   counts,
   supersLine,
-  editable,
   expanded,
   onToggle,
   onSave,
@@ -342,8 +338,6 @@ function JobRow({
   counts: { total: number; scheduled: number };
   /** Assigned supers, rendered under the counts ("All jobs" mode only). */
   supersLine?: string;
-  /** Whether the viewer may use the inline editor (assigned jobs only). */
-  editable: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSave: (changes: Partial<Job>) => void;
@@ -431,22 +425,20 @@ function JobRow({
             </Text>
           ) : null}
         </Pressable>
-        {editable && (
-          <Pressable
-            hitSlop={12}
-            style={({ pressed }) => [pressed && styles.saveDim]}
-            onPress={onToggle}
-          >
-            <Feather
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-        )}
+        <Pressable
+          hitSlop={12}
+          style={({ pressed }) => [pressed && styles.saveDim]}
+          onPress={onToggle}
+        >
+          <Feather
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textSecondary}
+          />
+        </Pressable>
       </View>
 
-      {editable && expanded && (
+      {expanded && (
         <View style={styles.cardBody}>
           <FormInput
             label="Jobsite address"

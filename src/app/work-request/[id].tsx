@@ -88,6 +88,7 @@ export default function JobDetailsScreen() {
   // The parent JOB's scope counts ("Window Count 0/100") — tapping one opens
   // the done-number popup for the roles that update progress.
   const [editingCount, setEditingCount] = useState<JobCount | null>(null);
+  const me = useCurrentWorker();
   const counts = jobCounts(parentJob);
   const canEditCounts =
     parentJob != null &&
@@ -98,7 +99,6 @@ export default function JobDetailsScreen() {
   } | null>(null);
   const statusWrapRef = useRef<View>(null);
   const insets = useSafeAreaInsets();
-  const me = useCurrentWorker();
   // Installers must attach at least one photo to a task before checking it
   // off; office roles (and the dev switcher's other views) are not gated.
   const requireTaskPhotos = me?.role === 'installer';

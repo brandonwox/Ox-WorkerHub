@@ -3,7 +3,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 import {
-  CalendarEvent,
   Crew,
   DailyCrew,
   Job,
@@ -419,29 +418,6 @@ export interface BackendData {
   jobPhotos: JobPhoto[];
   jobIssues: JobIssue[];
   jobDocuments: JobDocument[];
-  calendarEvents: CalendarEvent[];
-}
-
-interface CalendarEventRow {
-  id: string;
-  title: string;
-  description: string | null;
-  date: string;
-  priority_order: number;
-  created_by: string | null;
-  created_at: string;
-}
-
-function rowToCalendarEvent(r: CalendarEventRow): CalendarEvent {
-  return {
-    id: r.id,
-    title: r.title,
-    description: r.description || undefined,
-    date: r.date,
-    priorityOrder: r.priority_order,
-    createdById: r.created_by ?? undefined,
-    createdAt: r.created_at,
-  };
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -462,7 +438,6 @@ export async function fetchAllData(): Promise<BackendData> {
     jobPhotosR,
     jobIssuesR,
     jobDocumentsR,
-    calendarEventsR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -479,7 +454,6 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('job_photos').select('*'),
     sb.from('job_issues').select('*'),
     sb.from('job_documents').select('*'),
-    sb.from('calendar_events').select('*'),
   ]);
 
   const firstError =
@@ -510,14 +484,6 @@ export async function fetchAllData(): Promise<BackendData> {
       jobDocumentsR.error.message
     );
   }
-  // Calendar events degrade the same way while their migration hasn't run yet.
-  if (calendarEventsR.error) {
-    console.warn(
-      'Calendar events load failed; none shown.',
-      calendarEventsR.error.message
-    );
-  }
-
   // Group Field Super assignments by job so each Job carries its own
   // fieldSuperIds list.
   const jobFieldSupers = (jobFieldSupersR.data ?? []) as JobFieldSuperRow[];
@@ -572,9 +538,6 @@ export async function fetchAllData(): Promise<BackendData> {
     jobIssues: ((jobIssuesR.data ?? []) as JobIssueRow[]).map(rowToJobIssue),
     jobDocuments: ((jobDocumentsR.data ?? []) as JobDocumentRow[]).map(
       rowToJobDocument
-    ),
-    calendarEvents: ((calendarEventsR.data ?? []) as CalendarEventRow[]).map(
-      rowToCalendarEvent
     ),
   };
 }
@@ -926,39 +889,6 @@ export async function updateDailyCrew(dc: DailyCrew): Promise<void> {
 }
 export async function deleteDailyCrew(id: string): Promise<void> {
   check((await getSupabase().from('daily_crews').delete().eq('id', id)).error);
-}
-
-function calendarEventToRow(event: CalendarEvent) {
-  return {
-    id: event.id,
-    title: event.title,
-    description: event.description ?? '',
-    date: event.date,
-    priority_order: event.priorityOrder,
-    created_by: event.createdById ?? null,
-  };
-}
-
-export async function insertCalendarEvent(event: CalendarEvent): Promise<void> {
-  check(
-    (await getSupabase().from('calendar_events').insert(calendarEventToRow(event)))
-      .error
-  );
-}
-export async function updateCalendarEvent(event: CalendarEvent): Promise<void> {
-  check(
-    (
-      await getSupabase()
-        .from('calendar_events')
-        .update(calendarEventToRow(event))
-        .eq('id', event.id)
-    ).error
-  );
-}
-export async function deleteCalendarEvent(id: string): Promise<void> {
-  check(
-    (await getSupabase().from('calendar_events').delete().eq('id', id)).error
-  );
 }
 
 export async function insertAssignment(a: ScheduleAssignment): Promise<void> {
@@ -1324,7 +1254,6 @@ const REALTIME_TABLES = [
   'job_photos',
   'job_issues',
   'job_documents',
-  'calendar_events',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the

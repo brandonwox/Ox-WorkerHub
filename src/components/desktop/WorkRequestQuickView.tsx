@@ -191,6 +191,10 @@ export function WorkRequestQuickView({
   const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const role = useCurrentRole();
+  // The FULL job list. The `jobs` prop is the viewer's creation scope (a
+  // Field Super's assigned jobs) — but a Field Super can view cards on
+  // unassigned jobs too, whose parent job only exists in the store's list.
+  const storeJobs = useAppStore((s) => s.jobs);
 
   // Create mode edits this local draft; view mode edits the stored card.
   const [draftCard, setDraftCard] = useState<WorkRequest>(emptyDraft);
@@ -216,6 +220,9 @@ export function WorkRequestQuickView({
   const [flashingWarned, setFlashingWarned] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
+  // "Assign Multiple": while on, the crew menu stays open and each click
+  // toggles that crew on/off the card instead of swapping the whole card over.
+  const [crewMultiAssign, setCrewMultiAssign] = useState(false);
   const [crewSquareHovered, setCrewSquareHovered] = useState(false);
 
   // Close the inline menus when a click lands anywhere outside them.
@@ -237,17 +244,19 @@ export function WorkRequestQuickView({
     setPriorityDraft(null);
   });
 
-  // The calendar day this card is scheduled for: its next upcoming assignment
-  // date, or the most recent one when they're all in the past (mirrors the
-  // work request list's status pill). Null when the Scheduler hasn't placed it.
-  const scheduledDate = useMemo(() => {
-    const dates = assignments
-      .filter((a) => a.workRequestId === workRequestId)
-      .map((a) => a.date)
-      .sort();
+  // The day(s) this card is scheduled for. A stretched request covers a
+  // contiguous run of days — start/end bound it (equal for a single day).
+  // Null when the Scheduler hasn't placed it.
+  const scheduledRange = useMemo(() => {
+    const dates = [
+      ...new Set(
+        assignments
+          .filter((a) => a.workRequestId === workRequestId)
+          .map((a) => a.date)
+      ),
+    ].sort();
     if (dates.length === 0) return null;
-    const today = format(new Date(), 'yyyy-MM-dd');
-    return dates.find((d) => d >= today) ?? dates[dates.length - 1];
+    return { start: dates[0], end: dates[dates.length - 1] };
   }, [assignments, workRequestId]);
 
   const photos = useWorkRequestPhotos(creating ? undefined : workRequest?.id);
@@ -306,7 +315,11 @@ export function WorkRequestQuickView({
     workRequestStatusColors[workRequest.status] ?? workRequestStatusColors.Undefined;
   // The PRIMARY linked job (the parent when it's linked, else the first
   // linked sub-job) — drives address, scopes, counts, and flashing defaults.
-  const parentJob = jobs.find((j) => j.id === workRequest.jobId);
+  // Falls back to the store's full list for jobs outside the viewer's
+  // creation scope (a Field Super viewing an unassigned job's card).
+  const parentJob =
+    jobs.find((j) => j.id === workRequest.jobId) ??
+    storeJobs.find((j) => j.id === workRequest.jobId);
   const activeJobs = jobs.filter((j) => j.status === 'Active');
   // Job options for the create draft (links are fixed once a card exists).
   // A card links either one job or several jobs of ONE family (sibling
@@ -634,11 +647,38 @@ export function WorkRequestQuickView({
       );
       return;
     }
+    setCrewMultiAssign(false);
     setCrewMenuOpen((open) => !open);
   };
 
-  /** Swap which crew the card is assigned to; every scheduled date is kept. */
+  /**
+   * A crew menu click. Normally swaps which crew the card is assigned to
+   * (every scheduled date is kept) and closes the menu. In "Assign Multiple"
+   * mode the menu stays open and the click toggles that crew on/off the card
+   * instead — clicking an assigned crew unassigns it.
+   */
   const changeCrew = (crewId: string) => {
+    if (crewMultiAssign) {
+      const crewRows = cardAssignments.filter((a) => a.crewId === crewId);
+      if (crewRows.length > 0) {
+        if (crewRows.length === cardAssignments.length) {
+          // Unassigning the last crew would pull the card off the calendar
+          // entirely — that's the unassign/× flow, not a crew swap.
+          flash(
+            'A scheduled card needs at least one crew — assign another crew first.',
+            'warning'
+          );
+          return;
+        }
+        crewRows.forEach((a) => unassignWorkRequest(a.id));
+        flash(`Unassigned ${crewNameFor(crewId)}`, 'success');
+      } else {
+        const dates = [...new Set(cardAssignments.map((a) => a.date))];
+        dates.forEach((date) => assignWorkRequest(workRequest.id, crewId, date));
+        flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
+      }
+      return;
+    }
     setCrewMenuOpen(false);
     if (assignedCrewIds.length === 1 && assignedCrewIds[0] === crewId) return;
     const dates = [...new Set(cardAssignments.map((a) => a.date))];
@@ -855,13 +895,13 @@ export function WorkRequestQuickView({
               onPress={() => onOpenJob(parentJob.id)}
             >
               <Text style={styles.parentJobText}>
-                {workRequestJobsLabel(workRequest, jobs)}
+                {workRequestJobsLabel(workRequest, storeJobs)}
               </Text>
             </Pressable>
           ) : (
             <Text style={styles.parentJobText}>
               {parentJob
-                ? workRequestJobsLabel(workRequest, jobs)
+                ? workRequestJobsLabel(workRequest, storeJobs)
                 : 'No parent job'}
             </Text>
           )}
@@ -940,6 +980,38 @@ export function WorkRequestQuickView({
                       </Pressable>
                     );
                   })}
+                  <Pressable
+                    style={({ pressed, hovered }: PressState) => [
+                      styles.menuMultiBtn,
+                      crewMultiAssign && styles.menuMultiBtnActive,
+                      (hovered || pressed) && styles.menuItemHover,
+                    ]}
+                    onPress={() => setCrewMultiAssign((on) => !on)}
+                  >
+                    <Feather
+                      name="layers"
+                      size={13}
+                      color={
+                        crewMultiAssign
+                          ? colors.textPrimary
+                          : colors.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.menuText,
+                        crewMultiAssign && styles.menuTextActive,
+                      ]}
+                    >
+                      Assign Multiple
+                    </Text>
+                  </Pressable>
+                  {crewMultiAssign && (
+                    <Text style={styles.menuMultiHint}>
+                      Tap crews to assign them — tap an assigned crew to
+                      unassign it.
+                    </Text>
+                  )}
                 </View>
               )}
             </View>
@@ -1009,11 +1081,19 @@ export function WorkRequestQuickView({
         </Row>
         <Row icon="calendar">
           <Text style={styles.mutedText}>
-            {scheduledDate
-              ? format(
-                  parse(scheduledDate, 'yyyy-MM-dd', new Date()),
-                  'EEEE, MMMM d'
-                )
+            {scheduledRange
+              ? scheduledRange.start === scheduledRange.end
+                ? format(
+                    parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
+                    'EEEE, MMMM d'
+                  )
+                : `${format(
+                    parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
+                    'MMMM d'
+                  )} – ${format(
+                    parse(scheduledRange.end, 'yyyy-MM-dd', new Date()),
+                    'MMMM d'
+                  )}`
               : 'Not Scheduled'}
           </Text>
         </Row>
@@ -2038,6 +2118,27 @@ const styles = themed(() => StyleSheet.create({
   menuTextActive: {
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
+  },
+  menuMultiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 1,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  menuMultiBtnActive: {
+    backgroundColor: colors.background,
+  },
+  menuMultiHint: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+    paddingTop: 2,
   },
   confirmBar: {
     flexDirection: 'row',

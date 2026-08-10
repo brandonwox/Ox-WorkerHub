@@ -75,13 +75,20 @@ export function CrewCalendarMobile({ canAssign }: Props) {
     [workRequests, assignments]
   );
 
-  const confirmUnassign = (assignmentId: string, cardTitle: string) => {
+  const confirmUnassign = (workRequestId: string, cardTitle: string) => {
     Alert.alert('Remove from calendar?', `“${cardTitle}” goes back to the backlog.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => unassignWorkRequest(assignmentId),
+        // Same rule as the desktop board: pulling a card off the calendar
+        // removes it everywhere — every crew AND (for a stretched request)
+        // every covered day, so a multi-day span can never be left split.
+        onPress: () =>
+          useAppStore
+            .getState()
+            .assignments.filter((a) => a.workRequestId === workRequestId)
+            .forEach((a) => unassignWorkRequest(a.id)),
       },
     ]);
   };
@@ -160,7 +167,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
                               styles.unassignBtn,
                               pressed && styles.pressed,
                             ]}
-                            onPress={() => confirmUnassign(assignment.id, card.title)}
+                            onPress={() => confirmUnassign(card.id, card.title)}
                           >
                             <Feather name="x" size={16} color={colors.textSecondary} />
                           </Pressable>
