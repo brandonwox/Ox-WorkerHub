@@ -131,7 +131,7 @@ function FinanceJobCard({
         <Text style={styles.jobName} numberOfLines={1}>
           {displayName}
         </Text>
-        {job.po ? <Text style={styles.poText}>PO {job.po}</Text> : null}
+        {job.po ? <Text style={styles.poText}>{job.po}</Text> : null}
         {job.status === 'Finished' && (
           <View style={styles.archivedPill}>
             <Text style={styles.archivedText}>Finished</Text>

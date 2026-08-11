@@ -3,11 +3,11 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { StatusPill } from '@/components/StatusPill';
 import { useAppStore } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { colors, fonts, getThemeScheme, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
 import { formatJobWindow } from '@/utils/time';
 import { usePulse } from '@/utils/usePulse';
-import { workRequestJobsLabel } from '@/utils/workRequestJobs';
+import { workRequestPoLabel } from '@/utils/workRequestJobs';
 
 interface Props {
   workRequest: WorkRequest;
@@ -21,11 +21,10 @@ interface Props {
 export function WorkRequestCard({ workRequest, onPress, selectable, active }: Props) {
   const pulse = usePulse(active);
   const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
-  // The linked job(s) name shows with the location ("Vista Homes Lot 2,
-  // Lot 5" for multi-sub-job cards). (No priority pill here — work request
-  // priority is office-side; installers don't need it.)
+  // The linked job(s) show as their PO, right above the title. (No priority
+  // pill here — work request priority is office-side; installers don't need it.)
   const jobs = useAppStore((s) => s.jobs);
-  const jobLabel = workRequestJobsLabel(workRequest, jobs);
+  const poLabel = workRequestPoLabel(workRequest, jobs);
 
   return (
     <Pressable
@@ -50,6 +49,11 @@ export function WorkRequestCard({ workRequest, onPress, selectable, active }: Pr
           ]}
         />
       )}
+      {poLabel ? (
+        <Text style={styles.poLine} numberOfLines={1}>
+          {poLabel}
+        </Text>
+      ) : null}
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={1}>
           {workRequest.title}
@@ -59,7 +63,7 @@ export function WorkRequestCard({ workRequest, onPress, selectable, active }: Pr
       <View style={styles.metaRow}>
         <Feather name="map-pin" size={14} color={colors.textSecondary} />
         <Text style={styles.metaText} numberOfLines={1}>
-          {jobLabel ? `${jobLabel} · ${workRequest.address}` : workRequest.address}
+          {workRequest.address}
         </Text>
       </View>
       {timeWindow && (
@@ -68,11 +72,11 @@ export function WorkRequestCard({ workRequest, onPress, selectable, active }: Pr
           <Text style={styles.metaText}>{timeWindow}</Text>
         </View>
       )}
-      {workRequest.flashingMaterial ? (
+      {workRequest.notes ? (
         <View style={styles.metaRow}>
-          <Feather name="layers" size={14} color={colors.textSecondary} />
+          <Feather name="file-text" size={14} color={colors.textSecondary} />
           <Text style={styles.metaText} numberOfLines={1}>
-            {workRequest.flashingMaterial}
+            {workRequest.notes}
           </Text>
         </View>
       ) : null}
@@ -83,12 +87,21 @@ export function WorkRequestCard({ workRequest, onPress, selectable, active }: Pr
 const styles = themed(() => StyleSheet.create({
   card: {
     position: 'relative',
-    backgroundColor: colors.surface,
+    // Light mode: a touch darker than the page (#FEFEFE) so the schedule
+    // cards read as cards — plain `surface` (#FFFFFF) vanishes into it.
+    backgroundColor:
+      getThemeScheme() === 'light' ? '#F6F7F9' : colors.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.sm,
     borderWidth: 1.5,
     borderColor: 'transparent',
+  },
+  poLine: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    marginBottom: -spacing.xs,
   },
   selectable: {
     borderColor: colors.primary,

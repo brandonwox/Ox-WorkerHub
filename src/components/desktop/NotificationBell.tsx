@@ -159,23 +159,35 @@ function NotificationItem({
         <Text style={styles.itemText}>{notification.body}</Text>
         <Text style={styles.itemTime}>{timeAgo(notification.createdAt)}</Text>
       </View>
-      {/* Hover swaps the unread dot for a dismiss button (deletes the row). */}
-      {hovered ? (
+      {/* Hover swaps the unread dot for a dismiss button (deletes the row).
+          The button stays MOUNTED while hidden: unmounting it on the row's
+          hover-out is what made it vanish as the pointer reached it (the
+          row's hover-out fires when the pointer crosses onto the nested
+          button on web), and its own hover-in re-asserts the row's state. */}
+      <View style={styles.itemRight}>
         <Pressable
           style={({ pressed, hovered: h }: {
             pressed: boolean;
             hovered?: boolean;
-          }) => [styles.dismiss, (h || pressed) && styles.dismissHover]}
-          onPress={onDismiss}
+          }) => [
+            styles.dismiss,
+            !hovered && styles.dismissHidden,
+            (h || pressed) && styles.dismissHover,
+          ]}
+          onPress={() => {
+            // Touch (no hover): the invisible button forwards to the row.
+            if (hovered) onDismiss();
+            else onPress();
+          }}
+          onHoverIn={() => setHovered(true)}
           hitSlop={4}
           accessibilityRole="button"
           accessibilityLabel="Dismiss notification"
         >
           <Feather name="x" size={14} color={colors.textSecondary} />
         </Pressable>
-      ) : (
-        !notification.read && <View style={styles.unreadDot} />
-      )}
+        {!hovered && !notification.read && <View style={styles.unreadDot} />}
+      </View>
     </Pressable>
   );
 }
@@ -309,12 +321,20 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  // Fixed-size slot so the dot and the (possibly hidden) dismiss button
+  // occupy the same spot without layout shift.
+  itemRight: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   unreadDot: {
+    position: 'absolute',
     width: 8,
     height: 8,
     borderRadius: radii.pill,
     backgroundColor: colors.primary,
-    marginTop: 6,
   },
   dismiss: {
     width: 24,
@@ -322,6 +342,9 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dismissHidden: {
+    opacity: 0,
   },
   dismissHover: {
     backgroundColor: colors.surfaceLight,

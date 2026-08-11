@@ -412,7 +412,7 @@ function JobRow({
             <Text style={styles.cardTitle} numberOfLines={1}>
               {job.name}
             </Text>
-            {job.po ? <Text style={styles.poText}>PO {job.po}</Text> : null}
+            {job.po ? <Text style={styles.poText}>{job.po}</Text> : null}
           </View>
           <Text style={styles.cardSub} numberOfLines={1}>
             {counts.total} {counts.total === 1 ? 'work request' : 'work requests'} ·{' '}

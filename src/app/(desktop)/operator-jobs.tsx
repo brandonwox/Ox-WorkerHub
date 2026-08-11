@@ -185,7 +185,7 @@ function JobCard({
           )}
           <Text style={styles.name} numberOfLines={2}>
             {job.name}
-            {job.po ? <Text style={styles.poText}>  PO {job.po}</Text> : null}
+            {job.po ? <Text style={styles.poText}>  {job.po}</Text> : null}
           </Text>
         </View>
         <View

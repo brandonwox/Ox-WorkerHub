@@ -25,8 +25,9 @@ const GAP = spacing.xs;
 interface Props {
   issue: JobIssue;
   /**
-   * Installer mode (the work request screen): the creator edits the description and
-   * deletes; anyone adds photos. Off on the parent job page (read-only there).
+   * The creator edits the description and deletes; anyone adds photos. On for
+   * the work request screen and the job pages' open-issues lists (the "+
+   * Issue" flow types the description right there); resolved lists stay off.
    */
   editable?: boolean;
   /** Show the source work request's title as a link (used on the parent job page). */

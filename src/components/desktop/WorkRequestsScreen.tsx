@@ -22,6 +22,7 @@ import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import {
   workRequestJobIds,
   workRequestJobsLabel,
+  workRequestPoLabel,
 } from '@/utils/workRequestJobs';
 
 const PRESET_ORDER = PRIORITY_PRESETS as readonly string[];
@@ -40,6 +41,12 @@ interface WorkRequestsScreenProps {
    * a scheduled row's date turns it into a "View on calendar" link.
    */
   onViewCalendar?: (date: string) => void;
+  /**
+   * Label rows (and the quick view header) with the linked job's PO instead
+   * of its name — the Field Super's page identifies jobs by PO. Search still
+   * matches job names either way.
+   */
+  poSubtitles?: boolean;
 }
 
 /** Desktop work requests workspace: every work request in scope, its calendar status, and creation. */
@@ -47,6 +54,7 @@ export function WorkRequestsScreen({
   jobs,
   showFalseStarts = false,
   onViewCalendar,
+  poSubtitles = false,
 }: WorkRequestsScreenProps) {
   const allWorkRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
@@ -156,6 +164,12 @@ export function WorkRequestsScreen({
     (jobId && nameById.get(jobId)) || 'No parent job';
   const cardJobLabel = (card: (typeof allWorkRequests)[number]) =>
     workRequestJobsLabel(card, jobs) || 'No parent job';
+  // What renders under each row's title: the job name, or just the PO on
+  // PO-labeled pages. (cardJobLabel stays name-based for search matching.)
+  const rowSubtitle = (card: (typeof allWorkRequests)[number]) =>
+    poSubtitles
+      ? workRequestPoLabel(card, jobs) || 'No parent job'
+      : cardJobLabel(card);
   // Job POs match the search too (anywhere job names do).
   const poById = useMemo(() => {
     const map = new Map<string, string>();
@@ -340,7 +354,7 @@ export function WorkRequestsScreen({
                       <WorkRequestRow
                         key={card.id}
                         workRequest={card}
-                        jobName={group.name}
+                        jobName={poSubtitles ? rowSubtitle(card) : group.name}
                         scheduled={scheduledIds.has(card.id)}
                         scheduledDate={date}
                         onViewCalendar={
@@ -365,7 +379,7 @@ export function WorkRequestsScreen({
                 <WorkRequestRow
                   key={card.id}
                   workRequest={card}
-                  jobName={cardJobLabel(card)}
+                  jobName={rowSubtitle(card)}
                   scheduled={scheduledIds.has(card.id)}
                   scheduledDate={date}
                   onViewCalendar={
@@ -388,6 +402,7 @@ export function WorkRequestsScreen({
         workRequestId={viewingId}
         creating={createOpen}
         jobs={jobs}
+        poHeader={poSubtitles}
         onClose={closeSidebar}
         onDelete={handleDelete}
         onCreate={handleCreate}

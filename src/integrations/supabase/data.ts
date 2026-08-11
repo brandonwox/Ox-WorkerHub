@@ -40,6 +40,7 @@ interface JobRow {
   name: string;
   location: string;
   po: string | null;
+  builder: string | null;
   status: string;
   qbt_jobcode_id: string | null;
   flashing_material: string | null;
@@ -50,6 +51,7 @@ interface JobRow {
   labor_budget: number | string | null;
   parent_job_id: string | null;
   has_sub_jobs: boolean | null;
+  sub_job_type: string | null;
   window_count_done: number | null;
   window_count_total: number | null;
   sgd_count_done: number | null;
@@ -212,6 +214,7 @@ function rowToJob(r: JobRow): Job {
     name: r.name,
     location: r.location,
     po: r.po ?? undefined,
+    builder: r.builder ?? undefined,
     // Legacy rows read before the rename migration ran still say 'Archived'.
     status: (r.status === 'Archived' ? 'Finished' : r.status) as JobStatus,
     qbtJobcodeId: r.qbt_jobcode_id ?? undefined,
@@ -225,6 +228,7 @@ function rowToJob(r: JobRow): Job {
     laborBudget: r.labor_budget != null ? Number(r.labor_budget) : undefined,
     parentJobId: r.parent_job_id ?? undefined,
     hasSubJobs: r.has_sub_jobs ?? undefined,
+    subJobType: r.sub_job_type ?? undefined,
     windowCountDone: r.window_count_done ?? undefined,
     windowCountTotal: r.window_count_total ?? undefined,
     sgdCountDone: r.sgd_count_done ?? undefined,
@@ -570,6 +574,7 @@ function jobToRow(job: Job) {
     name: job.name,
     location: job.location,
     po: job.po ?? null,
+    builder: job.builder ?? null,
     status: job.status,
     qbt_jobcode_id: job.qbtJobcodeId ?? null,
     flashing_material: job.flashingMaterial ?? null,
@@ -579,6 +584,7 @@ function jobToRow(job: Job) {
     labor_budget: job.laborBudget ?? null,
     parent_job_id: job.parentJobId ?? null,
     has_sub_jobs: job.hasSubJobs ?? false,
+    sub_job_type: job.subJobType ?? null,
     window_count_done: job.windowCountDone ?? null,
     window_count_total: job.windowCountTotal ?? null,
     sgd_count_done: job.sgdCountDone ?? null,

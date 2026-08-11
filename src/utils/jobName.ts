@@ -1,6 +1,24 @@
 import { Job } from '@/types';
 
 /**
+ * Preset answers to "what are this job's sub-jobs called?" — chosen (or
+ * replaced with a custom term) when "This job has Sub-Jobs" is enabled.
+ */
+export const SUB_JOB_TYPE_PRESETS = ['Lots', 'Phases', 'Bldgs'] as const;
+
+/**
+ * The singular form of a sub-job type, used as the name prefix when creating
+ * a sub-job ("Lots" → "Lot 159"). Presets drop their trailing "s"; custom
+ * terms are used as typed.
+ */
+export function subJobTypeSingular(type: string | undefined): string {
+  const t = type?.trim() ?? '';
+  return (SUB_JOB_TYPE_PRESETS as readonly string[]).includes(t)
+    ? t.slice(0, -1)
+    : t;
+}
+
+/**
  * The job's parent when it is a sub-job, else undefined.
  */
 export function parentJobOf(

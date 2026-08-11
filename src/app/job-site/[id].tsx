@@ -71,6 +71,7 @@ export default function JobSiteScreen() {
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const updateJob = useAppStore((s) => s.updateJob);
   const jobIssues = useAppStore((s) => s.jobIssues);
+  const addJobIssue = useAppStore((s) => s.addJobIssue);
   const me = useCurrentWorker();
   const assignFieldSuperToJob = useAppStore((s) => s.assignFieldSuperToJob);
   const flash = useAppStore((s) => s.flash);
@@ -341,7 +342,7 @@ export default function JobSiteScreen() {
             )}
           </View>
           {/* The job's PO, right under the name (smaller than the name). */}
-          {job.po ? <Text style={styles.poLine}>PO {job.po}</Text> : null}
+          {job.po ? <Text style={styles.poLine}>{job.po}</Text> : null}
           <Pressable
             style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
             onPress={() => job.location && setMapsOpen(true)}
@@ -431,7 +432,21 @@ export default function JobSiteScreen() {
 
         {section === 'issues' && (
           <View style={styles.issuesSection}>
-            <Text style={styles.sectionHeader}>Issues</Text>
+            <View style={styles.issuesHeaderRow}>
+              <Text style={styles.sectionHeader}>Issues</Text>
+              {/* Job-level issue: raised right here, attached to no work
+                  request. The new card starts expanded for its description. */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.addIssueButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => addJobIssue({ jobId: job.id })}
+              >
+                <Feather name="plus" size={13} color={colors.primary} />
+                <Text style={styles.addIssueText}>Issue</Text>
+              </Pressable>
+            </View>
             {openIssues.length === 0 && resolvedIssues.length === 0 && (
               <Text style={styles.emptyText}>No issues.</Text>
             )}
@@ -442,6 +457,7 @@ export default function JobSiteScreen() {
                   <IssueCard
                     key={issue.id}
                     issue={issue}
+                    editable
                     showWorkRequestLink
                     onPhotoPress={(photo, all) =>
                       setViewer({
@@ -584,7 +600,7 @@ export default function JobSiteScreen() {
                       </Text>
                       {sub.po || sub.location ? (
                         <Text style={styles.workRequestMeta} numberOfLines={1}>
-                          {[sub.po ? `PO ${sub.po}` : '', sub.location]
+                          {[sub.po ?? '', sub.location]
                             .filter(Boolean)
                             .join(' · ')}
                         </Text>
@@ -970,6 +986,26 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  issuesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  addIssueButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+  },
+  addIssueText: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
   },
   issuesSection: {
     gap: spacing.md,

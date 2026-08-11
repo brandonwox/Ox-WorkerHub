@@ -50,6 +50,7 @@ import { jobAllowsWindows } from '@/utils/jobScopes';
 import {
   workRequestJobIds,
   workRequestJobsLabel,
+  workRequestPoLabel,
 } from '@/utils/workRequestJobs';
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
@@ -152,6 +153,11 @@ interface Props {
    * hands the job id up — the host opens its job details over this view.
    */
   onOpenJob?: (jobId: string) => void;
+  /**
+   * Show the linked job's PO above the title instead of its name (the Field
+   * Super's work requests page identifies jobs by PO).
+   */
+  poHeader?: boolean;
 }
 
 /**
@@ -176,6 +182,7 @@ export function WorkRequestQuickView({
   onDelete,
   onCreate,
   onOpenJob,
+  poHeader = false,
 }: Props) {
   // Read the live card from the store so autosaved edits render back instantly.
   const storeWorkRequest = useAppStore((s) =>
@@ -902,13 +909,17 @@ export function WorkRequestQuickView({
               onPress={() => onOpenJob(parentJob.id)}
             >
               <Text style={styles.parentJobText}>
-                {workRequestJobsLabel(workRequest, storeJobs)}
+                {poHeader
+                  ? workRequestPoLabel(workRequest, storeJobs)
+                  : workRequestJobsLabel(workRequest, storeJobs)}
               </Text>
             </Pressable>
           ) : (
             <Text style={styles.parentJobText}>
               {parentJob
-                ? workRequestJobsLabel(workRequest, storeJobs)
+                ? poHeader
+                  ? workRequestPoLabel(workRequest, storeJobs)
+                  : workRequestJobsLabel(workRequest, storeJobs)
                 : 'No parent job'}
             </Text>
           )}

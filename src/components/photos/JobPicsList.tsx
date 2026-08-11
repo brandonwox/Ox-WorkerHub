@@ -151,7 +151,7 @@ export function JobPicsList({ onSelectJob }: Props) {
                       {jobDisplayName(job, jobs)}
                     </Text>
                     {job.po ? (
-                      <Text style={styles.poText}>PO {job.po}</Text>
+                      <Text style={styles.poText}>{job.po}</Text>
                     ) : null}
                     {job.status === 'Finished' && (
                       <View style={styles.archivedPill}>

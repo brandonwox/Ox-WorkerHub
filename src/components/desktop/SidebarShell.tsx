@@ -20,7 +20,13 @@ interface Props {
 /** Desktop chrome for the Scheduler/Operator consoles: left sidebar + top bar. */
 export function SidebarShell({ navItems, children }: Props) {
   const pathname = usePathname();
-  const active = navItems.find((n) => pathname.startsWith(n.href)) ?? navItems[0];
+  // Settings has no sidebar entry (it's reached via the profile chip), so it
+  // titles the top bar explicitly and highlights nothing in the nav.
+  const onSettings = pathname.startsWith('/console-settings');
+  const active =
+    navItems.find((n) => pathname.startsWith(n.href)) ??
+    (onSettings ? undefined : navItems[0]);
+  const pageTitle = onSettings ? 'Settings' : (active?.label ?? '');
 
   return (
     <View style={styles.root}>
@@ -79,7 +85,7 @@ export function SidebarShell({ navItems, children }: Props) {
 
       <View style={styles.main}>
         <View style={styles.topbar}>
-          <Text style={styles.pageTitle}>{active?.label ?? ''}</Text>
+          <Text style={styles.pageTitle}>{pageTitle}</Text>
           <View style={styles.topbarRight}>
             <NotificationBell />
             <DevRoleSwitcher variant="bar" />

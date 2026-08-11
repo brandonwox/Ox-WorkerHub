@@ -70,7 +70,7 @@ export function OperatorJobsMobile() {
                     {item.name}
                   </Text>
                   {item.po ? (
-                    <Text style={styles.poText}>PO {item.po}</Text>
+                    <Text style={styles.poText}>{item.po}</Text>
                   ) : null}
                 </View>
                 <View

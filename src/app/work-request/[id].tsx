@@ -41,6 +41,7 @@ import { SELECTABLE_WORK_REQUEST_STATUSES, WorkRequestStatus } from '@/types';
 import { formatCount, JobCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { formatJobWindow } from '@/utils/time';
+import { workRequestPoLabel } from '@/utils/workRequestJobs';
 
 export default function JobDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,6 +51,7 @@ export default function JobDetailsScreen() {
   const parentJob = useAppStore((s) =>
     s.jobs.find((parent) => parent.id === job?.jobId)
   );
+  const allJobs = useAppStore((s) => s.jobs);
   const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
   const setWorkRequestTaskDone = useAppStore((s) => s.setWorkRequestTaskDone);
   const updateWorkRequestNotes = useAppStore((s) => s.updateWorkRequestNotes);
@@ -258,7 +260,10 @@ export default function JobDetailsScreen() {
                 })
               }
             >
-              <Text style={styles.parentJobLink}>{parentJob.name}</Text>
+              {/* The office identifies jobs by PO — show that, not the name. */}
+              <Text style={styles.parentJobLink}>
+                {workRequestPoLabel(job, allJobs) || parentJob.name}
+              </Text>
             </Pressable>
           )}
           <Text style={styles.title}>{job.title}</Text>
@@ -695,9 +700,6 @@ const styles = themed(() => StyleSheet.create({
     borderTopLeftRadius: Platform.OS === 'web' ? 0 : 20,
     borderTopRightRadius: Platform.OS === 'web' ? 0 : 20,
     overflow: 'hidden',
-    // No dimmed overlay behind the sheet, so a soft top shadow separates it
-    // from the page instead.
-    boxShadow: '0 -6px 24px rgba(0, 0, 0, 0.3)',
   },
   center: {
     alignItems: 'center',

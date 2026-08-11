@@ -31,6 +31,7 @@ export default function FieldSuperWorkRequestsScreen() {
     <WorkRequestsScreen
       jobs={jobs}
       showFalseStarts
+      poSubtitles
       onViewCalendar={(date) =>
         // `hl` is a nonce so re-clicking the same date re-fires the highlight.
         router.push({

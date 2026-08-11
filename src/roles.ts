@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   type LucideIcon,
   NotepadText,
-  Settings,
   Users,
 } from 'lucide-react-native';
 import { Platform } from 'react-native';
@@ -63,19 +62,21 @@ export interface DesktopNavItem {
   icon: LucideIcon;
 }
 
-/** Sidebar sections each role sees on the desktop (web) console. */
+/**
+ * Sidebar sections each role sees on the desktop (web) console. Settings is
+ * deliberately absent — it's reached via the top-right profile chip
+ * (AuthControl), not the sidebar.
+ */
 export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   installer: [
     { href: '/installer-schedule', label: 'Schedule', icon: CalendarDays },
     { href: '/installer-timesheets', label: 'Timesheets', icon: FileText },
     // No live camera on web — the page offers file upload instead.
     { href: '/installer-pics', label: 'Jobs', icon: Briefcase },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   operator: [
     { href: '/operator-jobs', label: 'Jobs', icon: Briefcase },
     { href: '/operator-people', label: 'People', icon: Users },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   // Money-facing console: labor budgets + QBT mapping on jobs, and the
   // timesheet review the Operator used to own.
@@ -86,7 +87,6 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
       label: 'Timesheets',
       icon: FileText,
     },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   scheduler: [
     // The landing page: what needs attention (new Now cards, work requests,
@@ -98,7 +98,6 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     // Distinct route from the Field Super's '/field-super-work-requests' — the
     // Scheduler creates work requests across every job, not just their own.
     { href: '/scheduler-work-requests', label: 'Work Requests', icon: NotepadText },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   field_super: [
     // The landing page: what needs attention (new issues, false starts).
@@ -108,13 +107,11 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/field-super-jobs', label: 'Jobs', icon: Briefcase },
     { href: '/field-super-work-requests', label: 'Work Requests', icon: NotepadText },
     { href: '/field-super-calendar', label: 'Calendar', icon: CalendarDays },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
   // Developer has no console of its own — it always views the app *as* another
   // role via the switcher, so this nav is only a type-required fallback.
   developer: [
     { href: '/operator-jobs', label: 'Jobs', icon: Briefcase },
-    { href: '/console-settings', label: 'Settings', icon: Settings },
   ],
 };
 

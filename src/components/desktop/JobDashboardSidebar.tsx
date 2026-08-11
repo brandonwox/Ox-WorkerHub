@@ -18,6 +18,7 @@ import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
+import { Combobox } from '@/components/desktop/Combobox';
 import {
   CreateSubJobModal,
   NewSubJobInput,
@@ -40,6 +41,7 @@ import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
 import { editableCountDefs, formatCount, jobCounts } from '@/utils/jobCounts';
+import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
@@ -128,6 +130,7 @@ export function JobDashboardSidebar({
   const jobIssues = useAppStore((s) => s.jobIssues);
   const jobDocuments = useAppStore((s) => s.jobDocuments);
   const updateJob = useAppStore((s) => s.updateJob);
+  const addJobIssue = useAppStore((s) => s.addJobIssue);
   const addSubJob = useAppStore((s) => s.addSubJob);
   const removeJob = useAppStore((s) => s.removeJob);
   const addWorkRequest = useAppStore((s) => s.addWorkRequest);
@@ -162,12 +165,16 @@ export function JobDashboardSidebar({
   const [mapsOpen, setMapsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [picking, setPicking] = useState(false);
-  // Options popup; 'confirm-hide' is the deactivation confirmation step,
-  // 'confirm-delete' the job/sub-job deletion one.
+  // Confirmation popups for the edit-mode sub-job/delete controls:
+  // 'confirm-hide' deactivates the Sub-Jobs section, 'confirm-delete' deletes.
   const [optionsOpen, setOptionsOpen] = useState<
-    'menu' | 'confirm-hide' | 'confirm-delete' | null
+    'confirm-hide' | 'confirm-delete' | null
   >(null);
   const [subJobModalOpen, setSubJobModalOpen] = useState(false);
+  // Enabling "This job has Sub-Jobs": the required what-are-they-called
+  // picker is open (choosing a type is what actually turns the section on).
+  const [subJobTypePicking, setSubJobTypePicking] = useState(false);
+  const [customSubJobType, setCustomSubJobType] = useState('');
 
   // Reset transient view state when the sidebar switches to another job.
   const [lastJobId, setLastJobId] = useState(job?.id);
@@ -182,6 +189,8 @@ export function JobDashboardSidebar({
     setMapsOpen(false);
     setOptionsOpen(null);
     setSubJobModalOpen(false);
+    setSubJobTypePicking(false);
+    setCustomSubJobType('');
     setCreatingWorkRequest(false);
   }
 
@@ -235,6 +244,18 @@ export function JobDashboardSidebar({
     [job, workers]
   );
 
+  // Every builder ever applied to a job — the Builder edit field's options.
+  const builderOptions = useMemo(() => {
+    const names = new Set<string>();
+    jobs.forEach((j) => {
+      const b = j.builder?.trim();
+      if (b) names.add(b);
+    });
+    return [...names]
+      .sort((a, b) => a.localeCompare(b))
+      .map((b) => ({ value: b, label: b }));
+  }, [jobs]);
+
   // Cover: the explicitly chosen photo, else the job's OLDEST photo (photos
   // arrive newest-first), else a placeholder — same rule as mobile.
   const coverPhoto = useMemo(() => {
@@ -282,9 +303,21 @@ export function JobDashboardSidebar({
   const counts = jobCounts(job);
   const windowsAllowed = jobAllowsWindows(job);
   const editCounts = editableCountDefs(job);
-  // Flashing-only editors (Schedulers) get the pencil just on windows jobs —
-  // on any other job their edit mode would have nothing to edit.
-  const showEditPencil = editable || (canEditFlashing && windowsAllowed);
+  // The pencil is the only top-right control (the old 3-dots menu is gone) —
+  // sub-job managers and deleters need it even when nothing else is editable.
+  const showEditPencil =
+    editable ||
+    (canEditFlashing && windowsAllowed) ||
+    (canManageSubJobs && !job.parentJobId) ||
+    canDelete;
+
+  // Picking a type is what enables "This job has Sub-Jobs" — the two persist
+  // together, and sub-job creation prefixes the singular form ("Lot 159").
+  const chooseSubJobType = (type: string) => {
+    updateJob(job.id, { hasSubJobs: true, subJobType: type });
+    setSubJobTypePicking(false);
+    setCustomSubJobType('');
+  };
 
   // Only a parent job with sub-jobs enabled gets the Sub-Jobs section/card.
   const hasSubJobsSection = !!job.hasSubJobs && !job.parentJobId;
@@ -353,8 +386,9 @@ export function JobDashboardSidebar({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* X top-left, mirroring the mobile page; edit toggle + options
-            top-right (options: sub-job controls, parent jobs only). */}
+        {/* X top-left, mirroring the mobile page; the Edit pencil top-right
+            (edit mode also holds the sub-job controls and delete — the old
+            3-dots menu is gone). */}
         <View style={styles.topRow}>
           <Pressable
             style={({ pressed }) => [pressed && styles.pressed]}
@@ -367,43 +401,29 @@ export function JobDashboardSidebar({
               color={colors.textPrimary}
             />
           </Pressable>
-          {(showEditPencil || canManageSubJobs || canDelete) && (
+          {showEditPencil && (
             <View style={styles.topRowActions}>
-              {showEditPencil && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.optionsButton,
-                    editMode && styles.editButtonActive,
-                    pressed && styles.pressed,
-                  ]}
-                  hitSlop={8}
-                  onPress={() => setEditMode((on) => !on)}
-                >
-                  <Feather
-                    name={editMode ? 'check' : 'edit-2'}
-                    size={17}
-                    color={
-                      editMode ? colors.textOnAccent : colors.textSecondary
-                    }
-                  />
-                </Pressable>
-              )}
-              {((canManageSubJobs && !job.parentJobId) || canDelete) && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.optionsButton,
-                    pressed && styles.pressed,
-                  ]}
-                  hitSlop={8}
-                  onPress={() => setOptionsOpen('menu')}
-                >
-                  <Feather
-                    name="more-horizontal"
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </Pressable>
-              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.optionsButton,
+                  editMode && styles.editButtonActive,
+                  pressed && styles.pressed,
+                ]}
+                hitSlop={8}
+                onPress={() => {
+                  setEditMode((on) => !on);
+                  setSubJobTypePicking(false);
+                  setCustomSubJobType('');
+                }}
+              >
+                <Feather
+                  name={editMode ? 'check' : 'edit-2'}
+                  size={17}
+                  color={
+                    editMode ? colors.textOnAccent : colors.textSecondary
+                  }
+                />
+              </Pressable>
             </View>
           )}
         </View>
@@ -456,7 +476,7 @@ export function JobDashboardSidebar({
             )}
           </View>
           {/* The job's PO, right under the name (smaller than the name). */}
-          {job.po ? <Text style={styles.poLine}>PO {job.po}</Text> : null}
+          {job.po ? <Text style={styles.poLine}>{job.po}</Text> : null}
           {/* The one jobsite address: a tappable maps link, or an inline
               editor while Edit mode is on (no duplicate field below).
               Flashing-only editors (Schedulers) keep the read-only link. */}
@@ -535,13 +555,15 @@ export function JobDashboardSidebar({
           <FlashingMaterialBanner job={job} />
         </View>
 
-        {/* Edit mode extras: flashing material (window jobs) and the scope
-            counts' done/total numbers. The address is edited up in the
-            header. Flashing-only editors (Schedulers) see just the flashing
-            field here. */}
+        {/* Edit mode extras: flashing material (window jobs), the scope
+            counts' done/total numbers, the Builder, the "This job has
+            Sub-Jobs" controls, and Delete (the last two moved here from the
+            old 3-dots menu). The address is edited up in the header. */}
         {editMode &&
           ((canEditFlashing && windowsAllowed) ||
-            (editable && editCounts.length > 0)) && (
+            editable ||
+            (canManageSubJobs && !job.parentJobId) ||
+            canDelete) && (
           <View style={styles.editBlock}>
             {canEditFlashing && windowsAllowed && (
               <>
@@ -580,6 +602,126 @@ export function JobDashboardSidebar({
                 />
               </View>
             ))}
+            {/* Builder — dropdown of every builder used on a past job; typing
+                an unmatched name + Enter creates it. */}
+            {editable && (
+              <View style={styles.countPair}>
+                <Text style={styles.fieldLabel}>Builder</Text>
+                <Combobox
+                  key={`builder-${job.id}`}
+                  value={job.builder ?? ''}
+                  options={builderOptions}
+                  allowCustom
+                  placeholder="Type to search or add a builder…"
+                  onChange={(builder) =>
+                    updateJob(job.id, {
+                      builder: builder.trim() || undefined,
+                    })
+                  }
+                />
+              </View>
+            )}
+            {/* "This job has Sub-Jobs" — enabling requires choosing what the
+                sub-jobs are called (it drives sub-job naming: "Lot 159"). */}
+            {canManageSubJobs && !job.parentJobId && (
+              <View style={styles.countPair}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.optionRow,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    if (job.hasSubJobs) {
+                      setOptionsOpen('confirm-hide');
+                    } else {
+                      setSubJobTypePicking((on) => !on);
+                    }
+                  }}
+                >
+                  <Feather
+                    name={job.hasSubJobs ? 'check-square' : 'square'}
+                    size={18}
+                    color={
+                      job.hasSubJobs ? colors.primary : colors.textSecondary
+                    }
+                  />
+                  <Text style={styles.optionRowText}>
+                    This job has Sub-Jobs
+                  </Text>
+                </Pressable>
+                {(subJobTypePicking || job.hasSubJobs) && (
+                  <View style={styles.subJobTypeBlock}>
+                    <Text style={styles.optionsHint}>
+                      {job.hasSubJobs
+                        ? 'What the sub-jobs are called — used when naming new ones:'
+                        : 'What are the sub-jobs called? Choosing one turns the section on.'}
+                    </Text>
+                    <View style={styles.typeChipRow}>
+                      {[
+                        ...SUB_JOB_TYPE_PRESETS,
+                        // A saved custom term renders as its own (active) chip.
+                        ...(job.subJobType &&
+                        !(SUB_JOB_TYPE_PRESETS as readonly string[]).includes(
+                          job.subJobType
+                        )
+                          ? [job.subJobType]
+                          : []),
+                      ].map((type) => {
+                        const active =
+                          job.hasSubJobs && job.subJobType === type;
+                        return (
+                          <Pressable
+                            key={type}
+                            style={({ pressed }) => [
+                              styles.typeChip,
+                              active && styles.typeChipActive,
+                              pressed && styles.pressed,
+                            ]}
+                            onPress={() => chooseSubJobType(type)}
+                          >
+                            <Text
+                              style={[
+                                styles.typeChipText,
+                                active && styles.typeChipTextActive,
+                              ]}
+                            >
+                              {type}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <TextInput
+                      style={styles.customTypeInput}
+                      value={customSubJobType}
+                      onChangeText={setCustomSubJobType}
+                      placeholder="Custom term — press Enter to use it"
+                      placeholderTextColor={colors.textTertiary}
+                      onSubmitEditing={() => {
+                        const t = customSubJobType.trim();
+                        if (t) chooseSubJobType(t);
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+            {/* Delete — confirmation popup, as before (also from the old
+                3-dots menu). */}
+            {canDelete && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => setOptionsOpen('confirm-delete')}
+              >
+                <Feather name="trash-2" size={18} color={colors.danger} />
+                <Text style={[styles.optionRowText, styles.optionRowDanger]}>
+                  Delete this {job.parentJobId ? 'Sub-Job' : 'Job'}…
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -609,7 +751,21 @@ export function JobDashboardSidebar({
 
         {section === 'issues' && (
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Issues</Text>
+            <View style={styles.picturesHeader}>
+              <Text style={styles.sectionHeader}>Issues</Text>
+              {/* Job-level issue: raised right here, attached to no work
+                  request. The new card starts expanded for its description. */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.uploadButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => addJobIssue({ jobId: job.id })}
+              >
+                <Feather name="plus" size={13} color={colors.primary} />
+                <Text style={styles.uploadText}>Issue</Text>
+              </Pressable>
+            </View>
             {openIssues.length === 0 && resolvedIssues.length === 0 && (
               <Text style={styles.emptyText}>No issues.</Text>
             )}
@@ -620,6 +776,7 @@ export function JobDashboardSidebar({
                   <IssueCard
                     key={issue.id}
                     issue={issue}
+                    editable
                     showWorkRequestLink
                     onPhotoPress={openPhoto}
                   />
@@ -773,7 +930,7 @@ export function JobDashboardSidebar({
                           {sub.name}
                         </Text>
                         <Text style={styles.workRequestMeta} numberOfLines={1}>
-                          {sub.po ? `PO ${sub.po} · ` : ''}
+                          {sub.po ? `${sub.po} · ` : ''}
                           {count} {count === 1 ? 'work request' : 'work requests'}
                           {sub.location ? ` · ${sub.location}` : ''}
                         </Text>
@@ -975,10 +1132,10 @@ export function JobDashboardSidebar({
         </View>
       </Modal>
 
-      {/* Options popup: the "This job has Sub-Jobs" toggle (parent jobs) and
-          Delete (jobs and sub-jobs alike). Deactivating sub-jobs asks for
-          confirmation — it hides the section, the sub-jobs live on; deleting
-          confirms too — it cascades sub-jobs and work requests. */}
+      {/* Confirmation popups for the edit-mode controls. Deactivating
+          sub-jobs asks for confirmation — it hides the section, the sub-jobs
+          live on; deleting confirms too — it cascades sub-jobs and work
+          requests. */}
       <Modal
         visible={optionsOpen != null}
         transparent
@@ -1013,7 +1170,7 @@ export function JobDashboardSidebar({
                     styles.mapsButton,
                     pressed && styles.pressed,
                   ]}
-                  onPress={() => setOptionsOpen('menu')}
+                  onPress={() => setOptionsOpen(null)}
                 >
                   <Text style={styles.mapsButtonText}>Cancel</Text>
                 </Pressable>
@@ -1043,7 +1200,7 @@ export function JobDashboardSidebar({
                   </Text>
                 </Pressable>
               </>
-            ) : optionsOpen === 'confirm-hide' ? (
+            ) : (
               <>
                 <Text style={styles.optionsTitle}>Hide Sub-Jobs?</Text>
                 <Text style={styles.optionsHint}>
@@ -1058,7 +1215,7 @@ export function JobDashboardSidebar({
                     styles.mapsButton,
                     pressed && styles.pressed,
                   ]}
-                  onPress={() => setOptionsOpen('menu')}
+                  onPress={() => setOptionsOpen(null)}
                 >
                   <Text style={styles.mapsButtonText}>Cancel</Text>
                 </Pressable>
@@ -1077,57 +1234,6 @@ export function JobDashboardSidebar({
                     Hide Sub-Jobs section
                   </Text>
                 </Pressable>
-              </>
-            ) : (
-              <>
-                <Text style={styles.optionsTitle}>Options</Text>
-                {canManageSubJobs && !job.parentJobId && (
-                  <>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.optionRow,
-                        pressed && styles.pressed,
-                      ]}
-                      onPress={() => {
-                        if (job.hasSubJobs) {
-                          setOptionsOpen('confirm-hide');
-                        } else {
-                          updateJob(job.id, { hasSubJobs: true });
-                          setOptionsOpen(null);
-                        }
-                      }}
-                    >
-                      <Feather
-                        name={job.hasSubJobs ? 'check-square' : 'square'}
-                        size={18}
-                        color={
-                          job.hasSubJobs ? colors.primary : colors.textSecondary
-                        }
-                      />
-                      <Text style={styles.optionRowText}>
-                        This job has Sub-Jobs
-                      </Text>
-                    </Pressable>
-                    <Text style={styles.optionsHint}>
-                      Adds a Sub-Jobs section to this job&apos;s page, where the
-                      job can be broken into pieces that work exactly like jobs.
-                    </Text>
-                  </>
-                )}
-                {canDelete && (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.optionRow,
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => setOptionsOpen('confirm-delete')}
-                  >
-                    <Feather name="trash-2" size={18} color={colors.danger} />
-                    <Text style={[styles.optionRowText, styles.optionRowDanger]}>
-                      Delete this {job.parentJobId ? 'Sub-Job' : 'Job'}…
-                    </Text>
-                  </Pressable>
-                )}
               </>
             )}
           </View>
@@ -1488,6 +1594,46 @@ const styles = themed(() =>
       fontFamily: fonts.medium,
       fontSize: 12,
       marginTop: spacing.xs,
+    },
+    subJobTypeBlock: {
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+    },
+    typeChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    typeChip: {
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+    },
+    typeChipActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryDim,
+    },
+    typeChipText: {
+      color: colors.textSecondary,
+      fontFamily: fonts.semiBold,
+      fontSize: 13,
+    },
+    typeChipTextActive: {
+      color: colors.primary,
+    },
+    customTypeInput: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      color: colors.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      outlineWidth: 0,
     },
     addressInput: {
       flex: 1,

@@ -13,6 +13,7 @@ import { comparePriority } from '@/utils/priorityRange';
 import {
   workRequestJobIds,
   workRequestJobsLabel,
+  workRequestPoLabel,
 } from '@/utils/workRequestJobs';
 
 const SCHEDULE_FILTERS = ['All', 'Scheduled', 'Unscheduled'] as const;
@@ -112,7 +113,7 @@ export function FieldSuperWorkRequestsMobile() {
         renderItem={({ item }) => (
           <MobileWorkRequestItem
             workRequest={item}
-            jobName={workRequestJobsLabel(item, jobs) || 'No parent job'}
+            jobName={workRequestPoLabel(item, jobs) || 'No parent job'}
             scheduled={scheduledIds.has(item.id)}
             onPress={() => router.push(`/work-request/${item.id}`)}
           />

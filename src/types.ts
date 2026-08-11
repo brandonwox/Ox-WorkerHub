@@ -79,6 +79,12 @@ export interface Job {
    * Office-edited afterwards (Operator / Field Supers; DB guards match).
    */
   po?: string;
+  /**
+   * The builder (general contractor/customer) the job is for. Free text —
+   * picked from builders used on past jobs or newly typed in the job details
+   * edit view (Operator / Field Supers; DB guards match).
+   */
+  builder?: string;
   status: JobStatus;
   /**
    * Set when this job is a SUB-JOB: a piece of the referenced parent job.
@@ -94,6 +100,12 @@ export interface Job {
    * hides the section but the sub-jobs themselves live on).
    */
   hasSubJobs?: boolean;
+  /**
+   * What this job's sub-jobs are called: 'Lots', 'Phases', 'Bldgs', or a
+   * custom term. Chosen when "This job has Sub-Jobs" is enabled and drives
+   * sub-job naming — the create form prefixes the singular form ("Lot 159").
+   */
+  subJobType?: string;
   /**
    * QuickBooks Time jobcode this Job maps to. Set manually by the Operator;
    * timesheet hours sync under this code. Optional until mapped.
@@ -256,9 +268,11 @@ export type JobScope =
   | 'Screens'
   | "IGU's"
   | 'Storefront'
+  // Retired as a scope (2026-08): no longer selectable anywhere, but kept in
+  // the type so rows that already carry it still read/display cleanly.
   | 'Service';
 
-/** All selectable scopes, in display order. */
+/** All selectable scopes, in display order. ('Service' is retired.) */
 export const JOB_SCOPES: JobScope[] = [
   'Windows',
   'Mirrors',
@@ -267,7 +281,6 @@ export const JOB_SCOPES: JobScope[] = [
   'Screens',
   "IGU's",
   'Storefront',
-  'Service',
 ];
 
 /**

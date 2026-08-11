@@ -200,7 +200,7 @@ export default function FieldSuperJobsScreen() {
                         {job.name}
                       </Text>
                       {job.po ? (
-                        <Text style={styles.poText}>PO {job.po}</Text>
+                        <Text style={styles.poText}>{job.po}</Text>
                       ) : null}
                       {job.status === 'Finished' && (
                         <View style={styles.archivedPill}>

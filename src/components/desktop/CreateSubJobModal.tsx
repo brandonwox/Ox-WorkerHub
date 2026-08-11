@@ -13,6 +13,7 @@ import { MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { JOB_SCOPES, Job, JobScope } from '@/types';
+import { subJobTypeSingular } from '@/utils/jobName';
 
 export interface NewSubJobInput {
   name: string;
@@ -34,14 +35,19 @@ interface Props {
 
 /**
  * Create a sub-job under a parent job. The name field leads with the parent's
- * name as a fixed, non-editable prefix — the worker types only the piece
- * ("Lot 2", "Phase 3"); the sub-job's STORED name is just that piece. Address,
- * scopes, and flashing material arrive autofilled from the parent and stay
- * editable. No QBT jobcode here — the Finance Manager assigns those.
+ * name as a fixed, non-editable prefix, followed by the parent's sub-job type
+ * in singular form ("Lot") when one is saved — the worker types only the
+ * piece ("159") and the STORED name becomes type + piece ("Lot 159"; parents
+ * with no saved type keep the old free-text naming). Address, scopes, and
+ * flashing material arrive autofilled from the parent and stay editable. No
+ * QBT jobcode here — the Finance Manager assigns those.
  */
 export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const [name, setName] = useState('');
   const [po, setPo] = useState('');
+  // Until the PO is typed into directly, it auto-fills as parent PO + the
+  // typed name piece ("4500" + "126" → "4500126"); a manual edit takes over.
+  const [poEdited, setPoEdited] = useState(false);
   const [location, setLocation] = useState<string | null>(null);
   const [scopes, setScopes] = useState<JobScope[] | null>(null);
   const [flashing, setFlashing] = useState<string | null>(null);
@@ -55,16 +61,31 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const reset = () => {
     setName('');
     setPo('');
+    setPoEdited(false);
     setLocation(null);
     setScopes(null);
     setFlashing(null);
     setError(null);
   };
 
+  // Name keystrokes refresh the auto-PO ("Lot 126" ends up PO "MH 126" for
+  // parent PO "MH" — a space joins the two, and the type prefix never enters
+  // the PO) until the PO is edited by hand.
+  const handleNameChange = (text: string) => {
+    setName(text);
+    if (poEdited) return;
+    const parentPo = parentJob?.po?.trim() ?? '';
+    const piece = text.trim();
+    setPo(parentPo && piece ? `${parentPo} ${piece}` : parentPo + piece);
+  };
+
   const close = () => {
     reset();
     onClose();
   };
+
+  // The parent's sub-job type, singular ('' when the parent has none saved).
+  const typePrefix = subJobTypeSingular(parentJob?.subJobType);
 
   const submit = () => {
     if (!name.trim()) {
@@ -76,7 +97,8 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
       return;
     }
     onSubmit({
-      name: name.trim(),
+      // "159" typed under type "Lots" is stored as "Lot 159".
+      name: typePrefix ? `${typePrefix} ${name.trim()}` : name.trim(),
       po: po.trim(),
       location: effectiveLocation.trim(),
       scopes: effectiveScopes.length > 0 ? effectiveScopes : undefined,
@@ -112,11 +134,24 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
                       {parentJob.name}
                     </Text>
                   </View>
+                  {/* The saved sub-job type leads the typed piece — the
+                      stored name becomes "Lot 159". */}
+                  {typePrefix ? (
+                    <View style={[styles.prefixChip, styles.typeChip]}>
+                      <Text style={styles.prefixText} numberOfLines={1}>
+                        {typePrefix}
+                      </Text>
+                    </View>
+                  ) : null}
                   <TextInput
                     style={styles.nameInput}
                     value={name}
-                    onChangeText={setName}
-                    placeholder="Lot 2, Phase 3, Building B…"
+                    onChangeText={handleNameChange}
+                    placeholder={
+                      typePrefix
+                        ? `Which ${typePrefix.toLowerCase()} is this?`
+                        : 'Lot 2, Phase 3, Building B…'
+                    }
                     placeholderTextColor={colors.textTertiary}
                     autoFocus
                   />
@@ -127,15 +162,19 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
                 <TextInput
                   style={styles.poInput}
                   value={po}
-                  onChangeText={setPo}
+                  onChangeText={(t) => {
+                    setPo(t);
+                    setPoEdited(true);
+                  }}
                   placeholder="e.g. 4501"
                   placeholderTextColor={colors.textTertiary}
                 />
               </View>
             </View>
             <Text style={styles.fieldHint}>
-              No need to type “{parentJob.name}” — it shows in front of the
-              sub-job&apos;s name automatically where it matters.
+              {typePrefix
+                ? `No need to type “${parentJob.name}” or “${typePrefix}” — both are added automatically.`
+                : `No need to type “${parentJob.name}” — it shows in front of the sub-job’s name automatically where it matters.`}
             </Text>
           </View>
 
@@ -204,7 +243,9 @@ const styles = themed(() =>
     },
     card: {
       width: '100%',
-      maxWidth: 620,
+      // Wide enough that the name row (parent chip + type chip + input) has
+      // room even for long parent job names.
+      maxWidth: 760,
       backgroundColor: colors.surface,
       ...modalShadow,
       borderRadius: radii.lg,
@@ -276,15 +317,28 @@ const styles = themed(() =>
       borderRightColor: colors.border,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
-      maxWidth: '55%',
+      // Shrinks (with ellipsis) only when the row runs out of room — the
+      // input's minWidth is what forces it, so it never clips mid-word
+      // otherwise. minWidth 0 lets the text actually ellipsize on web.
+      flexShrink: 1,
+      minWidth: 0,
     },
     prefixText: {
       color: colors.textSecondary,
       fontFamily: fonts.semiBold,
       fontSize: 14,
     },
+    // The sub-job type chip rides next to the parent-name chip, same look —
+    // but never shrinks (it's short and must stay readable; the parent chip
+    // gives way instead).
+    typeChip: {
+      flexShrink: 0,
+    },
     nameInput: {
       flex: 1,
+      // Keeps typing room when a long parent name would eat the row — the
+      // prefix chip ellipsizes past this point instead.
+      minWidth: 150,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
       color: colors.textPrimary,

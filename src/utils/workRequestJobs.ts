@@ -26,6 +26,23 @@ export function workRequestLinksJob(card: JobLinked, jobId: string): boolean {
  * "Vista Homes Lot 2, Lot 5". Falls back to '' when nothing is linked (the
  * call site chooses its own "Unlinked job" / "No parent job" copy).
  */
+/**
+ * PO label for a card's linked job(s) — the office's job identifier. Sub-jobs
+ * show their OWN PO (never the parent's); multi-linked cards join every linked
+ * job's PO ("4512, 4513"). Jobs without a PO (legacy) fall back to their
+ * display name so the line never goes blank. '' when nothing is linked (the
+ * call site chooses its own fallback copy).
+ */
+export function workRequestPoLabel(card: JobLinked, jobs: Job[]): string {
+  const linked = workRequestJobIds(card)
+    .map((id) => jobs.find((j) => j.id === id))
+    .filter((j): j is Job => j != null);
+  return linked
+    .map((j) => j.po?.trim() || jobDisplayName(j, jobs))
+    .filter(Boolean)
+    .join(', ');
+}
+
 export function workRequestJobsLabel(card: JobLinked, jobs: Job[]): string {
   const linked = workRequestJobIds(card)
     .map((id) => jobs.find((j) => j.id === id))

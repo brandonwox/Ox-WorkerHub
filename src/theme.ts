@@ -13,6 +13,8 @@
  *   restores the current route), so every mounted component re-reads both.
  */
 
+import { Platform } from 'react-native';
+
 export type ThemeScheme = 'dark' | 'light';
 
 export interface Palette {
@@ -179,11 +181,24 @@ export const radii = {
  * Soft drop shadow for desktop popup modals — they float over the page without
  * darkening it (no dimmed overlay), so the shadow does the lifting. Lighter in
  * light mode, where a heavy shadow reads as a smudge.
+ *
+ * On web this MUST be a `boxShadow` string: the native `shadow*` props don't
+ * render there, which left every modalShadow popup visually shadowless.
+ * Native keeps the original props unchanged (per the developer: web only).
  */
-export const modalShadow = themed(() => ({
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 10 },
-  shadowOpacity: getThemeScheme() === 'dark' ? 0.55 : 0.18,
-  shadowRadius: 28,
-  elevation: 16,
-}));
+export const modalShadow = themed(() =>
+  Platform.OS === 'web'
+    ? {
+        boxShadow:
+          getThemeScheme() === 'dark'
+            ? '0 6px 20px rgba(0, 0, 0, 0.45)'
+            : '0 6px 20px rgba(0, 0, 0, 0.15)',
+      }
+    : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: getThemeScheme() === 'dark' ? 0.55 : 0.18,
+        shadowRadius: 28,
+        elevation: 16,
+      }
+);
