@@ -640,16 +640,20 @@ export function WorkRequestQuickView({
     // Field Supers may see the assigned crew (hover) but never change it —
     // moving work between crews is the Scheduler's call.
     if (role === 'field_super') return;
-    if (cardAssignments.length === 0) {
-      flash(
-        'Not on the calendar yet — schedule this card to assign a crew.',
-        'warning'
-      );
-      return;
-    }
     setCrewMultiAssign(false);
     setCrewMenuOpen((open) => !open);
   };
+
+  /**
+   * The day(s) a crew pick applies to. A scheduled card keeps every covered
+   * day; an UNSCHEDULED one falls back to its target date — picking a crew
+   * from the square both assigns AND schedules it there, moving the card off
+   * the Work Requests pool onto the main calendar.
+   */
+  const crewAssignDates = () =>
+    cardAssignments.length > 0
+      ? [...new Set(cardAssignments.map((a) => a.date))]
+      : [workRequest.date || format(new Date(), 'yyyy-MM-dd')];
 
   /**
    * A crew menu click. Normally swaps which crew the card is assigned to
@@ -658,6 +662,11 @@ export function WorkRequestQuickView({
    * instead — clicking an assigned crew unassigns it.
    */
   const changeCrew = (crewId: string) => {
+    const wasUnscheduled = cardAssignments.length === 0;
+    const dates = crewAssignDates();
+    const assignedNote = wasUnscheduled
+      ? ` — scheduled ${format(parse(dates[0], 'yyyy-MM-dd', new Date()), 'MMM d')}`
+      : '';
     if (crewMultiAssign) {
       const crewRows = cardAssignments.filter((a) => a.crewId === crewId);
       if (crewRows.length > 0) {
@@ -673,18 +682,16 @@ export function WorkRequestQuickView({
         crewRows.forEach((a) => unassignWorkRequest(a.id));
         flash(`Unassigned ${crewNameFor(crewId)}`, 'success');
       } else {
-        const dates = [...new Set(cardAssignments.map((a) => a.date))];
         dates.forEach((date) => assignWorkRequest(workRequest.id, crewId, date));
-        flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
+        flash(`Assigned to ${crewNameFor(crewId)}${assignedNote}`, 'success');
       }
       return;
     }
     setCrewMenuOpen(false);
     if (assignedCrewIds.length === 1 && assignedCrewIds[0] === crewId) return;
-    const dates = [...new Set(cardAssignments.map((a) => a.date))];
     cardAssignments.forEach((a) => unassignWorkRequest(a.id));
     dates.forEach((date) => assignWorkRequest(workRequest.id, crewId, date));
-    flash(`Assigned to ${crewNameFor(crewId)}`, 'success');
+    flash(`Assigned to ${crewNameFor(crewId)}${assignedNote}`, 'success');
   };
 
   /** Validate the create draft; hand it up only when every requirement holds. */

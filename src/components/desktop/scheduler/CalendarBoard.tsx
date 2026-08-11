@@ -748,6 +748,11 @@ const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+    // The board is click-and-drag territory — stray mouse presses must not
+    // sweep text selections across crew pills, day numbers, and chips. The
+    // popups (quick view, Manage crews) portal outside this subtree, so their
+    // text stays selectable/copyable.
+    userSelect: 'none',
   },
   toolbar: {
     flexDirection: 'row',

@@ -29,14 +29,15 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
  * The provider wraps the whole board. Drop zones (day cells, the Work
  * Requests column, its expanded calendar's cells) register themselves with a
  * ref + metadata; draggable chips render through {@link DragSource}. On drag
- * start every zone and chip is measured once (measureInWindow), a ghost chip
- * follows the pointer, the hovered zone shows an insertion indicator, and the
- * drop resolves to a {@link DropTarget} handed to the provider's onDrop.
- * Invalid drops (no zone under the pointer) simply snap back.
+ * start every zone and chip is measured (measureInWindow) and the snapshot is
+ * refreshed on an interval while the drag runs — the calendars resize the
+ * hovered day column under the pointer, so zone rects move mid-drag. A ghost
+ * chip follows the pointer, the hovered zone shows an insertion indicator,
+ * and the drop resolves to a {@link DropTarget} handed to the provider's
+ * onDrop. Invalid drops (no zone under the pointer) simply snap back.
  *
- * Mid-drag scrolling isn't supported (the measurement snapshot would go
- * stale) — a drag is a press-move-release with the wheel untouched, which is
- * how a mouse drag naturally works.
+ * Mid-drag scrolling isn't supported — a drag is a press-move-release with
+ * the wheel untouched, which is how a mouse drag naturally works.
  */
 
 /**
@@ -175,6 +176,7 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
   const snapshotRef = useRef<Snapshot | null>(null);
   const dragRef = useRef<DragItem | null>(null);
   const hoverRef = useRef<{ zoneId: string; index: number } | null>(null);
+  const resnapshotTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
@@ -211,6 +213,40 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
     []
   );
 
+  /** Measure every zone + chip position into the snapshot. */
+  const takeSnapshot = useCallback(async (): Promise<Snapshot> => {
+    const root = await measureRect(rootRef);
+    const zones: MeasuredZone[] = [];
+    const itemsByZone = new Map<string, MeasuredItem[]>();
+    await Promise.all(
+      [...zonesRef.current.entries()].map(async ([zoneId, { ref, meta }]) => {
+        const rect = await measureRect(ref);
+        if (rect) zones.push({ zoneId, meta, rect });
+      })
+    );
+    await Promise.all(
+      [...itemsRef.current.entries()].map(async ([zoneId, zoneItems]) => {
+        const measured: MeasuredItem[] = [];
+        await Promise.all(
+          [...zoneItems.entries()].map(async ([key, ref]) => {
+            const rect = await measureRect(ref);
+            if (rect) measured.push({ key, centerY: rect.y + rect.h / 2 });
+          })
+        );
+        measured.sort((a, b) => a.centerY - b.centerY);
+        itemsByZone.set(zoneId, measured);
+      })
+    );
+    const snapshot: Snapshot = {
+      zones,
+      itemsByZone,
+      rootX: root?.x ?? 0,
+      rootY: root?.y ?? 0,
+    };
+    snapshotRef.current = snapshot;
+    return snapshot;
+  }, []);
+
   const begin = useCallback(
     (item: DragItem, ghostSpec: Ghost, x: number, y: number) => {
       dragRef.current = item;
@@ -219,44 +255,18 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
       setGhost(ghostSpec);
       setDraggingKey(keyOf(item));
       setHover(null);
-      // Snapshot every zone + chip position once, up front. Fire-and-forget:
-      // hover resolution simply waits until the snapshot lands (~a frame).
-      void (async () => {
-        const root = await measureRect(rootRef);
-        const zones: MeasuredZone[] = [];
-        const itemsByZone = new Map<string, MeasuredItem[]>();
-        await Promise.all(
-          [...zonesRef.current.entries()].map(async ([zoneId, { ref, meta }]) => {
-            const rect = await measureRect(ref);
-            if (rect) zones.push({ zoneId, meta, rect });
-          })
-        );
-        await Promise.all(
-          [...itemsRef.current.entries()].map(async ([zoneId, zoneItems]) => {
-            const measured: MeasuredItem[] = [];
-            await Promise.all(
-              [...zoneItems.entries()].map(async ([key, ref]) => {
-                const rect = await measureRect(ref);
-                if (rect) measured.push({ key, centerY: rect.y + rect.h / 2 });
-              })
-            );
-            measured.sort((a, b) => a.centerY - b.centerY);
-            itemsByZone.set(zoneId, measured);
-          })
-        );
-        snapshotRef.current = {
-          zones,
-          itemsByZone,
-          rootX: root?.x ?? 0,
-          rootY: root?.y ?? 0,
-        };
-        ghostPos.setValue({
-          x: x - (root?.x ?? 0) + 10,
-          y: y - (root?.y ?? 0) + 10,
-        });
-      })();
+      // Fire-and-forget: hover resolution simply waits until the first
+      // snapshot lands (~a frame).
+      void takeSnapshot().then((s) => {
+        ghostPos.setValue({ x: x - s.rootX + 10, y: y - s.rootY + 10 });
+      });
+      // The hovered day column widens under the pointer mid-drag, shifting
+      // every cell — keep the measurements tracking the live layout.
+      resnapshotTimer.current = setInterval(() => {
+        void takeSnapshot();
+      }, 200);
     },
-    [ghostPos]
+    [ghostPos, takeSnapshot]
   );
 
   /** The zone under the pointer (highest priority wins) + insertion index. */
@@ -306,6 +316,10 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
 
   const finish = useCallback(() => {
     suppressTextSelection(false);
+    if (resnapshotTimer.current) {
+      clearInterval(resnapshotTimer.current);
+      resnapshotTimer.current = null;
+    }
     dragRef.current = null;
     hoverRef.current = null;
     snapshotRef.current = null;

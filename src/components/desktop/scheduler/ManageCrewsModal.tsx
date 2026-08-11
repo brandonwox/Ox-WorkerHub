@@ -182,7 +182,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                     </Text>
                   )}
                   <Text style={styles.fieldLabel}>Color</Text>
-                  <ColorSwatches
+                  <ColorPicker
                     value={crew.color}
                     fallback={autoColors.get(crew.id) ?? colors.textTertiary}
                     onPick={(color) => updateCrew(crew.id, { color })}
@@ -225,7 +225,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 </>
               )}
               <Text style={styles.fieldLabel}>Color</Text>
-              <ColorSwatches
+              <ColorPicker
                 value={newCrewColor}
                 fallback={colors.textTertiary}
                 onPick={setNewCrewColor}
@@ -277,7 +277,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                     }
                   />
                   <Text style={styles.fieldLabel}>Color</Text>
-                  <ColorSwatches
+                  <ColorPicker
                     value={dc.color}
                     fallback={autoColors.get(dc.id) ?? colors.textTertiary}
                     onPick={(color) => updateDailyCrew(dc.id, { color })}
@@ -311,7 +311,7 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 }
               />
               <Text style={styles.fieldLabel}>Color</Text>
-              <ColorSwatches
+              <ColorPicker
                 value={newDailyColor}
                 fallback={colors.textTertiary}
                 onPick={setNewDailyColor}
@@ -480,11 +480,12 @@ function MemberEditor({
 }
 
 /**
- * Crew color picker: the leading "Auto" swatch (dashed ring, showing the
- * automatic palette color) clears the custom pick; the rest set it. The
- * active choice carries a ring.
+ * Crew color control: collapsed, it's just a small rounded square in the
+ * crew's current color (the automatic palette color while nothing is picked).
+ * Clicking it unfolds the selector — the swatches plus an explicit "Use
+ * automatic color" reset — and picking either way folds it back up.
  */
-function ColorSwatches({
+function ColorPicker({
   value,
   fallback,
   onPick,
@@ -494,34 +495,59 @@ function ColorSwatches({
   fallback: string;
   onPick: (color?: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <View style={styles.swatchRow}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.swatch,
-          styles.swatchAuto,
-          { backgroundColor: fallback },
-          !value && styles.swatchActive,
-          pressed && styles.pressed,
-        ]}
-        onPress={() => onPick(undefined)}
-        accessibilityLabel="Automatic color"
-      >
-        <Text style={styles.swatchAutoText}>A</Text>
-      </Pressable>
-      {CREW_COLOR_CHOICES.map((color) => (
+    <View style={styles.colorPicker}>
+      <View style={styles.colorHead}>
         <Pressable
-          key={color}
           style={({ pressed }) => [
-            styles.swatch,
-            { backgroundColor: color },
-            value === color && styles.swatchActive,
+            styles.colorSquare,
+            { backgroundColor: value ?? fallback },
+            open && styles.colorSquareOpen,
             pressed && styles.pressed,
           ]}
-          onPress={() => onPick(color)}
-          accessibilityLabel={`Crew color ${color}`}
+          onPress={() => setOpen((v) => !v)}
+          accessibilityLabel="Edit crew color"
         />
-      ))}
+        {!value && <Text style={styles.colorAutoTag}>Automatic</Text>}
+      </View>
+      {open && (
+        <>
+          <View style={styles.swatchRow}>
+            {CREW_COLOR_CHOICES.map((color) => (
+              <Pressable
+                key={color}
+                style={({ pressed }) => [
+                  styles.swatch,
+                  { backgroundColor: color },
+                  value === color && styles.swatchActive,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => {
+                  onPick(color);
+                  setOpen(false);
+                }}
+                accessibilityLabel={`Crew color ${color}`}
+              />
+            ))}
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.autoBtn,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => {
+              onPick(undefined);
+              setOpen(false);
+            }}
+          >
+            <View
+              style={[styles.autoBtnSwatch, { backgroundColor: fallback }]}
+            />
+            <Text style={styles.autoBtnText}>Use automatic color</Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 }
@@ -670,6 +696,30 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 13,
   },
+  colorPicker: {
+    gap: spacing.sm,
+  },
+  colorHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  colorSquare: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  colorSquareOpen: {
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+  },
+  colorAutoTag: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
   swatchRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -684,17 +734,26 @@ const styles = themed(() => StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.textPrimary,
   },
-  swatchAuto: {
+  autoBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.sm,
+    alignSelf: 'flex-start',
     borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.textSecondary,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 1,
   },
-  swatchAutoText: {
-    color: colors.textOnAccent,
-    fontFamily: fonts.bold,
-    fontSize: 10,
+  autoBtnSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: radii.pill,
+  },
+  autoBtnText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
   },
   addBtn: {
     flexDirection: 'row',

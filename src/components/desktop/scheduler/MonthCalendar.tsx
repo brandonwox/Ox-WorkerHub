@@ -8,7 +8,7 @@ import {
   parseISO,
   startOfMonth,
 } from 'date-fns';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -17,6 +17,7 @@ import {
   useDragBoard,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
+import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, WorkRequest, ScheduleAssignment } from '@/types';
 import { buildDayItems } from '@/utils/daySchedule';
@@ -32,6 +33,9 @@ const LANE_H = 24; // one lane's slot (bar + gap)
 const BAR_H = 21;
 // Distance from the week row's top to lane 0: cell padding + day number line.
 const BAR_TOP = 25;
+// The hovered day column widens to at least this, squeezing the other six, so
+// the chips inside it become readable even on a crowded board.
+const HOVER_COL_MIN = 150;
 
 interface Props {
   month: Date;
@@ -116,6 +120,16 @@ export function MonthCalendar({
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart); // 0 (Sun) … 6 (Sat)
+
+  // The weekday column under the pointer — it widens to HOVER_COL_MIN across
+  // every week row (and the header) so its chips are readable. Tracked by
+  // pointer position, so it follows the COLUMN regardless of which chip or
+  // bar the mouse happens to be over, and works during drags too (the drag
+  // layer re-measures its drop zones on an interval).
+  const { ref: hoverRef, hoveredCol } = useHoverColumn(
+    HOVER_COL_MIN,
+    spacing.xs
+  );
 
   // Chunk the month into week rows (nulls pad the month's edges) so each row
   // can host its own multi-day bar overlay.
@@ -214,35 +228,41 @@ export function MonthCalendar({
         </View>
       )}
 
-      <View style={styles.weekRow}>
-        {WEEKDAYS.map((d) => (
-          <Text key={d} style={styles.weekday}>
-            {d}
-          </Text>
-        ))}
-      </View>
+      <View ref={hoverRef} collapsable={false} style={styles.gridArea}>
+        <View style={styles.weekRow}>
+          {WEEKDAYS.map((d, col) => (
+            <Text
+              key={d}
+              style={[styles.weekday, hoveredCol === col && styles.colHovered]}
+            >
+              {d}
+            </Text>
+          ))}
+        </View>
 
-      <ScrollView contentContainerStyle={styles.grid}>
-        {weeks.map((week, w) => (
-          <WeekRow
-            key={w}
-            week={week}
-            spans={multiDaySpans}
-            multiDayIds={multiDayIds}
-            visibleAssignments={visibleAssignments}
-            workRequests={workRequests}
-            colorForCrew={colorForCrew}
-            crewNameFor={crewNameFor}
-            placing={placing}
-            onAssignToDate={onAssignToDate}
-            onUnassign={onUnassign}
-            onOpenDay={onOpenDay}
-            highlightDate={highlightDate}
-            onOpenCard={onOpenCard}
-            canUnassign={canUnassign}
-          />
-        ))}
-      </ScrollView>
+        <ScrollView contentContainerStyle={styles.grid}>
+          {weeks.map((week, w) => (
+            <WeekRow
+              key={w}
+              week={week}
+              spans={multiDaySpans}
+              multiDayIds={multiDayIds}
+              visibleAssignments={visibleAssignments}
+              workRequests={workRequests}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              placing={placing}
+              onAssignToDate={onAssignToDate}
+              onUnassign={onUnassign}
+              onOpenDay={onOpenDay}
+              highlightDate={highlightDate}
+              onOpenCard={onOpenCard}
+              canUnassign={canUnassign}
+              hoveredCol={hoveredCol}
+            />
+          ))}
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -262,6 +282,8 @@ interface WeekRowProps {
   highlightDate?: string | null;
   onOpenCard: (workRequestId: string) => void;
   canUnassign: boolean;
+  /** The weekday column the pointer is over anywhere on the calendar (0…6). */
+  hoveredCol: number | null;
 }
 
 /**
@@ -284,7 +306,25 @@ function WeekRow({
   highlightDate,
   onOpenCard,
   canUnassign,
+  hoveredCol,
 }: WeekRowProps) {
+  // Each column's measured x/width within the row. Columns are flex-sized
+  // (the hovered one widens), so the bar overlay positions off these live
+  // rects instead of fixed sevenths.
+  const [colRects, setColRects] = useState<({ x: number; w: number } | null)[]>(
+    []
+  );
+  const setColRect = (col: number, x: number, w: number) =>
+    setColRects((prev) => {
+      const cur = prev[col];
+      if (cur && Math.abs(cur.x - x) < 0.5 && Math.abs(cur.w - w) < 0.5) {
+        return prev;
+      }
+      const next = [...prev];
+      next[col] = { x, w };
+      return next;
+    });
+
   const dateStrs = week.map((d) => (d ? format(d, 'yyyy-MM-dd') : null));
   const firstCol = dateStrs.findIndex((d) => d !== null);
   const lastCol = 6 - [...dateStrs].reverse().findIndex((d) => d !== null);
@@ -343,49 +383,66 @@ function WeekRow({
     <View style={styles.week}>
       {week.map((dayDate, col) => {
         const dateStr = dateStrs[col];
-        if (!dayDate || !dateStr) {
-          return <View key={`blank-${col}`} style={styles.cellBlank} />;
-        }
         return (
-          <DayCell
-            key={dateStr}
-            date={dateStr}
-            today={isToday(dayDate)}
-            highlight={dateStr === highlightDate}
-            assignments={visibleAssignments.filter(
-              (a) => a.date === dateStr && !multiDayIds.has(a.workRequestId)
-            )}
-            workRequests={workRequests}
-            colorForCrew={colorForCrew}
-            crewNameFor={crewNameFor}
-            placing={placing}
-            onAssignToDate={onAssignToDate}
-            onUnassign={onUnassign}
-            onOpenDay={onOpenDay}
-            onOpenCard={onOpenCard}
-            canUnassign={canUnassign}
-            topPad={lanesOver(col) * LANE_H}
-          />
+          <View
+            key={dateStr ?? `blank-${col}`}
+            style={[styles.col, hoveredCol === col && styles.colHovered]}
+            onLayout={(e) => {
+              const { x, width } = e.nativeEvent.layout;
+              setColRect(col, x, width);
+            }}
+          >
+            {dayDate && dateStr ? (
+              <DayCell
+                date={dateStr}
+                today={isToday(dayDate)}
+                highlight={dateStr === highlightDate}
+                assignments={visibleAssignments.filter(
+                  (a) => a.date === dateStr && !multiDayIds.has(a.workRequestId)
+                )}
+                workRequests={workRequests}
+                colorForCrew={colorForCrew}
+                crewNameFor={crewNameFor}
+                placing={placing}
+                onAssignToDate={onAssignToDate}
+                onUnassign={onUnassign}
+                onOpenDay={onOpenDay}
+                onOpenCard={onOpenCard}
+                canUnassign={canUnassign}
+                topPad={lanesOver(col) * LANE_H}
+              />
+            ) : null}
+          </View>
         );
       })}
 
-      {segments.map((seg) => (
-        <SpanBar
-          key={`bar-${seg.span.card.id}`}
-          seg={seg}
-          colorForCrew={colorForCrew}
-          crewNameFor={crewNameFor}
-          onOpenCard={onOpenCard}
-          onUnassign={onUnassign}
-          canUnassign={canUnassign}
-        />
-      ))}
+      {segments.map((seg) => {
+        const startRect = colRects[seg.startCol];
+        const endRect = colRects[seg.endCol];
+        if (!startRect || !endRect) return null;
+        return (
+          <SpanBar
+            key={`bar-${seg.span.card.id}`}
+            seg={seg}
+            left={startRect.x}
+            width={endRect.x + endRect.w - startRect.x}
+            colorForCrew={colorForCrew}
+            crewNameFor={crewNameFor}
+            onOpenCard={onOpenCard}
+            onUnassign={onUnassign}
+            canUnassign={canUnassign}
+          />
+        );
+      })}
     </View>
   );
 }
 
 interface SpanBarProps {
   seg: SpanSegment;
+  /** Measured pixel geometry within the week row (tracks column resizing). */
+  left: number;
+  width: number;
   colorForCrew: (crewId: string) => string;
   crewNameFor: (crewId: string) => string;
   onOpenCard: (workRequestId: string) => void;
@@ -402,6 +459,8 @@ interface SpanBarProps {
  */
 function SpanBar({
   seg,
+  left,
+  width,
   colorForCrew,
   crewNameFor,
   onOpenCard,
@@ -412,17 +471,12 @@ function SpanBar({
   const { span } = seg;
   const crewIds = [...new Set(span.group.map((a) => a.crewId))];
   const color = colorForCrew(crewIds[0]);
-  const width = seg.endCol - seg.startCol + 1;
 
   return (
     <View
       style={[
         styles.barSlot,
-        {
-          left: `${(seg.startCol / 7) * 100}%`,
-          width: `${(width / 7) * 100}%`,
-          top: BAR_TOP + seg.lane * LANE_H,
-        },
+        { left, width, top: BAR_TOP + seg.lane * LANE_H },
       ]}
       pointerEvents="box-none"
     >
@@ -540,28 +594,40 @@ function DayCell({
   const items = buildDayItems(assignments, workRequests);
 
   return (
-    <Pressable
+    <View
       ref={ref}
+      collapsable={false}
       style={[
         styles.cell,
+        today && styles.cellToday,
         highlight && styles.cellHighlight,
         hovered && styles.cellDropHover,
       ]}
-      onPress={
-        placing
-          ? () => onAssignToDate(date)
-          : onOpenDay
-            ? () => onOpenDay(date)
-            : undefined
-      }
     >
-      <View style={styles.cellHead}>
+      {/* The day-open (or click-to-place) surface is a BACKGROUND layer the
+          chips are not children of — so clicking a work request can never
+          also open the day sidebar. The head and chip stack above let empty
+          space pass presses through to it. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={
+          placing
+            ? () => onAssignToDate(date)
+            : onOpenDay
+              ? () => onOpenDay(date)
+              : undefined
+        }
+      />
+      <View style={styles.cellHead} pointerEvents="none">
         <Text style={[styles.dayNum, today && styles.dayNumToday]}>
           {format(new Date(`${date}T00:00:00`), 'd')}
         </Text>
       </View>
 
-      <View style={[styles.cellCards, topPad > 0 && { marginTop: 3 + topPad }]}>
+      <View
+        style={[styles.cellCards, topPad > 0 && { marginTop: 3 + topPad }]}
+        pointerEvents="box-none"
+      >
         {hoverIndex === 0 && !resizing && <DropLine />}
         {items.map((item, i) => (
           <Fragment key={item.key}>
@@ -641,7 +707,7 @@ function DayCell({
           </Fragment>
         ))}
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -710,13 +776,19 @@ const styles = themed(() => StyleSheet.create({
     paddingTop: spacing.sm,
   },
   weekday: {
-    width: '14.2857%',
+    flex: 1,
+    minWidth: 0,
     textAlign: 'center',
     color: colors.textTertiary,
     fontFamily: fonts.semiBold,
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+  // Hover-column tracking area: the weekday header + the week rows (the
+  // pointer-position hook's ref lives here).
+  gridArea: {
+    flex: 1,
   },
   grid: {
     paddingHorizontal: spacing.xs,
@@ -727,17 +799,27 @@ const styles = themed(() => StyleSheet.create({
     // Bars position against the week row.
     position: 'relative',
   },
-  cellBlank: {
-    width: '14.2857%',
-    minHeight: 116,
+  // One weekday column: equal flex shares, except the hovered column which
+  // widens to a readable minimum (the header labels use colHovered too).
+  col: {
+    flex: 1,
+    minWidth: 0,
+  },
+  colHovered: {
+    minWidth: HOVER_COL_MIN,
   },
   cell: {
-    width: '14.2857%',
+    flex: 1,
     minHeight: 116,
     padding: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
+  },
+  // Today's cell: a quietly stronger border so the eye finds it — the
+  // jump-highlight and drop-hover borders below still win over it.
+  cellToday: {
+    borderColor: colors.textTertiary,
   },
   cellHighlight: {
     borderColor: colors.primary,

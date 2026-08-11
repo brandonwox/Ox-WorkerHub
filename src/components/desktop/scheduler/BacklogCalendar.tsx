@@ -18,6 +18,7 @@ import {
   DragSource,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
+import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
 import { withAlpha } from '@/utils/crewColors';
@@ -45,6 +46,10 @@ interface Props {
  * drag between days here (changing their target date), out to the crew
  * calendar (scheduling them), and in from it (unassigning back to the pool).
  */
+// The hovered day column widens to at least this (same rule as the crew
+// calendar) so the requests inside it are readable.
+const HOVER_COL_MIN = 150;
+
 export function BacklogCalendar({
   cards,
   jobNameFor,
@@ -52,10 +57,24 @@ export function BacklogCalendar({
   onCollapse,
 }: Props) {
   const [month, setMonth] = useState(() => new Date());
+  // The weekday column under the pointer — widens across every week row.
+  // Position-tracked (not element hover) so it follows the COLUMN no matter
+  // which request chip the mouse is over. No horizontal grid padding here.
+  const { ref: hoverRef, hoveredCol } = useHoverColumn(HOVER_COL_MIN, 0);
 
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart);
+
+  // Week rows (nulls pad the month's edges) so columns can flex-resize —
+  // a flex-wrapped percentage grid can't widen one column.
+  const cells: (Date | null)[] = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...days,
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (Date | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   const monthKey = format(month, 'yyyy-MM');
   const cardsByDate = useMemo(() => {
@@ -128,33 +147,47 @@ export function BacklogCalendar({
         </Text>
       )}
 
-      <View style={styles.weekRow}>
-        {WEEKDAYS.map((d) => (
-          <Text key={d} style={styles.weekday}>
-            {d}
-          </Text>
-        ))}
+      <View ref={hoverRef} collapsable={false} style={styles.gridArea}>
+        <View style={styles.weekRow}>
+          {WEEKDAYS.map((d, col) => (
+            <Text
+              key={d}
+              style={[styles.weekday, hoveredCol === col && styles.colHovered]}
+            >
+              {d}
+            </Text>
+          ))}
+        </View>
+
+        <ScrollView contentContainerStyle={styles.grid}>
+          {weeks.map((week, w) => (
+            <View key={w} style={styles.week}>
+              {week.map((dayDate, col) => {
+                const dateStr = dayDate ? format(dayDate, 'yyyy-MM-dd') : null;
+                return (
+                  <View
+                    key={dateStr ?? `blank-${col}`}
+                    style={[
+                      styles.col,
+                      hoveredCol === col && styles.colHovered,
+                    ]}
+                  >
+                    {dayDate && dateStr ? (
+                      <BacklogDayCell
+                        date={dateStr}
+                        today={isToday(dayDate)}
+                        cards={cardsByDate.get(dateStr) ?? []}
+                        jobNameFor={jobNameFor}
+                        onOpenCard={onOpenCard}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
       </View>
-
-      <ScrollView contentContainerStyle={styles.grid}>
-        {Array.from({ length: leadingBlanks }).map((_, i) => (
-          <View key={`blank-${i}`} style={styles.cellBlank} />
-        ))}
-
-        {days.map((dayDate) => {
-          const dateStr = format(dayDate, 'yyyy-MM-dd');
-          return (
-            <BacklogDayCell
-              key={dateStr}
-              date={dateStr}
-              today={isToday(dayDate)}
-              cards={cardsByDate.get(dateStr) ?? []}
-              jobNameFor={jobNameFor}
-              onOpenCard={onOpenCard}
-            />
-          );
-        })}
-      </ScrollView>
     </View>
   );
 }
@@ -182,7 +215,11 @@ function BacklogDayCell({
     <View
       ref={ref}
       collapsable={false}
-      style={[styles.cell, hovered && styles.cellDropHover]}
+      style={[
+        styles.cell,
+        today && styles.cellToday,
+        hovered && styles.cellDropHover,
+      ]}
     >
       <Text style={[styles.dayNum, today && styles.dayNumToday]}>
         {format(parseISO(date), 'd')}
@@ -329,7 +366,8 @@ const styles = themed(() => StyleSheet.create({
     paddingTop: spacing.xs,
   },
   weekday: {
-    width: '14.2857%',
+    flex: 1,
+    minWidth: 0,
     textAlign: 'center',
     color: colors.textTertiary,
     fontFamily: fonts.semiBold,
@@ -337,22 +375,34 @@ const styles = themed(() => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
+  gridArea: {
+    flex: 1,
+  },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingBottom: spacing.sm,
   },
-  cellBlank: {
-    width: '14.2857%',
-    minHeight: 110,
+  week: {
+    flexDirection: 'row',
+  },
+  col: {
+    flex: 1,
+    minWidth: 0,
+  },
+  colHovered: {
+    minWidth: HOVER_COL_MIN,
   },
   cell: {
-    width: '14.2857%',
+    flex: 1,
     minHeight: 110,
     padding: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
+  },
+  // Today's cell: a quietly stronger border so the eye finds it (the
+  // drop-hover border still wins over it).
+  cellToday: {
+    borderColor: colors.textTertiary,
   },
   dayNum: {
     color: colors.textSecondary,
