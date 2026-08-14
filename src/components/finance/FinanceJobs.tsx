@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { activeJobs } from '@/utils/jobArchive';
 import { jobDisplayName } from '@/utils/jobName';
 import { formatMoney } from '@/utils/time';
 
@@ -30,9 +31,10 @@ export function FinanceJobs() {
 
   // Sub-jobs need their own QBT jobcode/budget, so they list like any job —
   // sorted and shown under their conjoined name ("Vista Homes Lot 2").
+  // Archived jobs stay out (managed from the office jobs pages).
   const sortedJobs = useMemo(
     () =>
-      [...jobs].sort((a, b) =>
+      activeJobs(jobs).sort((a, b) =>
         a.status === b.status
           ? jobDisplayName(a, jobs).localeCompare(jobDisplayName(b, jobs))
           : a.status === 'Active'
@@ -43,7 +45,7 @@ export function FinanceJobs() {
   );
 
   const unmappedCount = useMemo(
-    () => jobs.filter((job) => !job.qbtJobcodeId).length,
+    () => activeJobs(jobs).filter((job) => !job.qbtJobcodeId).length,
     [jobs]
   );
 

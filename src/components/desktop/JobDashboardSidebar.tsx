@@ -80,10 +80,11 @@ interface Props {
    */
   canManageSubJobs?: boolean;
   /**
-   * Whether the viewer may DELETE this job / sub-job from the options popup
-   * (Schedulers and Field Supers — and the Operator, who also keeps the
-   * type-to-confirm flow in EditJobModal; RLS matches). Deleting a parent job
-   * cascades its sub-jobs and every affected work request.
+   * Whether the viewer may ARCHIVE this job / sub-job from the edit-mode
+   * controls (Schedulers and Field Supers — and the Operator, whose flow
+   * lives in EditJobModal; RLS matches). Archiving a parent job takes its
+   * sub-jobs (and hides their work requests) with it; it's recoverable from
+   * the jobs pages' Archived section, where permanent deletion also lives.
    */
   canDelete?: boolean;
   /** Jobs passed through to the work request quick view (the viewer's scope). */
@@ -132,7 +133,7 @@ export function JobDashboardSidebar({
   const updateJob = useAppStore((s) => s.updateJob);
   const addJobIssue = useAppStore((s) => s.addJobIssue);
   const addSubJob = useAppStore((s) => s.addSubJob);
-  const removeJob = useAppStore((s) => s.removeJob);
+  const archiveJob = useAppStore((s) => s.archiveJob);
   const addWorkRequest = useAppStore((s) => s.addWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
@@ -706,8 +707,9 @@ export function JobDashboardSidebar({
                 )}
               </View>
             )}
-            {/* Delete — confirmation popup, as before (also from the old
-                3-dots menu). */}
+            {/* Archive — the "delete" action, with its confirmation popup.
+                Recoverable from the jobs pages' Archived section; permanent
+                deletion lives only there. */}
             {canDelete && (
               <Pressable
                 style={({ pressed }) => [
@@ -716,9 +718,9 @@ export function JobDashboardSidebar({
                 ]}
                 onPress={() => setOptionsOpen('confirm-delete')}
               >
-                <Feather name="trash-2" size={18} color={colors.danger} />
+                <Feather name="archive" size={18} color={colors.danger} />
                 <Text style={[styles.optionRowText, styles.optionRowDanger]}>
-                  Delete this {job.parentJobId ? 'Sub-Job' : 'Job'}…
+                  Archive this {job.parentJobId ? 'Sub-Job' : 'Job'}…
                 </Text>
               </Pressable>
             )}
@@ -1151,19 +1153,20 @@ export function JobDashboardSidebar({
             {optionsOpen === 'confirm-delete' ? (
               <>
                 <Text style={styles.optionsTitle}>
-                  Delete “{job.name}”?
+                  Archive “{job.name}”?
                 </Text>
                 <Text style={styles.optionsHint}>
                   {job.parentJobId
-                    ? 'This permanently deletes the sub-job and every work request on it.'
+                    ? 'This archives the sub-job and hides its work requests everywhere.'
                     : subJobs.length > 0
-                      ? `This permanently deletes the job, its ${
+                      ? `This archives the job, its ${
                           subJobs.length === 1
                             ? 'sub-job'
                             : `${subJobs.length} sub-jobs`
-                        }, and every work request on them.`
-                      : 'This permanently deletes the job and every work request on it.'}{' '}
-                  This can&apos;t be undone.
+                        }, and hides their work requests everywhere.`
+                      : 'This archives the job and hides its work requests everywhere.'}{' '}
+                  Restore it — or permanently delete it — from the Archived
+                  section on the Jobs page.
                 </Text>
                 <Pressable
                   style={({ pressed }) => [
@@ -1181,9 +1184,9 @@ export function JobDashboardSidebar({
                     pressed && styles.pressed,
                   ]}
                   onPress={() => {
-                    removeJob(job.id);
+                    archiveJob(job.id);
                     flash(
-                      `${job.parentJobId ? 'Sub-job' : 'Job'} "${job.name}" deleted`,
+                      `${job.parentJobId ? 'Sub-job' : 'Job'} "${job.name}" archived`,
                       'success'
                     );
                     setOptionsOpen(null);
@@ -1191,12 +1194,12 @@ export function JobDashboardSidebar({
                   }}
                 >
                   <Feather
-                    name="trash-2"
+                    name="archive"
                     size={15}
                     color={colors.textOnAccent}
                   />
                   <Text style={styles.deleteButtonText}>
-                    Delete {job.parentJobId ? 'Sub-Job' : 'Job'}
+                    Archive {job.parentJobId ? 'Sub-Job' : 'Job'}
                   </Text>
                 </Pressable>
               </>

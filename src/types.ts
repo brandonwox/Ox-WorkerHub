@@ -87,6 +87,15 @@ export interface Job {
   builder?: string;
   status: JobStatus;
   /**
+   * Set when the job is ARCHIVED — "deleting" a job archives it (recoverable)
+   * instead of destroying it. Archived jobs (and their work requests)
+   * disappear from every active surface and live in the jobs pages' Archived
+   * section, where they can be restored or permanently deleted. Distinct from
+   * status 'Finished', which stays visible. ISO datetime. Sub-jobs archive
+   * and restore with their parent.
+   */
+  archivedAt?: string;
+  /**
    * Set when this job is a SUB-JOB: a piece of the referenced parent job.
    * Sub-jobs behave exactly like jobs (own QBT jobcode, work requests, photos,
    * issues, documents) but: one level only, Field Supers are inherited from

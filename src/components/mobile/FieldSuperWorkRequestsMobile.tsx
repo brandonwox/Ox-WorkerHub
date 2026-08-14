@@ -8,6 +8,7 @@ import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { activeJobs } from '@/utils/jobArchive';
 import { jobDisplayName } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
 import {
@@ -33,8 +34,9 @@ export function FieldSuperWorkRequestsMobile() {
   const [search, setSearch] = useState('');
   const [schedule, setSchedule] = useState<ScheduleFilter>('All');
 
+  // Archived jobs (and with them their cards) stay out of the list.
   const myJobs = useMemo(
-    () => (me ? jobsForFieldSuper(jobs, me.id) : []),
+    () => (me ? activeJobs(jobsForFieldSuper(jobs, me.id)) : []),
     [jobs, me]
   );
 

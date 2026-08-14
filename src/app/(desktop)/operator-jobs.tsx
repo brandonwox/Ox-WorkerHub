@@ -10,12 +10,14 @@ import {
 } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
+import { ArchivedJobsSection } from '@/components/desktop/ArchivedJobsSection';
 import { CreateJobModal, NewJobInput } from '@/components/desktop/CreateJobModal';
 import { EditJobModal, JobChanges } from '@/components/desktop/EditJobModal';
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { activeJobs } from '@/utils/jobArchive';
 
 export default function JobsScreen() {
   const role = useCurrentRole();
@@ -23,7 +25,7 @@ export default function JobsScreen() {
   const workers = useAppStore((s) => s.workers);
   const addJob = useAppStore((s) => s.addJob);
   const updateJob = useAppStore((s) => s.updateJob);
-  const removeJob = useAppStore((s) => s.removeJob);
+  const archiveJob = useAppStore((s) => s.archiveJob);
   const flash = useAppStore((s) => s.flash);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -37,9 +39,10 @@ export default function JobsScreen() {
   );
 
   // Sub-jobs stay out of the top-level grid — they live inside their parent's
-  // Sub-Jobs section (the sidebar navigates to them from there).
+  // Sub-Jobs section (the sidebar navigates to them from there). Archived
+  // jobs live only in the Archived section at the bottom.
   const topLevelJobs = useMemo(
-    () => jobs.filter((job) => !job.parentJobId),
+    () => activeJobs(jobs).filter((job) => !job.parentJobId),
     [jobs]
   );
 
@@ -71,10 +74,12 @@ export default function JobsScreen() {
     flash(`Job "${changes.name}" updated`, 'success');
   };
 
+  // The modal's "delete" archives — permanent deletion lives in the Archived
+  // section below.
   const handleDelete = (id: string) => {
     const name = jobs.find((j) => j.id === id)?.name ?? 'Job';
-    removeJob(id);
-    flash(`Job "${name}" deleted`, 'success');
+    archiveJob(id);
+    flash(`Job "${name}" archived`, 'success');
   };
 
   return (
@@ -124,6 +129,8 @@ export default function JobsScreen() {
             ))}
           </View>
         )}
+
+        <ArchivedJobsSection />
       </ScrollView>
 
       <CreateJobModal

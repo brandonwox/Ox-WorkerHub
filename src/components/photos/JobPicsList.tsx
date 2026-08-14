@@ -16,6 +16,7 @@ import {
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { activeJobs } from '@/utils/jobArchive';
 import { jobDisplayName } from '@/utils/jobName';
 
 interface Props {
@@ -57,7 +58,7 @@ export function JobPicsList({ onSelectJob }: Props) {
       const current = latestPhotoAt.get(p.jobId);
       if (!current || p.takenAt > current) latestPhotoAt.set(p.jobId, p.takenAt);
     }
-    const rest = jobs
+    const rest = activeJobs(jobs)
       .filter((job) => !clockedIds.has(job.id))
       .sort((a, b) => {
         const pa = latestPhotoAt.get(a.id);
@@ -74,7 +75,7 @@ export function JobPicsList({ onSelectJob }: Props) {
   // job's PO hits.
   const results = useMemo(() => {
     if (!query) return byRecency;
-    return jobs
+    return activeJobs(jobs)
       .filter(
         (job) =>
           jobDisplayName(job, jobs).toLowerCase().includes(query) ||

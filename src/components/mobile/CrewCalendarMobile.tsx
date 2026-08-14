@@ -20,6 +20,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
+import { activeWorkRequests } from '@/utils/jobArchive';
 import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 import { comparePriority } from '@/utils/priorityRange';
 
@@ -38,8 +39,13 @@ export function CrewCalendarMobile({ canAssign }: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
-  const workRequests = useAppStore((s) => s.workRequests);
+  const allWorkRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
+  // Archived jobs' cards vanish from the calendar and backlog alike.
+  const workRequests = useMemo(
+    () => activeWorkRequests(allWorkRequests, jobs),
+    [allWorkRequests, jobs]
+  );
   const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const router = useRouter();

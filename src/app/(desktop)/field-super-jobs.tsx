@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
+import { ArchivedJobsSection } from '@/components/desktop/ArchivedJobsSection';
 import {
   CreateJobModal,
   NewJobInput,
@@ -22,6 +23,7 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { activeJobs } from '@/utils/jobArchive';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
@@ -48,17 +50,17 @@ export default function FieldSuperJobsScreen() {
   const [showAll, setShowAll] = useState(false);
 
   // By default a Field Super sees ONLY the jobs they're assigned to, Active
-  // first.
+  // first. Archived jobs live only in the Archived section at the bottom.
   const myJobs = useMemo(
     () =>
-      (me ? jobsForFieldSuper(jobs, me.id) : []).sort((a, b) =>
+      (me ? activeJobs(jobsForFieldSuper(jobs, me.id)) : []).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
     [jobs, me]
   );
   const allJobs = useMemo(
     () =>
-      [...jobs].sort((a, b) =>
+      activeJobs(jobs).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
     [jobs]
@@ -232,6 +234,8 @@ export default function FieldSuperJobsScreen() {
             })}
           </View>
         )}
+
+        <ArchivedJobsSection />
       </ScrollView>
 
       <CreateJobModal

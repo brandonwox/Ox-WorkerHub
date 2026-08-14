@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
+import { ArchivedJobsSection } from '@/components/desktop/ArchivedJobsSection';
 import {
   CreateJobModal,
   NewJobInput,
@@ -17,6 +18,7 @@ import {
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { activeJobs } from '@/utils/jobArchive';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
@@ -46,10 +48,11 @@ export default function SchedulerJobsScreen() {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Every job, Active first. Sub-jobs stay out of the top-level list — they
-  // live inside their parent's Sub-Jobs section.
+  // live inside their parent's Sub-Jobs section; archived jobs only in the
+  // Archived section at the bottom.
   const sortedJobs = useMemo(
     () =>
-      [...jobs].sort((a, b) =>
+      activeJobs(jobs).sort((a, b) =>
         a.status === b.status ? 0 : a.status === 'Active' ? -1 : 1
       ),
     [jobs]
@@ -181,6 +184,8 @@ export default function SchedulerJobsScreen() {
             })}
           </View>
         )}
+
+        <ArchivedJobsSection />
       </ScrollView>
 
       <CreateJobModal

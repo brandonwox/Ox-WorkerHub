@@ -1,6 +1,11 @@
 # Dev Tracker — DONE
 Completed edits, newest first — moved out of Dev-Tracker.md to keep the working file small. (Agents: when an Awaiting edit from Dev-Tracker.md is implemented, log it at the TOP of this file, same style as the entries below.)
 
+Pass 15 — Delete → Archive for jobs (REQUIRES: apply the new job-archive Supabase migration — it adds jobs.archived_at and pins it in the installer/finance update guards):
+- DELETING NOW ARCHIVES: every job "delete" path (the web sidebar's edit-mode row for schedulers/field supers, and the Operator's Edit-job modal) keeps its confirmation but now ARCHIVES: jobs.archived_at is stamped, sub-jobs archive with their parent, and the job + its work requests vanish from every active surface — job lists and pickers (web + mobile, finance, Pics), both work-requests pages, the scheduler calendars and backlogs (web + mobile), the installer agenda, and the clock-in search. The Operator's type-the-job-name gate was dropped there (archiving is recoverable); permanent delete carries the heavy confirm instead.
+- ARCHIVED SECTION (web jobs pages — operator, scheduler, field super): a collapsed "Archived (N)" section at the bottom lists archived jobs (a family shows as one parent row; a sub-job archived alone gets its own), each with the PO, archive date, RESTORE (unarchives the family), and DELETE (the old permanent delete — two-tap confirm, cascades sub-jobs and work requests).
+- Also in this pass: the profile-chip Awaiting note was already satisfied by Pass 13 (the chip opens Settings; no Settings tab exists in the sidebar), so it moved here with it.
+
 Pass 14 — Overview disabled + mobile interactions + field super on work requests (no DB migration needed):
 - OVERVIEW DISABLED (not deleted): the Overview tab is gone from the scheduler's and field super's web sidebar and mobile tab bar, and it's no longer the landing page — schedulers land on the Calendar, field supers on Jobs (web) / Work Requests (mobile home tab). The route files stay; re-enabling is restoring the nav entries + desktopHomeHref cases in roles.ts.
 - MAPS APP MENU (open work request): tapping the address opens a menu — Apple Maps (iOS), Google Maps, Waze (native), Copy address — via universal links, so whichever app is installed opens (no scheme-query problems in Expo Go). Web offers Google Maps + copy.

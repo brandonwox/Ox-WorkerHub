@@ -845,6 +845,14 @@ interface AppState {
   }) => Job | null;
   updateJob: (id: string, changes: Partial<Job>) => void;
   /**
+   * Archive a job — what the "delete" actions now do. Sub-jobs archive with
+   * their parent. Recoverable from the jobs pages' Archived section; only
+   * permanent deletion (removeJob, from that section) destroys data.
+   */
+  archiveJob: (id: string) => void;
+  /** Clear a job's (and its sub-jobs') archived flag — back to active. */
+  restoreJob: (id: string) => void;
+  /**
    * Additively assign ONE Field Super to a job — the jobs pages' "Assign
    * myself" button (a field super may only write their own row; RLS matches).
    * Mirrors onto the job's sub-jobs locally the way the DB trigger does.
@@ -1655,6 +1663,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     }
+  },
+
+  archiveJob: (id) => {
+    const archivedAt = new Date().toISOString();
+    const { jobs, updateJob } = get();
+    // Parent → the whole family archives together.
+    const family = [
+      id,
+      ...jobs.filter((j) => j.parentJobId === id).map((j) => j.id),
+    ];
+    family.forEach((jobId) => updateJob(jobId, { archivedAt }));
+  },
+
+  restoreJob: (id) => {
+    const { jobs, updateJob } = get();
+    const family = [
+      id,
+      ...jobs.filter((j) => j.parentJobId === id).map((j) => j.id),
+    ];
+    family.forEach((jobId) => updateJob(jobId, { archivedAt: undefined }));
   },
 
   assignFieldSuperToJob: (jobId, fieldSuperId) => {

@@ -9,6 +9,7 @@ import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
+import { activeWorkRequests } from '@/utils/jobArchive';
 import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 import { comparePriority } from '@/utils/priorityRange';
 
@@ -24,12 +25,13 @@ export function SchedulerBacklogMobile() {
   const assignments = useAppStore((s) => s.assignments);
 
   // Same rule as the desktop board: no assignment row anywhere = backlog.
+  // (Archived jobs' cards are excluded, like everywhere active.)
   const unassigned = useMemo(
     () =>
-      workRequests
+      activeWorkRequests(workRequests, jobs)
         .filter((c) => assignments.every((a) => a.workRequestId !== c.id))
         .sort(comparePriority),
-    [workRequests, assignments]
+    [workRequests, jobs, assignments]
   );
   // Only requests marked ready ("Yes") sit in the schedulable pool; the rest
   // wait in the "Not ready yet" section so schedulers can see what's coming.

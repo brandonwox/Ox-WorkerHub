@@ -27,12 +27,13 @@ interface Props {
   /** Roster of field supers the Operator can assign to this job. */
   fieldSupers: Worker[];
   /**
-   * How many sub-jobs hang off this job — deleting it deletes them (and their
-   * work requests) too, so the delete confirmation calls it out.
+   * How many sub-jobs hang off this job — archiving it archives them (and
+   * hides their work requests) too, so the confirmation calls it out.
    */
   subJobCount?: number;
   onClose: () => void;
   onSave: (id: string, changes: JobChanges) => void;
+  /** Archive the job (the "delete" action — recoverable from the Archived section). */
   onDelete: (id: string) => void;
 }
 
@@ -56,10 +57,11 @@ export function EditJobModal({
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Deleting is a two-step confirm: arming reveals a type-the-job-name field,
-  // and the final button stays disabled until the typed name matches.
+  // Archiving (the "delete" action) is a two-step confirm: arming reveals the
+  // explanation + confirm button. No type-the-name gate anymore — archiving
+  // is recoverable; the heavy confirm moved to permanent delete in the
+  // Archived section.
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleteName, setDeleteName] = useState('');
 
   // Re-seed the form whenever a different job is opened.
   useEffect(() => {
@@ -72,7 +74,6 @@ export function EditJobModal({
     setFieldSuperIds(job.fieldSuperIds ?? []);
     setError(null);
     setConfirmDelete(false);
-    setDeleteName('');
   }, [job]);
 
   const save = () => {
@@ -93,17 +94,12 @@ export function EditJobModal({
     onClose();
   };
 
-  const deleteNameMatches =
-    job != null &&
-    deleteName.trim().toLowerCase() === job.name.trim().toLowerCase();
-
   const remove = () => {
     if (!job) return;
     if (!confirmDelete) {
       setConfirmDelete(true);
       return;
     }
-    if (!deleteNameMatches) return;
     onDelete(job.id);
     onClose();
   };
@@ -205,40 +201,31 @@ export function EditJobModal({
               style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
               onPress={remove}
             >
-              <Feather name="trash-2" size={15} color={colors.danger} />
-              <Text style={styles.deleteText}>Delete job</Text>
+              <Feather name="archive" size={15} color={colors.danger} />
+              <Text style={styles.deleteText}>Archive job</Text>
             </Pressable>
           ) : (
             <View style={styles.deleteConfirmBox}>
               <Text style={styles.deleteWarning}>
-                This permanently deletes &ldquo;{job?.name}&rdquo; and every one
-                of its work requests
+                This archives &ldquo;{job?.name}&rdquo; and hides it — and every
+                one of its work requests
                 {subJobCount > 0
-                  ? ` — including its ${
+                  ? `, its ${
                       subJobCount === 1
                         ? 'sub-job'
                         : `${subJobCount} sub-jobs`
-                    } and their work requests`
+                    }, and their work requests`
                   : ''}
-                . A deleted job cannot be restored.
+                {' '}— everywhere. Restore it, or permanently delete it, from
+                the Archived section on this page.
               </Text>
-              <FormInput
-                label="Type the job name to confirm"
-                value={deleteName}
-                onChangeText={setDeleteName}
-                placeholder={job?.name ?? ''}
-                autoCapitalize="none"
-              />
               <View style={styles.deleteConfirmActions}>
                 <Pressable
                   style={({ pressed }) => [
                     styles.deleteCancel,
                     pressed && styles.pressed,
                   ]}
-                  onPress={() => {
-                    setConfirmDelete(false);
-                    setDeleteName('');
-                  }}
+                  onPress={() => setConfirmDelete(false)}
                 >
                   <Text style={styles.deleteCancelText}>Keep job</Text>
                 </Pressable>
@@ -246,15 +233,13 @@ export function EditJobModal({
                   style={({ pressed }) => [
                     styles.deleteButton,
                     styles.deleteConfirmButton,
-                    !deleteNameMatches && styles.deleteDisabled,
-                    pressed && deleteNameMatches && styles.pressed,
+                    pressed && styles.pressed,
                   ]}
-                  disabled={!deleteNameMatches}
                   onPress={remove}
                 >
-                  <Feather name="trash-2" size={15} color={colors.textOnAccent} />
+                  <Feather name="archive" size={15} color={colors.textOnAccent} />
                   <Text style={[styles.deleteText, styles.deleteTextConfirm]}>
-                    Permanently delete job
+                    Archive job
                   </Text>
                 </Pressable>
               </View>

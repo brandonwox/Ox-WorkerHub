@@ -14,6 +14,7 @@ import {
 
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { activeWorkRequests } from '@/utils/jobArchive';
 import { formatJobWindow, formatLogDate } from '@/utils/time';
 
 export type ClockEntryMode = 'custom' | 'search' | null;
@@ -35,6 +36,7 @@ interface Props {
  */
 export function ClockEntrySheet({ mode, editing, onClose }: Props) {
   const workRequests = useAppStore((s) => s.workRequests);
+  const jobs = useAppStore((s) => s.jobs);
   const clockIn = useAppStore((s) => s.clockIn);
   const updateShiftProject = useAppStore((s) => s.updateShiftProject);
   const [text, setText] = useState('');
@@ -58,9 +60,12 @@ export function ClockEntrySheet({ mode, editing, onClose }: Props) {
   };
 
   const query = text.trim().toLowerCase();
+  // Archived jobs' cards aren't offered for clocking in.
   const matches =
     mode === 'search' && query
-      ? workRequests.filter((j) => j.title.toLowerCase().includes(query))
+      ? activeWorkRequests(workRequests, jobs).filter((j) =>
+          j.title.toLowerCase().includes(query)
+        )
       : [];
 
   return (

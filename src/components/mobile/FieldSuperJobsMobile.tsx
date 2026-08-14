@@ -18,6 +18,7 @@ import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope } from '@/types';
+import { activeJobs } from '@/utils/jobArchive';
 import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
@@ -48,9 +49,9 @@ export function FieldSuperJobsMobile() {
   // details sidebar (their work requests still show on the Work Requests tab).
   const myJobs = useMemo(
     () =>
-      (showAll ? jobs : me ? jobsForFieldSuper(jobs, me.id) : []).filter(
-        (job) => !job.parentJobId
-      ),
+      activeJobs(
+        showAll ? jobs : me ? jobsForFieldSuper(jobs, me.id) : []
+      ).filter((job) => !job.parentJobId),
     [jobs, me, showAll]
   );
 

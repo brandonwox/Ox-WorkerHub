@@ -4,7 +4,11 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
-deleting a job should only archive it. once a job is archived, it can be deleted from the archive to permanently delete it. (both deletes require confirmation.)
+when editing the job details:
+- allow the user to edit the job's PO.
+- allow the user to change the assigned field supers
+
+change "No Window Opening Flashing Material set — work requests can't be created for this job until it is." to "No Window Opening Flashing Material set — Installers need this information."
 
 All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
 

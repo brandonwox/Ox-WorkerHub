@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job } from '@/types';
+import { activeJobs } from '@/utils/jobArchive';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
@@ -22,7 +23,7 @@ export function OperatorJobsMobile() {
   // parent's details sidebar on the web console.
   const sorted = useMemo(
     () =>
-      jobs
+      activeJobs(jobs)
         .filter((job) => !job.parentJobId)
         .sort((a, b) => {
           // Active sites first, then alphabetical.

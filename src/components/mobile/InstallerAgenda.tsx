@@ -19,6 +19,7 @@ import {
 } from '@/store/useAppStore';
 import { colors, fonts, spacing, themed } from '@/theme';
 import { WorkRequest, TimesheetLog } from '@/types';
+import { activeWorkRequests } from '@/utils/jobArchive';
 import { formatHours } from '@/utils/time';
 
 /**
@@ -29,6 +30,7 @@ import { formatHours } from '@/utils/time';
 export function InstallerAgenda() {
   const router = useRouter();
   const allWorkRequests = useAppStore((s) => s.workRequests);
+  const jobs = useAppStore((s) => s.jobs);
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
@@ -57,11 +59,25 @@ export function InstallerAgenda() {
   const dayWorkRequests = useMemo(
     () =>
       workRequestsForInstallerOnDate(
-        { crews, dailyCrews, assignments, workRequests: allWorkRequests },
+        {
+          crews,
+          dailyCrews,
+          assignments,
+          // Archived jobs' cards stay off the agenda.
+          workRequests: activeWorkRequests(allWorkRequests, jobs),
+        },
         currentUserId,
         format(selectedDate, 'yyyy-MM-dd')
       ).sort((a, b) => a.priorityOrder - b.priorityOrder),
-    [crews, dailyCrews, assignments, allWorkRequests, currentUserId, selectedDate]
+    [
+      crews,
+      dailyCrews,
+      assignments,
+      allWorkRequests,
+      jobs,
+      currentUserId,
+      selectedDate,
+    ]
   );
 
   const handleWorkRequestPress = (workRequest: WorkRequest) => {

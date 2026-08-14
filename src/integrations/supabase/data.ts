@@ -42,6 +42,7 @@ interface JobRow {
   po: string | null;
   builder: string | null;
   status: string;
+  archived_at: string | null;
   qbt_jobcode_id: string | null;
   flashing_material: string | null;
   flashing_photo_path: string | null;
@@ -217,6 +218,7 @@ function rowToJob(r: JobRow): Job {
     builder: r.builder ?? undefined,
     // Legacy rows read before the rename migration ran still say 'Archived'.
     status: (r.status === 'Archived' ? 'Finished' : r.status) as JobStatus,
+    archivedAt: r.archived_at ?? undefined,
     qbtJobcodeId: r.qbt_jobcode_id ?? undefined,
     flashingMaterial: r.flashing_material ?? undefined,
     flashingPhotoPath: r.flashing_photo_path ?? undefined,
@@ -576,6 +578,7 @@ function jobToRow(job: Job) {
     po: job.po ?? null,
     builder: job.builder ?? null,
     status: job.status,
+    archived_at: job.archivedAt ?? null,
     qbt_jobcode_id: job.qbtJobcodeId ?? null,
     flashing_material: job.flashingMaterial ?? null,
     flashing_photo_path: job.flashingPhotoPath ?? null,

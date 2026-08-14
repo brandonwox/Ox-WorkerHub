@@ -9,6 +9,7 @@ import {
   useCurrentRole,
   useCurrentWorker,
 } from '@/store/useAppStore';
+import { activeJobs } from '@/utils/jobArchive';
 
 /** Field Super → Work Requests: every work request on their own jobs, and creation. */
 export default function FieldSuperWorkRequestsScreen() {
@@ -19,9 +20,10 @@ export default function FieldSuperWorkRequestsScreen() {
 
   // A Field Super works only within their own jobs — and, transitively, only
   // the work requests that hang off those jobs. Scoping here means the shared
-  // screen only ever sees this Field Super's slice.
+  // screen only ever sees this Field Super's slice. (Archived jobs — and
+  // with them their work requests — are excluded.)
   const jobs = useMemo(
-    () => (me ? jobsForFieldSuper(allJobs, me.id) : []),
+    () => (me ? activeJobs(jobsForFieldSuper(allJobs, me.id)) : []),
     [allJobs, me]
   );
 
