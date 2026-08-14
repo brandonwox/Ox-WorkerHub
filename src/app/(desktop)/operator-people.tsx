@@ -53,6 +53,7 @@ export default function PeopleScreen() {
         const worker = await inviteWorker({
           email: input.email,
           name: input.name,
+          phone: input.phone,
           role: input.role,
           hourlyRate: input.hourlyRate,
           tradeRole,
@@ -69,7 +70,7 @@ export default function PeopleScreen() {
     addWorker({
       name: input.name,
       email: input.email,
-      phone: '',
+      phone: input.phone,
       role: input.role,
       hourlyRate: input.hourlyRate,
       tradeRole,

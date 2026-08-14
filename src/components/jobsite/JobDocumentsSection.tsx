@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import {
   captureSingleJobPhoto,
@@ -452,6 +453,7 @@ export function JobDocumentsSection({ jobId }: Props) {
                 placeholder="Write the document…"
                 placeholderTextColor={colors.textTertiary}
                 multiline
+                inputAccessoryViewID={KEYBOARD_DONE_ID}
               />
             )}
 

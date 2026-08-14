@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { DisplayPhoto, useIssuePhotos } from '@/components/photos/useJobPhotos';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentRole, useCurrentWorker } from '@/store/useAppStore';
@@ -224,6 +225,7 @@ export function IssueCard({
           placeholder="Describe the issue…"
           placeholderTextColor={colors.textTertiary}
           multiline
+          inputAccessoryViewID={KEYBOARD_DONE_ID}
         />
       ) : (
         <Text

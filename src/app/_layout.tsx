@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { KeyboardDoneBar } from '@/components/KeyboardDoneBar';
 import { useSupabaseSession } from '@/integrations/supabase/session';
 import { useAppStore } from '@/store/useAppStore';
 import { colors } from '@/theme';
@@ -135,6 +136,8 @@ export default function RootLayout() {
             options={{ presentation: 'fullScreenModal', animation: 'fade' }}
           />
         </Stack>
+        {/* iOS "Done" bar over the keyboard — inputs opt in by id. */}
+        <KeyboardDoneBar />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

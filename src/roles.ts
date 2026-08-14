@@ -3,7 +3,6 @@ import {
   Briefcase,
   CalendarDays,
   FileText,
-  LayoutDashboard,
   type LucideIcon,
   NotepadText,
   Users,
@@ -89,9 +88,8 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     },
   ],
   scheduler: [
-    // The landing page: what needs attention (new Now cards, work requests,
-    // freshly finished cards).
-    { href: '/scheduler-overview', label: 'Overview', icon: LayoutDashboard },
+    // Overview is disabled for now (nav entry removed, page kept) — see
+    // Dev Tracker. Calendar is the landing page instead.
     { href: '/scheduler-calendar', label: 'Calendar', icon: CalendarDays },
     // Every job (schedulers aren't scoped) — job dashboards + job creation.
     { href: '/scheduler-jobs', label: 'Jobs', icon: Briefcase },
@@ -100,8 +98,8 @@ export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
     { href: '/scheduler-work-requests', label: 'Work Requests', icon: NotepadText },
   ],
   field_super: [
-    // The landing page: what needs attention (new issues, false starts).
-    { href: '/field-super-overview', label: 'Overview', icon: LayoutDashboard },
+    // Overview is disabled for now (nav entry removed, page kept) — see
+    // Dev Tracker. Jobs is the landing page instead.
     // Distinct route from the Operator's '/operator-jobs', shown to the Field
     // Super as "Jobs".
     { href: '/field-super-jobs', label: 'Jobs', icon: Briefcase },
@@ -161,7 +159,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   scheduler: [
-    { name: 'overview', label: 'Overview', icon: 'grid' },
+    // Overview is disabled for now (tab removed, page kept) — see Dev Tracker.
     { name: 'index', label: 'Calendar', icon: 'calendar' },
     { name: 'backlog', label: 'Backlog', icon: 'inbox' },
     { name: 'settings', label: 'Settings', icon: 'settings' },
@@ -177,7 +175,7 @@ export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
     { name: 'settings', label: 'Settings', icon: 'settings' },
   ],
   field_super: [
-    { name: 'overview', label: 'Overview', icon: 'grid' },
+    // Overview is disabled for now (tab removed, page kept) — see Dev Tracker.
     { name: 'index', label: 'Work Requests', icon: 'clipboard' },
     { name: 'jobs', label: 'Jobs', icon: 'briefcase' },
     { name: 'calendar', label: 'Calendar', icon: 'calendar' },
@@ -203,12 +201,12 @@ export function desktopHomeHref(role: AppRole): DesktopHref {
       return '/installer-schedule';
     case 'operator':
       return '/operator-jobs';
-    // Schedulers and Field Supers land on their Overview — the "what needs
-    // attention" dashboard — and hop to their working pages from there.
+    // Overview is disabled for now — Schedulers land on the Calendar, Field
+    // Supers on their Jobs.
     case 'scheduler':
-      return '/scheduler-overview';
+      return '/scheduler-calendar';
     case 'field_super':
-      return '/field-super-overview';
+      return '/field-super-jobs';
     case 'finance_manager':
       return '/finance-manager-jobs';
     case 'developer':

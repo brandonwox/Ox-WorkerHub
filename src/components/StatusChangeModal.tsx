@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 
+import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { STATUSES_REQUIRING_REASON, WorkRequestStatus } from '@/types';
 
@@ -114,6 +115,7 @@ export function StatusChangeModal({
                 placeholder="Or type what's left…"
                 placeholderTextColor={colors.textTertiary}
                 multiline
+                inputAccessoryViewID={KEYBOARD_DONE_ID}
               />
             </>
           ) : (
@@ -133,6 +135,7 @@ export function StatusChangeModal({
                 placeholderTextColor={colors.textTertiary}
                 multiline
                 autoFocus
+                inputAccessoryViewID={KEYBOARD_DONE_ID}
               />
             </>
           )}

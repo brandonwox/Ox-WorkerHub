@@ -3,7 +3,12 @@ import { format, parse } from 'date-fns';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
+  Animated,
+  Linking,
+  Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -14,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
@@ -52,6 +58,7 @@ export default function JobDetailsScreen() {
     s.jobs.find((parent) => parent.id === job?.jobId)
   );
   const allJobs = useAppStore((s) => s.jobs);
+  const workers = useAppStore((s) => s.workers);
   const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
   const setWorkRequestTaskDone = useAppStore((s) => s.setWorkRequestTaskDone);
   const updateWorkRequestNotes = useAppStore((s) => s.updateWorkRequestNotes);
@@ -81,6 +88,9 @@ export default function JobDetailsScreen() {
     [issues, job?.tasks]
   );
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  // Address tap → the maps menu (open in an installed maps app, or copy).
+  const [mapsOpen, setMapsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   // Status picks that need a typed note (Untouched / False Start / Finished)
   // route through the StatusChangeModal before committing.
   const [pendingNoteStatus, setPendingNoteStatus] =
@@ -101,6 +111,42 @@ export default function JobDetailsScreen() {
   } | null>(null);
   const statusWrapRef = useRef<View>(null);
   const insets = useSafeAreaInsets();
+  // Swipe-down-to-close (native): the sheet follows a downward drag that
+  // starts while the content is scrolled to the top; past the threshold it
+  // slides off and closes, otherwise it springs back. The x button stays.
+  const sheetY = useRef(new Animated.Value(0)).current;
+  const scrollOffset = useRef(0);
+  const dismissPan = useRef(
+    PanResponder.create({
+      // Capture phase so the drag wins over the ScrollView's own bounce when
+      // already at the top. Taps never trip the movement threshold.
+      onMoveShouldSetPanResponderCapture: (_evt, g) =>
+        Platform.OS !== 'web' &&
+        scrollOffset.current <= 0 &&
+        g.dy > 8 &&
+        Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      onPanResponderMove: (_evt, g) => {
+        if (g.dy > 0) sheetY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_evt, g) => {
+        if (g.dy > 140 || g.vy > 0.9) {
+          Animated.timing(sheetY, {
+            toValue: 800,
+            duration: 160,
+            useNativeDriver: true,
+          }).start(() => router.back());
+        } else {
+          Animated.spring(sheetY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(sheetY, { toValue: 0, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
   // Installers must attach at least one photo to a task before checking it
   // off; office roles (and the dev switcher's other views) are not gated.
   const requireTaskPhotos = me?.role === 'installer';
@@ -125,6 +171,44 @@ export default function JobDetailsScreen() {
   const palette =
     workRequestStatusColors[job.status] ?? workRequestStatusColors.Undefined;
   const timeWindow = formatJobWindow(job.startTime, job.endTime);
+  // The job's responsible Field Super (first-assigned still on the job) —
+  // shown to every role here, installers included, with their phone number.
+  const fieldSuper = workers.find(
+    (w) => w.id === (parentJob?.fieldSuperIds ?? [])[0]
+  );
+  const fieldSuperLabel = fieldSuper
+    ? fieldSuper.phone
+      ? `${fieldSuper.name} · ${fieldSuper.phone}`
+      : fieldSuper.name
+    : 'No Field Super assigned';
+  const callFieldSuper = () => {
+    if (!fieldSuper?.phone) return;
+    void Linking.openURL(`tel:${fieldSuper.phone.replace(/[^+\d]/g, '')}`);
+  };
+
+  const copyAddress = async () => {
+    if (!job.address) return;
+    await Clipboard.setStringAsync(job.address);
+    setCopied(true);
+    setTimeout(() => {
+      setMapsOpen(false);
+      setCopied(false);
+    }, 700);
+  };
+
+  // Universal links — each opens the matching app when installed (no
+  // canOpenURL scheme querying needed, which Expo Go can't do anyway).
+  const openMapsApp = (app: 'apple' | 'google' | 'waze') => {
+    const q = encodeURIComponent(job.address);
+    const url =
+      app === 'apple'
+        ? `http://maps.apple.com/?q=${q}`
+        : app === 'google'
+          ? `https://www.google.com/maps/search/?api=1&query=${q}`
+          : `https://waze.com/ul?q=${q}&navigate=yes`;
+    void Linking.openURL(url);
+    setMapsOpen(false);
+  };
 
   const showPhotoHint = (taskId: string) => {
     setPhotoHintTaskId(taskId);
@@ -163,13 +247,20 @@ export default function JobDetailsScreen() {
   return (
     // The sheet: page behind stays visible (and undimmed) above the card.
     <View style={[styles.sheetRoot, { paddingTop: insets.top }]}>
-      <View style={styles.sheetCard}>
+      <Animated.View
+        style={[styles.sheetCard, { transform: [{ translateY: sheetY }] }]}
+        {...dismissPan.panHandlers}
+      >
       {/* Keyboard insets (iOS): otherwise the open keyboard covers the bottom
           of the page and it can't be scrolled fully into view. */}
       <ScrollView
         contentContainerStyle={styles.content}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          scrollOffset.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         <View style={styles.topRow}>
           <Pressable
@@ -270,7 +361,24 @@ export default function JobDetailsScreen() {
         </View>
 
         <View style={styles.section}>
-          <InfoRow icon="map-pin" label="Address" value={job.address} />
+          {/* Tapping the address opens the maps menu (Apple/Google/Waze/copy). */}
+          <Pressable
+            style={({ pressed }) => [pressed && styles.countPressed]}
+            disabled={!job.address}
+            onPress={() => setMapsOpen(true)}
+          >
+            <InfoRow icon="map-pin" label="Address" value={job.address} />
+          </Pressable>
+          {/* The Field Super, phone on the same line — tap to call. */}
+          {parentJob && (
+            <Pressable
+              style={({ pressed }) => [pressed && styles.countPressed]}
+              disabled={!fieldSuper?.phone || Platform.OS === 'web'}
+              onPress={callFieldSuper}
+            >
+              <InfoRow icon="user" label="Field Super" value={fieldSuperLabel} />
+            </Pressable>
+          )}
           <InfoRow
             icon="calendar"
             label="Date"
@@ -518,6 +626,7 @@ export default function JobDetailsScreen() {
             placeholder="Add notes from the field…"
             placeholderTextColor={colors.textTertiary}
             multiline
+            inputAccessoryViewID={KEYBOARD_DONE_ID}
           />
         </View>
 
@@ -630,6 +739,76 @@ export default function JobDetailsScreen() {
         )}
       </ScrollView>
 
+      {/* Maps menu: open the jobsite address in an installed maps app, or
+          copy it. Waze/Apple Maps are native-only offerings; web keeps
+          Google Maps + copy. */}
+      <Modal
+        visible={mapsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMapsOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setMapsOpen(false)}
+          />
+          <View style={styles.mapsCard}>
+            <Text style={styles.mapsAddress}>{job.address}</Text>
+            {Platform.OS === 'ios' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.mapsButton,
+                  pressed && styles.countPressed,
+                ]}
+                onPress={() => openMapsApp('apple')}
+              >
+                <Feather name="map" size={15} color={colors.primary} />
+                <Text style={styles.mapsButtonText}>Apple Maps</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.mapsButton,
+                pressed && styles.countPressed,
+              ]}
+              onPress={() => openMapsApp('google')}
+            >
+              <Feather name="map-pin" size={15} color={colors.primary} />
+              <Text style={styles.mapsButtonText}>Google Maps</Text>
+            </Pressable>
+            {Platform.OS !== 'web' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.mapsButton,
+                  pressed && styles.countPressed,
+                ]}
+                onPress={() => openMapsApp('waze')}
+              >
+                <Feather name="navigation" size={15} color={colors.primary} />
+                <Text style={styles.mapsButtonText}>Waze</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.mapsButton,
+                pressed && styles.countPressed,
+              ]}
+              onPress={copyAddress}
+            >
+              <Feather
+                name={copied ? 'check' : 'copy'}
+                size={15}
+                color={colors.primary}
+              />
+              <Text style={styles.mapsButtonText}>
+                {copied ? 'Copied' : 'Copy address'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <PhotoViewerModal
         photos={viewer?.photos ?? []}
         initialIndex={viewer?.index ?? null}
@@ -656,7 +835,7 @@ export default function JobDetailsScreen() {
         }}
         onCancel={() => setPendingNoteStatus(null)}
       />
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -910,6 +1089,43 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: fonts.regular,
     fontSize: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  mapsCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  mapsAddress: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  mapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: spacing.md - 2,
+  },
+  mapsButtonText: {
+    color: colors.primary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
   },
   notesInput: {
     minHeight: 84,

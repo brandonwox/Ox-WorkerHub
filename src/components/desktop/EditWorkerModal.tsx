@@ -8,6 +8,7 @@ import { Worker } from '@/types';
 
 export interface WorkerChanges {
   name: string;
+  phone: string;
 }
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
 
 export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -27,6 +29,7 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
   useEffect(() => {
     if (!worker) return;
     setName(worker.name);
+    setPhone(worker.phone ?? '');
     setError(null);
     setConfirmDelete(false);
   }, [worker]);
@@ -37,7 +40,13 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
       setError('Name is required.');
       return;
     }
-    onSave(worker.id, { name: name.trim() });
+    // Field Supers must be reachable — their number shows on every work
+    // request of their jobs, so they can't operate without one.
+    if (worker.role === 'field_super' && !phone.trim()) {
+      setError('Field Supers need a phone number to operate.');
+      return;
+    }
+    onSave(worker.id, { name: name.trim(), phone: phone.trim() });
     onClose();
   };
 
@@ -88,6 +97,16 @@ export function EditWorkerModal({ worker, onClose, onSave, onDelete }: Props) {
               </Text>
             </View>
           </View>
+
+          <FormInput
+            label={
+              worker?.role === 'field_super' ? 'Phone (required)' : 'Phone'
+            }
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="(801) 555-0134"
+            keyboardType="phone-pad"
+          />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 

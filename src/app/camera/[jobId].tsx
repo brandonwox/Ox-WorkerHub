@@ -26,6 +26,7 @@ import {
   cameraPropsForFactor,
   ULTRA_WIDE_LENS,
 } from '@/components/CameraZoomControl';
+import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { VideoPage } from '@/components/photos/VideoPage';
 import { compressJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
@@ -496,6 +497,7 @@ export default function JobCameraScreen() {
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 multiline
+                inputAccessoryViewID={KEYBOARD_DONE_ID}
               />
             </View>
           </KeyboardAvoidingView>

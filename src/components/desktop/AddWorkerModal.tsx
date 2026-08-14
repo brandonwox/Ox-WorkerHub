@@ -11,6 +11,8 @@ import { AppRole } from '@/types';
 export interface NewWorkerInput {
   name: string;
   email: string;
+  /** Required for Field Supers (shown to installers on work requests). */
+  phone: string;
   role: AppRole;
   hourlyRate: number;
 }
@@ -29,6 +31,7 @@ const ROLE_OPTIONS = (Object.keys(ROLE_LABELS) as AppRole[]).map((value) => ({
 export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<AppRole>('installer');
   const [rate, setRate] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +39,7 @@ export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
   const reset = () => {
     setName('');
     setEmail('');
+    setPhone('');
     setRole('installer');
     setRate('');
     setError(null);
@@ -55,6 +59,12 @@ export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
       setError('Enter a valid email address.');
       return;
     }
+    // Field Supers must be reachable — their number shows on every work
+    // request of their jobs, so they can't operate without one.
+    if (role === 'field_super' && !phone.trim()) {
+      setError('Field Supers need a phone number to operate.');
+      return;
+    }
     let hourlyRate = 0;
     if (role === 'installer') {
       hourlyRate = Number(rate);
@@ -63,7 +73,13 @@ export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
         return;
       }
     }
-    onSubmit({ name: name.trim(), email: email.trim(), role, hourlyRate });
+    onSubmit({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      role,
+      hourlyRate,
+    });
     close();
   };
 
@@ -104,14 +120,29 @@ export function AddWorkerModal({ visible, onClose, onSubmit }: Props) {
             </View>
           </View>
 
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Role</Text>
-            <InlineSelect
-              value={role}
-              options={ROLE_OPTIONS}
-              onChange={setRole}
-              minWidth={200}
-            />
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <FormInput
+                label={
+                  role === 'field_super' ? 'Phone (required)' : 'Phone'
+                }
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="(801) 555-0134"
+                keyboardType="phone-pad"
+              />
+            </View>
+            <View style={styles.col}>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Role</Text>
+                <InlineSelect
+                  value={role}
+                  options={ROLE_OPTIONS}
+                  onChange={setRole}
+                  minWidth={200}
+                />
+              </View>
+            </View>
           </View>
 
           {role === 'installer' && (
