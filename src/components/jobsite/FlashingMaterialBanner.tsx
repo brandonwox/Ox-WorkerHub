@@ -26,8 +26,8 @@ export function FlashingMaterialBanner({ job }: { job: Job }) {
     <View style={styles.row}>
       <Feather name="alert-triangle" size={16} color={colors.warning} />
       <Text style={styles.warningText}>
-        No Window Opening Flashing Material set — work requests can&apos;t be
-        created for this job until it is.
+        No Window Opening Flashing Material set — Installers need this
+        information.
       </Text>
     </View>
   );

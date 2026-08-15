@@ -610,8 +610,8 @@ function jobToRow(job: Job) {
 
 export async function insertJob(job: Job): Promise<void> {
   check((await getSupabase().from('jobs').insert(jobToRow(job))).error);
-  // Sub-jobs inherit the parent's Field Supers via a DB trigger (the creator —
-  // a scheduler or field super — has no write grant on job_field_supers).
+  // Sub-jobs inherit the parent's Field Supers via a DB trigger — never
+  // written here.
   if (job.parentJobId) return;
   // Field Super assignments live in the job_field_supers join table, not on
   // the jobs row. Only written when there are assignments to record (the
@@ -635,7 +635,8 @@ export async function deleteJob(id: string): Promise<void> {
 }
 
 /**
- * Set a job's Field Super assignments (operator + scheduler). Diffed — only
+ * Set a job's Field Super assignments (operator, scheduler, and field supers
+ * — the job details editors; RLS matches). Diffed — only
  * missing rows are inserted and dropped ones deleted — so a surviving
  * assignment keeps its original assigned_at (the "first assigned" super stays
  * first no matter how often the list is edited around them).
@@ -683,9 +684,9 @@ export async function setJobFieldSupers(
 }
 
 /**
- * Additively assign ONE Field Super to a job — the self-assign path (a field
- * super may only write their own row; RLS enforces it). Already-assigned is a
- * no-op instead of an error so an offline-queued tap can't fail on replay.
+ * Additively assign ONE Field Super to a job — the "Assign myself" path.
+ * Already-assigned is a no-op instead of an error so an offline-queued tap
+ * can't fail on replay.
  */
 export async function assignJobFieldSuper(
   jobId: string,

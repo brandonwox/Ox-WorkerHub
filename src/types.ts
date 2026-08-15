@@ -367,9 +367,9 @@ export interface WorkRequest {
   /** Worker who made the last status change. */
   statusChangedById?: string;
   /**
-   * The day (yyyy-MM-dd) the 3:30 PM "status needs updating" reminder last
-   * went out for this card — stops other sessions from re-pinging the foreman
-   * the same day.
+   * The day (yyyy-MM-dd) the "status needs updating" reminder last went out
+   * for this card — stops other sessions from re-pinging the foreman the
+   * same day.
    */
   undefinedReminderDate?: string;
   priorityOrder: number;
@@ -456,7 +456,7 @@ export interface Crew {
   /**
    * The crew's foreman — the scheduler must pick exactly one per permanent
    * crew (no more, no less; always one of {@link installerIds}). Only the
-   * foreman receives the 3:30 PM "status needs updating" notification.
+   * foreman receives the "status needs updating" notification.
    * Optional in the type only because crews created before the tag existed
    * may not have one yet. Daily crews have no foreman.
    */
@@ -753,24 +753,50 @@ export interface QbtConfig {
 
 /**
  * Kind of a notification — drives the icon/copy and lets recipients filter.
- * Add a new member here as more ping triggers are built (the system is generic).
- *  - `work_request_now`: a Field Super marks a work request "Now" → ping schedulers.
+ * Add a new member here as more ping triggers are built (the system is generic;
+ * the DB `type` column is unconstrained text, so no migration is needed).
+ *
+ * Installers deliberately receive ONLY `schedule_change` (today's board) and
+ * the device-local `save_failed` — everything else targets office roles.
+ *
+ *  - `work_request_now`: a work request's priority becomes "Now" → ping schedulers.
  *  - `schedule_change`: an installer's schedule for TODAY changed (a card added,
  *    removed, re-prioritized, or edited) → ping that installer.
  *  - `save_failed`: one of this worker's queued changes was rejected by the
  *    server and dropped. Device-local only (never written to the DB — it's
  *    about THIS device's sync queue).
- */
-/**
- *  - `status_update_needed`: the 3:30 PM sweep found a work request scheduled
- *    today/yesterday whose status is still 'Undefined' → ping the assigned
- *    crew's FOREMAN (only the foreman is notified).
+ *  - `status_update_needed`: the sweep found a work request scheduled on a PAST
+ *    day (any time) or on TODAY (after 4:30 PM) whose status is still
+ *    'Undefined' → ping the assigned crew's FOREMAN, daily until it's set.
+ *  - `status_reported`: a field status was reported on a work request (Finished /
+ *    False Start / Untouched…, with its note) → schedulers + the job's Field
+ *    Supers (minus the reporter).
+ *  - `work_request_created`: a Field Super created a work request → schedulers
+ *    (skipped when it's "Now" — the `work_request_now` ping already covers it).
+ *  - `issue_raised`: an issue got its description (first typed) → schedulers +
+ *    the job's Field Supers (minus the raiser).
+ *  - `issue_resolved`: an issue was marked resolved → the job's Field Supers
+ *    (minus the resolver).
+ *  - `work_request_scheduled`: a scheduler put a work request on the calendar
+ *    (or moved it) → the job's Field Supers.
+ *  - `job_assigned`: someone else assigned this Field Super to a job → them.
+ *  - `job_needs_qbt`: a job was created without a QBT jobcode → finance managers.
+ *  - `qbt_push_result`: the weekly timesheet push to QuickBooks Time ran →
+ *    operator + finance managers.
  */
 export type NotificationType =
   | 'work_request_now'
   | 'schedule_change'
   | 'save_failed'
-  | 'status_update_needed';
+  | 'status_update_needed'
+  | 'status_reported'
+  | 'work_request_created'
+  | 'issue_raised'
+  | 'issue_resolved'
+  | 'work_request_scheduled'
+  | 'job_assigned'
+  | 'job_needs_qbt'
+  | 'qbt_push_result';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it

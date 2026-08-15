@@ -223,16 +223,25 @@ export function roleHomeHref(role: AppRole): '/' | DesktopHref {
   return Platform.OS === 'web' ? desktopHomeHref(role) : '/';
 }
 
-/** Every desktop route a role is allowed to open. */
+/**
+ * Every desktop route a role is allowed to open. Settings is accessible to
+ * every role even though no sidebar lists it (it's reached via the top-right
+ * profile chip) — without this the layout's route gate would bounce the
+ * chip's navigation straight back home.
+ */
 export function desktopAccessibleHrefs(role: AppRole): DesktopHref[] {
+  const shared: DesktopHref[] = ['/console-settings'];
   // Developer roams the whole console (it views *as* other roles for testing),
   // so it isn't gated to a single role's nav.
   if (role === 'developer') {
-    return Object.values(DESKTOP_NAV)
-      .flat()
-      .map((item) => item.href);
+    return [
+      ...Object.values(DESKTOP_NAV)
+        .flat()
+        .map((item) => item.href),
+      ...shared,
+    ];
   }
-  return DESKTOP_NAV[role].map((item) => item.href);
+  return [...DESKTOP_NAV[role].map((item) => item.href), ...shared];
 }
 
 /**

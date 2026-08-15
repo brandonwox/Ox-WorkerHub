@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import {
+  NOTIFICATION_TYPE_LABELS,
+  ROLE_NOTIFICATION_TYPES,
+} from '@/components/notifications/NotificationList';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { updatePassword } from '@/integrations/supabase';
 import { ROLE_LABELS } from '@/roles';
@@ -26,6 +30,8 @@ export function SettingsContent() {
   const updateUser = useAppStore((s) => s.updateUser);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const mutedTypes = useAppStore((s) => s.mutedNotificationTypes);
+  const toggleMuted = useAppStore((s) => s.toggleNotificationTypeMuted);
 
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
@@ -141,6 +147,41 @@ export function SettingsContent() {
           onChange={(option) => setTheme(option === 'Dark' ? 'dark' : 'light')}
         />
       </View>
+
+      {/* Per-type notification mutes — device-local; muted types still land
+          on the bell, they just never toast/ping/vibrate. Only the types this
+          role can actually receive are listed ("save failed" is unmutable). */}
+      {ROLE_NOTIFICATION_TYPES[user.role].length > 0 && (
+        <View style={styles.formCard}>
+          <Text style={styles.formTitle}>Notifications</Text>
+          <Text style={styles.notificationHint}>
+            Turn a type off to stop its pop-up and sound on this device — it
+            still appears on the notification bell.
+          </Text>
+          {ROLE_NOTIFICATION_TYPES[user.role].map((type) => {
+            const muted = mutedTypes.includes(type);
+            return (
+              <Pressable
+                key={type}
+                style={({ pressed }) => [
+                  styles.notificationRow,
+                  pressed && styles.savePressed,
+                ]}
+                onPress={() => toggleMuted(type)}
+              >
+                <Feather
+                  name={muted ? 'square' : 'check-square'}
+                  size={18}
+                  color={muted ? colors.textSecondary : colors.primary}
+                />
+                <Text style={styles.notificationRowText}>
+                  {NOTIFICATION_TYPE_LABELS[type]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <ChangePasswordModal
         visible={passwordOpen}
@@ -339,6 +380,23 @@ const styles = themed(() =>
       color: colors.textTertiary,
       fontFamily: fonts.regular,
       fontSize: 12,
+    },
+    notificationHint: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    notificationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    notificationRowText: {
+      color: colors.textPrimary,
+      fontFamily: fonts.medium,
+      fontSize: 14,
     },
     modalOverlay: {
       flex: 1,

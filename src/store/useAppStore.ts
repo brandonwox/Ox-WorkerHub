@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { useMemo } from 'react';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
@@ -116,6 +116,44 @@ function notifyNowWorkRequest(get: () => AppState, card: WorkRequest): void {
   });
 }
 
+/** Ids of every worker holding `role`. */
+function idsWithRole(workers: Worker[], role: AppRole): string[] {
+  return workers.filter((w) => w.role === role).map((w) => w.id);
+}
+
+/** The Field Supers responsible for a job (sub-jobs mirror their parent's). */
+function jobFieldSuperIds(
+  state: { jobs: Job[] },
+  jobId: string | undefined
+): string[] {
+  if (!jobId) return [];
+  return state.jobs.find((j) => j.id === jobId)?.fieldSuperIds ?? [];
+}
+
+/**
+ * The office audience for a field event on a work request: every scheduler plus
+ * the card's job's Field Supers, minus the worker who caused the event (nobody
+ * needs a ping about their own action).
+ */
+function officeAudienceForCard(
+  state: { workers: Worker[]; jobs: Job[] },
+  card: WorkRequest,
+  exceptId: string | undefined
+): string[] {
+  const ids = new Set([
+    ...idsWithRole(state.workers, 'scheduler'),
+    ...jobFieldSuperIds(state, card.jobId),
+  ]);
+  if (exceptId) ids.delete(exceptId);
+  return [...ids];
+}
+
+/** " · Job name" suffix for notification bodies (empty when no job/name). */
+function jobSuffix(state: { jobs: Job[] }, jobId: string | undefined): string {
+  const name = jobId ? jobDisplayNameById(jobId, state.jobs) : '';
+  return name ? ` · ${name}` : '';
+}
+
 /** Local calendar day as yyyy-MM-dd — the same key schedules/assignments use. */
 function todayStr(): string {
   return format(new Date(), 'yyyy-MM-dd');
@@ -194,7 +232,7 @@ function notifyScheduleChange(
 }
 
 /**
- * Who gets the 3:30 PM "status needs updating" ping for a crew: a permanent
+ * Who gets the "status needs updating" ping for a crew: a permanent
  * crew's own foreman. A daily crew has no foreman of its own, so any of its
  * members who is a permanent-crew foreman stands in.
  */
@@ -281,6 +319,13 @@ interface OutboxOp {
   workerId: string;
   guard?: OutboxGuard;
   queuedAt: string;
+  /**
+   * Skip the "Changes Saved" pill for this op. Set per-write for changes the
+   * UI already confirms (a card visibly moving on a drag, a checkbox ticking)
+   * or that aren't a deliberate save (inline typing commits, background
+   * stamps) — see also SILENT_OUTBOX_KINDS for whole-kind silencing.
+   */
+  silent?: boolean;
 }
 
 let outboxOps: OutboxOp[] = [];
@@ -353,6 +398,8 @@ const OUTBOX_EXECUTORS = {
     notificationsBackend.markAllNotificationsRead(p),
   deleteNotification: (p: string) =>
     notificationsBackend.deleteNotification(p),
+  deleteAllNotifications: (p: string) =>
+    notificationsBackend.deleteAllNotifications(p),
 } as const;
 
 /**
@@ -366,6 +413,9 @@ const SILENT_OUTBOX_KINDS = new Set<string>([
   'markNotificationRead',
   'markAllNotificationsRead',
   'deleteNotification',
+  'deleteAllNotifications',
+  // The weekly server sweep's flag, not a change this worker made.
+  'markTimesheetsSentRemote',
 ]);
 
 type OutboxKind = keyof typeof OUTBOX_EXECUTORS;
@@ -419,7 +469,8 @@ function notifySaveFailed(workerId: string, what: string): void {
 function write<K extends OutboxKind>(
   kind: K,
   payload: OutboxPayload<K>,
-  guard?: OutboxGuard
+  guard?: OutboxGuard,
+  opts?: { silent?: boolean }
 ): void {
   const me = useAppStore.getState().authWorker;
   const op: OutboxOp = {
@@ -429,6 +480,7 @@ function write<K extends OutboxKind>(
     workerId: me?.id ?? '',
     guard,
     queuedAt: new Date().toISOString(),
+    silent: opts?.silent,
   };
   outboxOps.push(op);
   if (guard) {
@@ -555,7 +607,7 @@ async function flushOutbox(): Promise<void> {
       }
       try {
         await OUTBOX_EXECUTORS[op.kind](op.payload as never);
-        if (!SILENT_OUTBOX_KINDS.has(op.kind)) {
+        if (!SILENT_OUTBOX_KINDS.has(op.kind) && !op.silent) {
           useAppStore.getState().signalSaved();
         }
       } catch (e) {
@@ -854,9 +906,9 @@ interface AppState {
   restoreJob: (id: string) => void;
   /**
    * Additively assign ONE Field Super to a job — the jobs pages' "Assign
-   * myself" button (a field super may only write their own row; RLS matches).
-   * Mirrors onto the job's sub-jobs locally the way the DB trigger does.
-   * Already assigned = no-op.
+   * myself" button. (Full assignment edits go through updateJob with
+   * fieldSuperIds instead.) Mirrors onto the job's sub-jobs locally the way
+   * the DB trigger does. Already assigned = no-op.
    */
   assignFieldSuperToJob: (jobId: string, fieldSuperId: string) => void;
   /**
@@ -878,7 +930,16 @@ interface AppState {
       priorityOrder?: number;
     }
   ) => WorkRequest;
-  updateWorkRequest: (id: string, changes: Partial<WorkRequest>) => void;
+  /**
+   * `opts.silentSave` skips the "Changes Saved" pill — for background writes
+   * (escalations, reminder stamps) and gestures the UI already confirms (day
+   * reordering). Deliberate edit-form saves leave it unset.
+   */
+  updateWorkRequest: (
+    id: string,
+    changes: Partial<WorkRequest>,
+    opts?: { silentSave?: boolean }
+  ) => void;
   /** Delete a Work Request and any schedule assignments pointing at it. */
   deleteWorkRequest: (id: string) => void;
   /** Installer-facing: append/replace shared field notes on a Work Request. */
@@ -905,10 +966,11 @@ interface AppState {
    */
   escalateDuePriorities: () => void;
   /**
-   * The 3:30 PM daily check: any work request scheduled today or yesterday
-   * whose status is still 'Undefined' pings the assigned crew's FOREMAN
-   * ("A work request status needs updating"). Runs in any signed-in session
-   * on a timer; the card's `undefinedReminderDate` stamp keeps it to one
+   * The overdue-status check: any work request scheduled on a PAST day (at any
+   * hour) — or on TODAY once 4:30 PM local has passed — whose status is still
+   * 'Undefined' pings the assigned crew's FOREMAN ("A work request status
+   * needs updating"), daily until it's set. Runs in any signed-in session on
+   * a timer; the card's `undefinedReminderDate` stamp keeps it to one
    * reminder per card per day across sessions.
    */
   sweepUndefinedStatusReminders: () => void;
@@ -1077,6 +1139,16 @@ interface AppState {
   markAllNotificationsRead: () => void;
   /** Remove a single notification entirely (the recipient dismissed it). */
   dismissNotification: (id: string) => void;
+  /** Remove EVERY notification of the current worker (the panel's "Clear all"). */
+  clearAllNotifications: () => void;
+  /**
+   * Notification types this DEVICE has muted (Settings): muted types still
+   * land on the bell/panel, but never toast, ping, or vibrate. Per-device by
+   * design — a phone and a desk browser can differ. `save_failed` is not
+   * mutable (a discarded change must never be missable).
+   */
+  mutedNotificationTypes: NotificationType[];
+  toggleNotificationTypeMuted: (type: NotificationType) => void;
 
   // --- QuickBooks Time ---
   setQbtConfig: (changes: Partial<QbtConfig>) => void;
@@ -1108,7 +1180,7 @@ let dataRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 // Hourly check for priority windows that have ended (see escalateDuePriorities).
 let escalationTimer: ReturnType<typeof setInterval> | null = null;
 
-// Recurring check for the 3:30 PM "status still Undefined" foreman reminders
+// Recurring check for the overdue "status still Undefined" foreman reminders
 // (see sweepUndefinedStatusReminders).
 let statusReminderTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -1140,6 +1212,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   jobDocuments: [],
   pendingPhotos: [],
   notifications: [],
+  mutedNotificationTypes: [],
   savedTick: 0,
   flashMessage: null,
   flashTone: 'success',
@@ -1324,6 +1397,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (me) {
       try {
         set({ notifications: await notificationsBackend.fetchNotifications(me.id) });
+        // Retention, best-effort: rows older than 30 days are past the
+        // panel's usefulness — sweep them so the table can't grow forever.
+        notificationsBackend.deleteOldNotifications(me.id).catch(() => {});
       } catch (e) {
         console.warn('Notifications load failed; none shown.', e);
       }
@@ -1344,9 +1420,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       () => get().escalateDuePriorities(),
       60 * 60 * 1000
     );
-    // The 3:30 PM "status still Undefined" foreman reminders: check now and
-    // every 5 minutes so an open session catches the 3:30 boundary the day it
-    // happens (the per-card date stamp keeps it to one ping per day).
+    // The overdue "status still Undefined" foreman reminders: check now and
+    // every 5 minutes so an open session catches the 4:30 PM boundary the day
+    // it happens (the per-card date stamp keeps it to one ping per day).
     get().sweepUndefinedStatusReminders();
     if (statusReminderTimer) clearInterval(statusReminderTimer);
     statusReminderTimer = setInterval(
@@ -1596,6 +1672,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     // insertJob writes the job row and, for the Operator and Schedulers, its
     // Field Super assignments (job_field_supers).
     if (isBackend) write('insertJob', created);
+    // A top-level job born without a QBT jobcode needs the Finance Manager to
+    // map it — ping them (unless a finance manager somehow created it).
+    if (
+      !created.parentJobId &&
+      !created.qbtJobcodeId &&
+      me?.role !== 'finance_manager'
+    ) {
+      const recipients = idsWithRole(state.workers, 'finance_manager');
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'job_needs_qbt',
+          title: 'New job needs a QBT jobcode',
+          body: `${created.name}${created.po ? ` · ${created.po}` : ''} has no QuickBooks Time jobcode yet.`,
+          data: { jobId: created.id },
+        });
+      }
+    }
     return local;
   },
 
@@ -1629,6 +1723,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateJob: (id, changes) => {
+    // Pre-edit assignment list — the "who was newly added" ping below diffs
+    // against it. Only captured when the edit actually touches assignments.
+    const beforeSuperIds =
+      'fieldSuperIds' in changes
+        ? (get().jobs.find((j) => j.id === id)?.fieldSuperIds ?? [])
+        : undefined;
     let updated: Job | undefined;
     set((state) => ({
       jobs: state.jobs.map((job) => {
@@ -1650,16 +1750,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) {
-      // Job-column edits go to the jobs table. The Field-Super-assignment join
-      // table is a separate office-only (operator + scheduler) write, so only
-      // touch it when fieldSuperIds is actually part of this edit — a Field
-      // Super saving flashing material must not hit job_field_supers (they may
-      // only self-assign there).
+      // Job-column edits go to the jobs table. Field-Super assignments live in
+      // the separate job_field_supers join table (operator, scheduler, and
+      // field supers may write it; RLS matches), so only touch it when
+      // fieldSuperIds is actually part of this edit — a Field Super saving
+      // flashing material must not hit job_field_supers.
       write('updateJob', updated);
       if ('fieldSuperIds' in changes) {
         write('setJobFieldSupers', {
           jobId: id,
           fieldSuperIds: updated.fieldSuperIds ?? [],
+        });
+      }
+    }
+    // Each NEWLY-assigned Field Super gets a ping — unless they assigned
+    // themselves (self-assign goes through assignFieldSuperToJob anyway).
+    if (updated && 'fieldSuperIds' in changes && beforeSuperIds) {
+      const me = currentWorkerOf(get());
+      const added = (updated.fieldSuperIds ?? []).filter(
+        (wid) => !beforeSuperIds!.includes(wid) && wid !== me?.id
+      );
+      if (added.length > 0) {
+        get().pushNotification({
+          recipientIds: added,
+          type: 'job_assigned',
+          title: 'Assigned to a job',
+          body: `You were assigned to ${updated.name}${
+            me ? ` by ${me.name}` : ''
+          }.`,
+          data: { jobId: updated.id },
         });
       }
     }
@@ -1778,12 +1897,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ workRequests: [created, ...state.workRequests] });
     if (isBackend) write('insertWorkRequest', created);
-    // A brand-new "Now" card pings the schedulers right away.
-    if (created.priority === 'Now') notifyNowWorkRequest(get, created);
+    // A brand-new "Now" card pings the schedulers right away. Otherwise a
+    // Field-Super-created card still lands on the schedulers' radar with a
+    // quieter "new work request" ping (one message, never both).
+    const creator = currentWorkerOf(state);
+    if (created.priority === 'Now') {
+      notifyNowWorkRequest(get, created);
+    } else if (creator?.role === 'field_super') {
+      const recipients = idsWithRole(state.workers, 'scheduler');
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'work_request_created',
+          title: 'New Work Request',
+          body: `${created.title}${jobSuffix(state, created.jobId)} — created by ${creator.name}.`,
+          data: { workRequestId: created.id },
+        });
+      }
+    }
     return created;
   },
 
-  updateWorkRequest: (id, changes) => {
+  updateWorkRequest: (id, changes, opts) => {
     const before = get().workRequests.find((c) => c.id === id);
     let updated: WorkRequest | undefined;
     let wasNow = false;
@@ -1795,7 +1930,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
+    if (backendActive(get()) && updated) {
+      write('updateWorkRequest', updated, undefined, {
+        silent: opts?.silentSave,
+      });
+    }
     // Ping only on the transition INTO "Now" — re-saving an already-"Now" card
     // (or any other edit) must not re-notify.
     if (updated && updated.priority === 'Now' && !wasNow) {
@@ -1848,11 +1987,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         return updated;
       }),
     }));
-    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
+    // Inline typing commit — no pill.
+    if (backendActive(get()) && updated) {
+      write('updateWorkRequest', updated, undefined, { silent: true });
+    }
   },
 
   setWorkRequestStatus: (workRequestId, status, note) => {
     const me = currentWorkerOf(get());
+    const before = get().workRequests.find((c) => c.id === workRequestId);
     let updated: WorkRequest | undefined;
     set((state) => ({
       workRequests: state.workRequests.map((card) => {
@@ -1870,6 +2013,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) write('updateWorkRequest', updated);
+    // Ping the office (schedulers + the job's Field Supers, minus the
+    // reporter) about the field report — only on an actual change, so
+    // re-saving the same status/note stays silent.
+    if (
+      updated &&
+      before &&
+      (before.status !== updated.status ||
+        (before.statusNote ?? '') !== (updated.statusNote ?? ''))
+    ) {
+      const state = get();
+      const recipients = officeAudienceForCard(state, updated, me?.id);
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'status_reported',
+          title: `Work request reported ${updated.status}`,
+          body: `${updated.title}${jobSuffix(state, updated.jobId)}${
+            updated.statusNote ? ` — ${updated.statusNote}` : ''
+          }`,
+          data: { workRequestId: updated.id },
+        });
+      }
+    }
   },
 
   setWorkRequestTaskDone: (workRequestId, taskId, done) => {
@@ -1909,10 +2075,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
           // The queued-op guard takes over from the debounce-window Set.
           pendingTaskCardIds.delete(workRequestId);
-          write('updateWorkRequest', card, {
-            map: 'workRequestTasks',
-            id: workRequestId,
-          });
+          // Checkbox ticks — the box itself is the confirmation; no pill.
+          write(
+            'updateWorkRequest',
+            card,
+            { map: 'workRequestTasks', id: workRequestId },
+            { silent: true }
+          );
         }, TASK_PUSH_DELAY_MS)
       );
     }
@@ -1933,23 +2102,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         card.status !== 'Finished'
     );
     // updateWorkRequest handles the backend write AND the scheduler ping (it fires
-    // on every transition into "Now").
-    due.forEach((card) => get().updateWorkRequest(card.id, { priority: 'Now' }));
+    // on every transition into "Now"). silentSave: a background escalation
+    // isn't a save the worker made.
+    due.forEach((card) =>
+      get().updateWorkRequest(card.id, { priority: 'Now' }, { silentSave: true })
+    );
   },
 
   sweepUndefinedStatusReminders: () => {
     const state = get();
     const now = new Date();
-    // Only after 3:30 PM local time — the day's field reports should be in.
-    if (now.getHours() * 60 + now.getMinutes() < 15 * 60 + 30) return;
     const today = todayStr();
-    const yesterday = format(subDays(now, 1), 'yyyy-MM-dd');
-    const dueDates = new Set([today, yesterday]);
+    // A card on any PAST day with no status is overdue at any hour; today's
+    // cards only become due at 4:30 PM local (the day's reports should be in).
+    const after430 = now.getHours() * 60 + now.getMinutes() >= 16 * 60 + 30;
 
-    // Which crews have each card on their board today/yesterday.
+    // Which crews have each due card on their board.
     const crewsByCard = new Map<string, Set<string>>();
     for (const a of state.assignments) {
-      if (!dueDates.has(a.date)) continue;
+      if (a.date > today || (a.date === today && !after430)) continue;
       const set = crewsByCard.get(a.workRequestId) ?? new Set<string>();
       set.add(a.crewId);
       crewsByCard.set(a.workRequestId, set);
@@ -1961,8 +2132,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Already reminded today (possibly by another session's sweep).
       if (card.undefinedReminderDate === today) continue;
       // Stamp before pinging so racing sessions can at most rarely double-send.
-      // (undefinedReminderDate isn't installer-visible, so no schedule ping.)
-      get().updateWorkRequest(cardId, { undefinedReminderDate: today });
+      // (undefinedReminderDate isn't installer-visible, so no schedule ping;
+      // silentSave — a bookkeeping stamp, not a save the worker made.)
+      get().updateWorkRequest(
+        cardId,
+        { undefinedReminderDate: today },
+        { silentSave: true }
+      );
       const recipients = new Set<string>();
       for (const crewId of crewIds) {
         for (const id of foremenForCrew(state, crewId)) recipients.add(id);
@@ -2106,11 +2282,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       date,
     };
     set({ assignments: [...state.assignments, created] });
-    if (isBackend) write('insertAssignment', created);
+    // The card visibly landing on the board IS the confirmation — no pill.
+    if (isBackend) write('insertAssignment', created, undefined, { silent: true });
     // A card joining TODAY's board pings that crew's installers. A future-dated
-    // assignment is silent (only same-day changes notify).
+    // assignment is silent for installers (only same-day changes notify).
+    const card = state.workRequests.find((c) => c.id === workRequestId);
     if (date === todayStr()) {
-      const card = state.workRequests.find((c) => c.id === workRequestId);
       if (card) {
         notifyScheduleChange(
           get,
@@ -2118,6 +2295,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           card,
           'has been added to your calendar today'
         );
+      }
+    }
+    // A scheduler scheduling (or moving — moves land here as a fresh insert)
+    // a card pings the job's Field Supers, any date.
+    const actor = currentWorkerOf(state);
+    if (card && actor?.role === 'scheduler') {
+      const recipients = jobFieldSuperIds(state, card.jobId);
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'work_request_scheduled',
+          title: 'Work request scheduled',
+          body: `${card.title}${jobSuffix(state, card.jobId)} — on the calendar for ${date}.`,
+          data: { workRequestId: card.id },
+        });
       }
     }
     return created;
@@ -2129,7 +2321,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       assignments: state.assignments.filter((a) => a.id !== assignmentId),
     });
-    if (backendActive(state)) write('deleteAssignment', assignmentId);
+    if (backendActive(state)) {
+      // The card visibly leaving the board IS the confirmation — no pill.
+      write('deleteAssignment', assignmentId, undefined, { silent: true });
+    }
     // Removing a card from TODAY's board pings the affected installers. Resolve
     // the audience against pre-removal state (the assignment still exists there).
     if (removed && removed.date === todayStr()) {
@@ -2151,7 +2346,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const order = index + 1;
       const card = get().workRequests.find((c) => c.id === id);
       if (card && card.priorityOrder !== order) {
-        get().updateWorkRequest(id, { priorityOrder: order });
+        // One drag fires a write per re-numbered card — a pill per card would
+        // be a burst of noise for a single gesture the board already shows.
+        get().updateWorkRequest(id, { priorityOrder: order }, { silentSave: true });
       }
     });
   },
@@ -2370,7 +2567,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && found) {
-      write('updateJobPhotoNote', { id, note: value }, { map: 'photoNote', id });
+      // Inline typing commit — no pill.
+      write(
+        'updateJobPhotoNote',
+        { id, note: value },
+        { map: 'photoNote', id },
+        { silent: true }
+      );
     }
   },
 
@@ -2396,7 +2599,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && found) {
-      write('updateJobPhotoSgd', { id, sgdVideo }, { map: 'photoNote', id });
+      // A toggled badge — the UI already shows it; no pill.
+      write(
+        'updateJobPhotoSgd',
+        { id, sgdVideo },
+        { map: 'photoNote', id },
+        { silent: true }
+      );
     }
   },
 
@@ -2518,10 +2727,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     if (backendActive(get())) {
+      // A retag the picker already reflects — no pill.
       write(
         'updateJobDocumentType',
         { id, docType },
-        { map: 'documentUpdate', id }
+        { map: 'documentUpdate', id },
+        { silent: true }
       );
     }
   },
@@ -2589,6 +2800,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateJobIssueDescription: (id, description) => {
+    const before = get().jobIssues.find((issue) => issue.id === id);
     let updated: JobIssue | undefined;
     set((state) => ({
       jobIssues: state.jobIssues.map((issue) => {
@@ -2598,7 +2810,38 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) {
-      write('updateJobIssue', updated, { map: 'issueUpsert', id });
+      // Inline typing commit — no pill.
+      write('updateJobIssue', updated, { map: 'issueUpsert', id }, {
+        silent: true,
+      });
+    }
+    // Issues are created EMPTY and described afterwards, so the "new issue"
+    // ping fires on the first real description (once), not on the blank
+    // insert — the office would otherwise get a contentless notification.
+    if (
+      updated &&
+      before &&
+      !before.description.trim() &&
+      updated.description.trim()
+    ) {
+      const state = get();
+      const recipients = new Set([
+        ...idsWithRole(state.workers, 'scheduler'),
+        ...jobFieldSuperIds(state, updated.jobId),
+      ]);
+      recipients.delete(updated.workerId);
+      if (recipients.size > 0) {
+        const raiser = state.workers.find((w) => w.id === updated!.workerId);
+        get().pushNotification({
+          recipientIds: [...recipients],
+          type: 'issue_raised',
+          title: 'New issue raised',
+          body: `${updated.description.trim()}${jobSuffix(state, updated.jobId)}${
+            raiser ? ` — by ${raiser.name}` : ''
+          }`,
+          data: { jobId: updated.jobId, workRequestId: updated.workRequestId },
+        });
+      }
     }
   },
 
@@ -2626,6 +2869,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     if (backendActive(get()) && updated) {
       write('updateJobIssue', updated, { map: 'issueUpsert', id });
+    }
+    // Resolution pings the job's Field Supers (minus the resolver). Reopening
+    // stays silent — it reads as a correction, not an event.
+    if (resolved && updated) {
+      const state = get();
+      const recipients = jobFieldSuperIds(state, updated.jobId).filter(
+        (wid) => wid !== me?.id
+      );
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'issue_resolved',
+          title: 'Issue resolved',
+          body: `${
+            updated.description.trim() || 'An issue'
+          }${jobSuffix(state, updated.jobId)}${me ? ` — by ${me.name}` : ''}`,
+          data: { jobId: updated.jobId, workRequestId: updated.workRequestId },
+        });
+      }
     }
   },
 
@@ -2658,6 +2920,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     if (backendActive(get())) write('markTimesheetsSentRemote', null);
+    // Ping the money-facing roles that the weekly push ran. NOTE: once the
+    // sweep is fully server-side this action may never run on a client — the
+    // server job should then insert these notification rows itself.
+    const state = get();
+    const recipients = [
+      ...idsWithRole(state.workers, 'operator'),
+      ...idsWithRole(state.workers, 'finance_manager'),
+    ];
+    if (recipients.length > 0) {
+      get().pushNotification({
+        recipientIds: recipients,
+        type: 'qbt_push_result',
+        title: 'Timesheets pushed to QuickBooks Time',
+        body: 'The weekly timesheet push to QuickBooks Time has run.',
+      });
+    }
   },
 
   pushNotification: (input) => {
@@ -2730,6 +3008,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get())) write('deleteNotification', id);
   },
 
+  clearAllNotifications: () => {
+    const me = currentWorkerOf(get());
+    if (!me) return;
+    set((state) => ({
+      notifications: state.notifications.filter(
+        (n) => n.recipientId !== me.id
+      ),
+    }));
+    if (backendActive(get())) write('deleteAllNotifications', me.id);
+  },
+
+  toggleNotificationTypeMuted: (type) => {
+    const muted = get().mutedNotificationTypes;
+    const next = muted.includes(type)
+      ? muted.filter((t) => t !== type)
+      : [...muted, type];
+    set({ mutedNotificationTypes: next });
+    AsyncStorage.setItem(MUTED_TYPES_KEY, JSON.stringify(next)).catch(() => {});
+  },
+
   setQbtConfig: (changes) =>
     set((state) => ({
       qbt: { ...state.qbt, config: { ...state.qbt.config, ...changes } },
@@ -2781,6 +3079,26 @@ void AsyncStorage.getItem(THEME_KEY)
   .then((saved) => {
     if (saved === 'light' || saved === 'dark') {
       useAppStore.getState().setTheme(saved);
+    }
+  })
+  .catch(() => {});
+
+// --- Notification mutes (device-local) ----------------------------------------
+
+const MUTED_TYPES_KEY = 'oxwh.mutedNotificationTypes';
+
+// Restore this device's muted notification types at launch (see
+// toggleNotificationTypeMuted for the write side).
+void AsyncStorage.getItem(MUTED_TYPES_KEY)
+  .then((raw) => {
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      useAppStore.setState({
+        mutedNotificationTypes: parsed.filter(
+          (t): t is NotificationType => typeof t === 'string'
+        ),
+      });
     }
   })
   .catch(() => {});

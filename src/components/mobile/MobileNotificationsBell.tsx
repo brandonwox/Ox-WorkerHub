@@ -1,26 +1,28 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NotificationList } from '@/components/notifications/NotificationList';
 import { useUnreadNotificationCount } from '@/store/useAppStore';
-import { colors, fonts, radii, spacing, themed } from '@/theme';
+import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 
 /**
- * Header bell: shows the current worker's unread count and opens a dropdown of
- * their notifications (the shared {@link NotificationList} — filter, groups,
- * mark-all/clear-all, deep links). Lives in the desktop top bar (SidebarShell).
+ * The phone's notification bell — mobile previously had only the 5-second
+ * toasts, so a missed toast was gone until the user opened the web console.
+ * A small floating button above the tab bar (bottom-right, clear of every
+ * screen's own header actions) carrying the unread badge; tapping it opens a
+ * full-screen sheet with the shared {@link NotificationList}.
  */
-export function NotificationBell() {
+export function MobileNotificationsBell() {
   const unread = useUnreadNotificationCount();
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <Pressable
-        style={({ pressed }) => [styles.bell, pressed && styles.bellPressed]}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         onPress={() => setOpen(true)}
-        hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={
           unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'
@@ -36,39 +38,46 @@ export function NotificationBell() {
 
       <Modal
         visible={open}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setOpen(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
-        <View style={styles.panel} pointerEvents="box-none">
-          <View style={styles.panelCard}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Notifications</Text>
-            </View>
-            <NotificationList onNavigate={() => setOpen(false)} />
+        <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Notifications</Text>
+            <Pressable onPress={() => setOpen(false)} hitSlop={8}>
+              <Feather name="x" size={22} color={colors.textSecondary} />
+            </Pressable>
           </View>
-        </View>
+          <NotificationList onNavigate={() => setOpen(false)} />
+        </SafeAreaView>
       </Modal>
     </>
   );
 }
 
 const styles = themed(() => StyleSheet.create({
-  bell: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
+  fab: {
+    position: 'absolute',
+    // Above the tab bar, clear of list content's bottom padding.
+    bottom: 96,
+    right: spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    ...modalShadow,
   },
-  bellPressed: {
-    backgroundColor: colors.surfaceLight,
+  fabPressed: {
+    opacity: 0.8,
   },
   badge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: -4,
+    right: -4,
     minWidth: 18,
     height: 18,
     borderRadius: radii.pill,
@@ -85,30 +94,11 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 10,
     lineHeight: 13,
   },
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  sheet: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  // Anchor the panel just under the top bar on the right, mirroring the bell.
-  panel: {
-    position: 'absolute',
-    top: 60,
-    right: spacing.xl,
-  },
-  panelCard: {
-    width: 460,
-    maxHeight: 600,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
-  },
-  panelHeader: {
+  sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -117,9 +107,9 @@ const styles = themed(() => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  panelTitle: {
+  sheetTitle: {
     color: colors.textPrimary,
     fontFamily: fonts.bold,
-    fontSize: 15,
+    fontSize: 18,
   },
 }));

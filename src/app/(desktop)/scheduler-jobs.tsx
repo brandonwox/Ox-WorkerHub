@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -46,6 +47,15 @@ export default function SchedulerJobsScreen() {
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // A job notification landed here — pop that job's dashboard sidebar (`oj`
+  // is a nonce so re-clicking the same notification re-opens it).
+  const { openJob, oj } = useLocalSearchParams<{
+    openJob?: string;
+    oj?: string;
+  }>();
+  useEffect(() => {
+    if (typeof openJob === 'string' && openJob) setSelectedJobId(openJob);
+  }, [openJob, oj]);
 
   // Every job, Active first. Sub-jobs stay out of the top-level list — they
   // live inside their parent's Sub-Jobs section; archived jobs only in the

@@ -3,6 +3,7 @@ import { Redirect, Tabs, usePathname } from 'expo-router';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MobileNotificationsBell } from '@/components/mobile/MobileNotificationsBell';
 import { NotificationToaster } from '@/components/NotificationToaster';
 import { UndefinedStatusCatchUp } from '@/components/UndefinedStatusCatchUp';
 import { SyncStatusChip } from '@/components/SyncStatusChip';
@@ -109,6 +110,7 @@ export default function MobileTabsLayout() {
         ))}
       </Tabs>
       <NotificationToaster />
+      <MobileNotificationsBell />
       <SyncStatusChip variant="floating" />
       <UndefinedStatusCatchUp />
     </View>

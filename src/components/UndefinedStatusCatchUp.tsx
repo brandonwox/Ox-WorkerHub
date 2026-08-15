@@ -1,4 +1,4 @@
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { useMemo, useState } from 'react';
 import {
   Modal,
@@ -25,7 +25,7 @@ import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
 /**
  * The undefined-status catch-up popup. When an installer opens the app and
- * their crew has work requests from yesterday (or today, once 3:30 PM has
+ * their crew has work requests from a past day (or today, once 4:30 PM has
  * passed) still sitting at 'Undefined', this modal lists them with an inline
  * status selector per request — picking Untouched / False Start / Finished
  * routes through the usual reason/completion popup. Rows disappear as they're
@@ -53,19 +53,17 @@ export function UndefinedStatusCatchUp() {
   const dueCards = useMemo(() => {
     if (!me || me.role !== 'installer') return [];
     const now = new Date();
-    // Yesterday's board is always overdue; today's only counts once the
-    // 3:30 PM reporting deadline has passed (mirrors the foreman sweep).
-    const dates = [format(subDays(now, 1), 'yyyy-MM-dd')];
-    if (now.getHours() * 60 + now.getMinutes() >= 15 * 60 + 30) {
-      dates.push(format(now, 'yyyy-MM-dd'));
-    }
+    const today = format(now, 'yyyy-MM-dd');
+    // Any PAST day's board is overdue at any hour; today's only counts once
+    // the 4:30 PM reporting deadline has passed (mirrors the foreman sweep).
+    const after430 = now.getHours() * 60 + now.getMinutes() >= 16 * 60 + 30;
     const ids = new Set<string>();
-    for (const date of dates) {
-      const crewId = activeCrewIdFor({ crews, dailyCrews }, me.id, date);
-      if (!crewId) continue;
-      for (const a of assignments) {
-        if (a.crewId === crewId && a.date === date) ids.add(a.workRequestId);
+    for (const a of assignments) {
+      if (a.date > today || (a.date === today && !after430)) continue;
+      if (activeCrewIdFor({ crews, dailyCrews }, me.id, a.date) !== a.crewId) {
+        continue;
       }
+      ids.add(a.workRequestId);
     }
     return workRequests.filter(
       (c) => ids.has(c.id) && c.status === 'Undefined'

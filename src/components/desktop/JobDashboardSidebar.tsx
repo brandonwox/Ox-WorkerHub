@@ -35,6 +35,7 @@ import {
 } from '@/components/photos/PhotoScopeFilter';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
 import { DisplayPhoto, useJobPhotos } from '@/components/photos/useJobPhotos';
+import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { StatusPill } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
@@ -57,8 +58,9 @@ interface Props {
   job: Job | null;
   onClose: () => void;
   /**
-   * Whether the viewer may edit the jobsite address / flashing material inline
-   * (Field Supers and the Operator; RLS matches). Gates the Edit pencil.
+   * Whether the viewer may edit the job's details inline — jobsite address,
+   * PO, flashing material, and the assigned Field Supers (Field Supers and
+   * the Operator; RLS matches). Gates the Edit pencil.
    */
   editable?: boolean;
   /**
@@ -243,6 +245,12 @@ export function JobDashboardSidebar({
         .map((fsId) => workers.find((w) => w.id === fsId)?.name)
         .filter((name): name is string => !!name),
     [job, workers]
+  );
+
+  // Roster for the edit-mode assignment picker.
+  const fieldSuperRoster = useMemo(
+    () => workers.filter((w) => w.role === 'field_super'),
+    [workers]
   );
 
   // Every builder ever applied to a job — the Builder edit field's options.
@@ -476,8 +484,20 @@ export function JobDashboardSidebar({
               </View>
             )}
           </View>
-          {/* The job's PO, right under the name (smaller than the name). */}
-          {job.po ? <Text style={styles.poLine}>{job.po}</Text> : null}
+          {/* The job's PO, right under the name (smaller than the name) — an
+              inline editor while Edit mode is on. */}
+          {editMode && editable ? (
+            <View style={styles.headerEditRow}>
+              <Feather name="hash" size={14} color={colors.textSecondary} />
+              <PoInput
+                key={`po-${job.id}`}
+                value={job.po ?? ''}
+                onCommit={(po) => updateJob(job.id, { po })}
+              />
+            </View>
+          ) : job.po ? (
+            <Text style={styles.poLine}>{job.po}</Text>
+          ) : null}
           {/* The one jobsite address: a tappable maps link, or an inline
               editor while Edit mode is on (no duplicate field below).
               Flashing-only editors (Schedulers) keep the read-only link. */}
@@ -619,6 +639,26 @@ export function JobDashboardSidebar({
                       builder: builder.trim() || undefined,
                     })
                   }
+                />
+              </View>
+            )}
+            {/* Assigned Field Supers — chips commit on tap. A sub-job inherits
+                its parent's supers (store + DB trigger), so only parents get
+                the picker. */}
+            {editable && !job.parentJobId && (
+              <View style={styles.countPair}>
+                <Text style={styles.fieldLabel}>Field supers</Text>
+                <FieldSuperPicker
+                  fieldSupers={fieldSuperRoster}
+                  selected={job.fieldSuperIds ?? []}
+                  onToggle={(id) => {
+                    const ids = job.fieldSuperIds ?? [];
+                    updateJob(job.id, {
+                      fieldSuperIds: ids.includes(id)
+                        ? ids.filter((x) => x !== id)
+                        : [...ids, id],
+                    });
+                  }}
                 />
               </View>
             )}
@@ -1309,6 +1349,32 @@ function AddressInput({
       onBlur={commit}
       onEndEditing={commit}
       placeholder="123 Main St, Park City, UT"
+      placeholderTextColor={colors.textTertiary}
+    />
+  );
+}
+
+/** Inline editable PO number; commits on blur (empty clears). */
+function PoInput({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (next: string | undefined) => void;
+}) {
+  const [text, setText] = useState(value);
+  const commit = () => {
+    const trimmed = text.trim();
+    onCommit(trimmed || undefined);
+  };
+  return (
+    <TextInput
+      style={styles.addressInput}
+      value={text}
+      onChangeText={setText}
+      onBlur={commit}
+      onEndEditing={commit}
+      placeholder="PO — e.g. 4501"
       placeholderTextColor={colors.textTertiary}
     />
   );

@@ -1,10 +1,12 @@
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 
 /**
  * Plays a short two-tone notification "ping" using the Web Audio API. The
  * desktop consoles (where notifications surface) run on react-native-web, so a
- * synthesized tone keeps us dependency- and asset-free. A no-op on native and
- * anywhere Web Audio is unavailable — sound is strictly best-effort.
+ * synthesized tone keeps us dependency- and asset-free. Native devices get a
+ * short vibration instead (RN's built-in Vibration — no audio asset, and a
+ * buzz suits a phone in a pocket on a jobsite better than a chime). A no-op
+ * anywhere neither is available — alerts are strictly best-effort.
  *
  * Browsers gate audio behind a user gesture: an AudioContext created outside of
  * one starts `suspended`, and on Safari `resume()` only works when called from
@@ -66,6 +68,14 @@ export function installAudioUnlock(): void {
 }
 
 export function playNotificationSound(): void {
+  if (Platform.OS !== 'web') {
+    try {
+      Vibration.vibrate(250);
+    } catch {
+      // Best-effort.
+    }
+    return;
+  }
   const c = getAudioContext();
   if (!c) return;
   try {

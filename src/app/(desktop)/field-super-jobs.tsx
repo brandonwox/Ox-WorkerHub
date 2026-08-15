@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -43,6 +44,15 @@ export default function FieldSuperJobsScreen() {
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // A job notification landed here — pop that job's dashboard sidebar (`oj`
+  // is a nonce so re-clicking the same notification re-opens it).
+  const { openJob, oj } = useLocalSearchParams<{
+    openJob?: string;
+    oj?: string;
+  }>();
+  useEffect(() => {
+    if (typeof openJob === 'string' && openJob) setSelectedJobId(openJob);
+  }, [openJob, oj]);
   // "All jobs" widens the list from assigned-only to EVERY job — each row
   // then shows its assigned supers. Unassigned jobs are fully viewable AND
   // editable (helping out needs no assignment); the sidebar still offers

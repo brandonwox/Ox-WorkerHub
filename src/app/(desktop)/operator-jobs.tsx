@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -32,6 +33,15 @@ export default function JobsScreen() {
   const [editing, setEditing] = useState<Job | null>(null);
   const [query, setQuery] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  // A job notification landed here — pop that job's dashboard sidebar (`oj`
+  // is a nonce so re-clicking the same notification re-opens it).
+  const { openJob, oj } = useLocalSearchParams<{
+    openJob?: string;
+    oj?: string;
+  }>();
+  useEffect(() => {
+    if (typeof openJob === 'string' && openJob) setSelectedJobId(openJob);
+  }, [openJob, oj]);
 
   const fieldSupers = useMemo(
     () => workers.filter((w) => w.role === 'field_super'),

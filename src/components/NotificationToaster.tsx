@@ -2,6 +2,10 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import {
+  NOTIFICATION_TYPE_ICON,
+  useOpenNotification,
+} from '@/components/notifications/NotificationList';
 import { useAppStore, useMyNotifications } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { AppNotification } from '@/types';
@@ -25,6 +29,7 @@ const VISIBLE_MS = 5000;
  */
 export function NotificationToaster() {
   const notifications = useMyNotifications();
+  const mutedTypes = useAppStore((s) => s.mutedNotificationTypes);
   const shownIds = useRef<Set<string>>(new Set());
   const initialized = useRef(false);
   const [active, setActive] = useState<AppNotification[]>([]);
@@ -48,9 +53,13 @@ export function NotificationToaster() {
     );
     if (fresh.length === 0) return;
     fresh.forEach((n) => shownIds.current.add(n.id));
+    // Muted types are marked seen (so unmuting won't replay them) but never
+    // toast or ping — they still land on the bell for the badge/panel.
+    const audible = fresh.filter((n) => !mutedTypes.includes(n.type));
+    if (audible.length === 0) return;
     playNotificationSound();
-    setActive((prev) => [...fresh, ...prev]);
-  }, [notifications]);
+    setActive((prev) => [...audible, ...prev]);
+  }, [notifications, mutedTypes]);
 
   const dismiss = (id: string) =>
     setActive((prev) => prev.filter((n) => n.id !== id));
@@ -78,6 +87,9 @@ function NotificationToast({
   onDismiss: () => void;
 }) {
   const markRead = useAppStore((s) => s.markNotificationRead);
+  // Tapping the toast body jumps to the notification's target (work request /
+  // job) — same deep link as the bell rows; the X only acknowledges.
+  const open = useOpenNotification();
   // 0 = off-screen/hidden, 1 = fully in. useState (not useRef) so the value can
   // be interpolated during render without tripping the refs-in-render lint rule.
   const [anim] = useState(() => new Animated.Value(0));
@@ -113,9 +125,19 @@ function NotificationToast({
 
   return (
     <Animated.View style={[styles.toast, { opacity: anim, transform: [{ translateX }] }]}>
-      <Pressable style={styles.toastPress} onPress={acknowledge}>
+      <Pressable
+        style={styles.toastPress}
+        onPress={() => {
+          open(notification);
+          onDismiss();
+        }}
+      >
         <View style={styles.toastIcon}>
-          <Feather name="alert-circle" size={18} color={colors.primary} />
+          <Feather
+            name={NOTIFICATION_TYPE_ICON[notification.type] ?? 'bell'}
+            size={18}
+            color={colors.primary}
+          />
         </View>
         <View style={styles.toastBody}>
           <Text style={styles.toastTitle}>{notification.title}</Text>

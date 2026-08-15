@@ -77,6 +77,33 @@ export async function deleteNotification(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Delete every notification of a recipient (the panel's "Clear all"). */
+export async function deleteAllNotifications(workerId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('notifications')
+    .delete()
+    .eq('recipient_id', workerId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Retention: drop this recipient's notifications older than `days` (default
+ * 30). Fired best-effort after the login fetch — rows past the panel's
+ * usefulness would otherwise pile up in the table forever.
+ */
+export async function deleteOldNotifications(
+  workerId: string,
+  days = 30
+): Promise<void> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await getSupabase()
+    .from('notifications')
+    .delete()
+    .eq('recipient_id', workerId)
+    .lt('created_at', cutoff);
+  if (error) throw new Error(error.message);
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   const { error } = await getSupabase()
     .from('notifications')

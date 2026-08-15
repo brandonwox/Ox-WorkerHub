@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { FormInput } from '@/components/FormInput';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
-import { Job, JOB_SCOPES, JobScope } from '@/types';
+import { Job, JOB_SCOPES, JobScope, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
 import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
@@ -26,7 +27,8 @@ import { workRequestLinksJob } from '@/utils/workRequestJobs';
 /**
  * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap
  * a job to open its details page; the chevron expands an inline editor for
- * the jobsite address and flashing material.
+ * the job's details — jobsite address, PO, flashing material, assigned Field
+ * Supers, and scope counts.
  */
 export function FieldSuperJobsMobile() {
   const me = useCurrentWorker();
@@ -60,6 +62,12 @@ export function FieldSuperJobsMobile() {
       .map((id) => workers.find((w) => w.id === id)?.name)
       .filter((name): name is string => !!name)
       .join(', ');
+
+  // Roster for the inline editor's assignment picker.
+  const fieldSuperRoster = useMemo(
+    () => workers.filter((w) => w.role === 'field_super'),
+    [workers]
+  );
 
   const scheduledIds = useMemo(
     () => new Set(assignments.map((a) => a.workRequestId)),
@@ -112,8 +120,8 @@ export function FieldSuperJobsMobile() {
           </View>
         </View>
         <Text style={styles.hint}>
-          Tap a job to open it. Use the arrow to edit its address and flashing
-          material.
+          Tap a job to open it. Use the arrow to edit its details — address,
+          PO, flashing material, and assigned supers.
         </Text>
 
         <ScrollView contentContainerStyle={styles.listContent}>
@@ -139,6 +147,7 @@ export function FieldSuperJobsMobile() {
                     ? superNamesFor(job) || 'No Field Super assigned'
                     : undefined
                 }
+                fieldSuperRoster={fieldSuperRoster}
                 expanded={expandedId === job.id}
                 onToggle={() =>
                   setExpandedId((id) => (id === job.id ? null : job.id))
@@ -331,6 +340,7 @@ function JobRow({
   job,
   counts,
   supersLine,
+  fieldSuperRoster,
   expanded,
   onToggle,
   onSave,
@@ -339,12 +349,18 @@ function JobRow({
   counts: { total: number; scheduled: number };
   /** Assigned supers, rendered under the counts ("All jobs" mode only). */
   supersLine?: string;
+  /** Every field super on the roster — the assignment picker's options. */
+  fieldSuperRoster: Worker[];
   expanded: boolean;
   onToggle: () => void;
   onSave: (changes: Partial<Job>) => void;
 }) {
   const router = useRouter();
   const [location, setLocation] = useState(job.location);
+  const [po, setPo] = useState(job.po ?? '');
+  const [fieldSuperIds, setFieldSuperIds] = useState<string[]>(
+    job.fieldSuperIds ?? []
+  );
   const [flashing, setFlashing] = useState(job.flashingMaterial ?? '');
   const windowsAllowed = jobAllowsWindows(job);
   // The count pairs this job's scopes cover — each edits done/total as text
@@ -365,8 +381,15 @@ function JobRow({
     setSaved(false);
   };
 
+  // Order-insensitive: toggling a super off and back on isn't a change.
+  const supersChanged =
+    fieldSuperIds.length !== (job.fieldSuperIds ?? []).length ||
+    fieldSuperIds.some((id) => !(job.fieldSuperIds ?? []).includes(id));
+
   const dirty =
     location.trim() !== job.location ||
+    po.trim() !== (job.po ?? '') ||
+    supersChanged ||
     flashing.trim() !== (job.flashingMaterial ?? '') ||
     countDefs.some(
       (def) =>
@@ -382,7 +405,11 @@ function JobRow({
     }
     onSave({
       location: location.trim(),
+      po: po.trim() || undefined,
       flashingMaterial: flashing.trim(),
+      // Assignments only when actually changed — updateJob writes the
+      // job_field_supers join table exactly when this key is present.
+      ...(supersChanged ? { fieldSuperIds } : {}),
       ...countChanges,
     });
     setSaved(true);
@@ -450,6 +477,33 @@ function JobRow({
             }}
             placeholder="Street, city"
           />
+          <FormInput
+            label="PO"
+            value={po}
+            onChangeText={(text) => {
+              setPo(text);
+              setSaved(false);
+            }}
+            placeholder="e.g. 4501"
+            autoCapitalize="none"
+          />
+          {/* Assigned Field Supers. A sub-job inherits its parent's supers
+              (store + DB trigger) — but sub-jobs never appear in this list. */}
+          <View style={styles.supersField}>
+            <Text style={styles.supersLabel}>Field supers</Text>
+            <FieldSuperPicker
+              fieldSupers={fieldSuperRoster}
+              selected={fieldSuperIds}
+              onToggle={(id) => {
+                setFieldSuperIds((ids) =>
+                  ids.includes(id)
+                    ? ids.filter((x) => x !== id)
+                    : [...ids, id]
+                );
+                setSaved(false);
+              }}
+            />
+          </View>
           {/* Hidden entirely for jobs whose scopes exclude window work. */}
           {windowsAllowed && (
             <>
@@ -639,6 +693,14 @@ const styles = themed(() => StyleSheet.create({
   countRow: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  supersField: {
+    gap: spacing.sm,
+  },
+  supersLabel: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
   },
   countCol: {
     flex: 1,
