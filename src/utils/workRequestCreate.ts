@@ -22,6 +22,7 @@ export function newWorkRequestPayload(input: NewWorkRequestInput, jobs: Job[]) {
     address: input.jobId ? (parent?.location ?? '') : (input.address ?? ''),
     // No calendar date at creation — the Scheduler places it later.
     date: format(new Date(), 'yyyy-MM-dd'),
+    startTime: input.startTime,
     priority: input.priority,
     priorityStartDate: input.priorityStartDate || undefined,
     priorityEndDate: input.priorityEndDate || undefined,

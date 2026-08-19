@@ -11,15 +11,17 @@ export function formatTimeWindow(startIso: string, endIso: string): string {
 }
 
 /**
- * Time window label for a job, which may not have one assigned. Returns null
- * when no window is set so callers can render their own "not set" treatment.
+ * Time label for a job/work request, which may not have one assigned: a full
+ * "7:00 AM – 3:30 PM" window when both ends are set, or just "7:00 AM" when
+ * only an arrival (start) time is. Returns null when no time is set so
+ * callers can render their own "not set" treatment.
  */
 export function formatJobWindow(
   startIso?: string,
   endIso?: string
 ): string | null {
-  if (!startIso || !endIso) return null;
-  return formatTimeWindow(startIso, endIso);
+  if (!startIso) return null;
+  return endIso ? formatTimeWindow(startIso, endIso) : formatTime(startIso);
 }
 
 /** "Mon, Jun 8" style label from a yyyy-MM-dd date string. */

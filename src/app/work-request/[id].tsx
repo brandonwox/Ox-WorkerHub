@@ -388,7 +388,11 @@ export default function JobDetailsScreen() {
             )}
           />
           {timeWindow ? (
-            <InfoRow icon="clock" label="Time Window" value={timeWindow} />
+            <InfoRow
+              icon="clock"
+              label={job.endTime ? 'Time Window' : 'Arrival Time'}
+              value={timeWindow}
+            />
           ) : null}
           {job.pickupRequired ? (
             <InfoRow

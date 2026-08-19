@@ -162,6 +162,21 @@ interface MultiProps {
   onChange: (values: string[]) => void;
   options: ComboOption[];
   placeholder?: string;
+  /**
+   * Once something is selected, replace the always-typeable input with the
+   * chips alone plus a small "+ add" affordance (shown only while more
+   * options remain) — for pickers where an open text field after selection
+   * reads as misleading (the job picker).
+   */
+  collapseOnSelect?: boolean;
+  /** Label for the collapsed state's add affordance (with collapseOnSelect). */
+  addLabel?: string;
+  /**
+   * An extra action pinned at the bottom of the dropdown, visually separated
+   * from the options and styled as a (quiet) destructive choice — the job
+   * picker's "No parent job". Pressing it closes the menu.
+   */
+  footer?: { label: string; onPress: () => void };
 }
 
 /** Multi-select searchable input: selected items become removable chips. */
@@ -170,9 +185,14 @@ export function MultiCombobox({
   onChange,
   options,
   placeholder,
+  collapseOnSelect,
+  addLabel = 'Add',
+  footer,
 }: MultiProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // collapseOnSelect: whether the "+ add" affordance re-opened the input.
+  const [adding, setAdding] = useState(false);
 
   const selectedOptions = options.filter((o) => values.includes(o.value));
   const available = useMemo(
@@ -182,16 +202,36 @@ export function MultiCombobox({
       ),
     [options, values, query]
   );
+  const anyAvailable = options.some((o) => !values.includes(o.value));
+  const collapsed = !!collapseOnSelect && values.length > 0 && !adding;
 
   const add = (opt: ComboOption) => {
     onChange([...values, opt.value]);
     setQuery('');
+    // A collapsing picker folds back to chips after each pick.
+    if (collapseOnSelect) {
+      setAdding(false);
+      setOpen(false);
+    }
   };
   const remove = (val: string) => onChange(values.filter((v) => v !== val));
 
+  const pickFooter = () => {
+    setQuery('');
+    setAdding(false);
+    setOpen(false);
+    footer?.onPress();
+  };
+
   return (
     <View>
-      <Pressable style={styles.tokenWrap} onPress={() => setOpen(true)}>
+      <Pressable
+        style={styles.tokenWrap}
+        onPress={() => {
+          if (collapsed) return;
+          setOpen(true);
+        }}
+      >
         {selectedOptions.map((opt) => (
           <View key={opt.value} style={styles.token}>
             <Text style={styles.tokenText}>{opt.label}</Text>
@@ -200,21 +240,46 @@ export function MultiCombobox({
             </Pressable>
           </View>
         ))}
-        <TextInput
-          style={styles.tokenInput}
-          value={query}
-          onChangeText={(t) => {
-            setQuery(t);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 120)}
-          placeholder={selectedOptions.length === 0 ? placeholder : ''}
-          placeholderTextColor={colors.textTertiary}
-        />
+        {collapsed ? (
+          anyAvailable && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.addMore,
+                pressed && styles.itemPressed,
+              ]}
+              onPress={() => {
+                setAdding(true);
+                setOpen(true);
+              }}
+              hitSlop={4}
+            >
+              <Feather name="plus" size={13} color={colors.textSecondary} />
+              <Text style={styles.addMoreText}>{addLabel}</Text>
+            </Pressable>
+          )
+        ) : (
+          <TextInput
+            style={styles.tokenInput}
+            value={query}
+            onChangeText={(t) => {
+              setQuery(t);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() =>
+              setTimeout(() => {
+                setOpen(false);
+                setAdding(false);
+              }, 120)
+            }
+            placeholder={selectedOptions.length === 0 ? placeholder : ''}
+            placeholderTextColor={colors.textTertiary}
+            autoFocus={adding}
+          />
+        )}
       </Pressable>
 
-      {open && available.length > 0 && (
+      {open && (available.length > 0 || footer) && (
         <View style={styles.menu}>
           {available.map((opt) => (
             <Pressable
@@ -226,6 +291,18 @@ export function MultiCombobox({
               <Feather name="plus" size={14} color={colors.textSecondary} />
             </Pressable>
           ))}
+          {footer && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.footerItem,
+                available.length > 0 && styles.footerItemSeparated,
+                pressed && styles.itemPressed,
+              ]}
+              onPress={pickFooter}
+            >
+              <Text style={styles.footerText}>{footer.label}</Text>
+            </Pressable>
+          )}
         </View>
       )}
     </View>
@@ -321,6 +398,33 @@ const styles = themed(() => StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.semiBold,
     fontSize: 14,
+  },
+  addMore: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+  },
+  addMoreText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  footerItem: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 1,
+  },
+  footerItemSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  footerText: {
+    color: colors.danger,
+    fontFamily: fonts.medium,
+    fontSize: 13,
   },
   empty: {
     color: colors.textTertiary,

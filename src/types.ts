@@ -235,6 +235,23 @@ export const STATUSES_REQUIRING_REASON: WorkRequestStatus[] = [
 ];
 
 /**
+ * One row of a work request's status history: every status change appends an
+ * entry — who, when, which status, and the typed reason / completion note when
+ * the status carries one. A reset back to 'Undefined' is logged too, so the
+ * office can always reconstruct what the field reported and when.
+ */
+export interface WorkRequestStatusLogEntry {
+  id: string;
+  status: WorkRequestStatus;
+  /** The reason / completion detail that accompanied this change, if any. */
+  note?: string;
+  /** ISO datetime of the change. */
+  at: string;
+  /** Worker who made the change. */
+  byId?: string;
+}
+
+/**
  * Field-Super-assigned importance of a Work Request. Distinct from `priorityOrder` (sort).
  * Free text so the Field Super can pick a preset ({@link PRIORITY_PRESETS}) or type a
  * custom value — older cards may still carry legacy 'Low' | 'Medium' | 'High'.
@@ -265,9 +282,10 @@ export type PriorityChoice = (typeof PRIORITY_CHOICES)[number];
 
 /**
  * Trade scope a Job / Work Request covers. At least one is chosen at creation
- * time. Every scope behaves the same and is selectable on jobs, sub-jobs, AND
- * work requests alike (no request-only scopes). Legacy 'Showerglass Door'
- * values are mapped to 'Showers' on read and by migration.
+ * time. Every trade scope is selectable on jobs, sub-jobs, AND work requests
+ * alike; 'Other' is the one request-only scope (a catch-all for niche work
+ * that fits no trade — meaningless at the job level). Legacy 'Showerglass
+ * Door' values are mapped to 'Showers' on read and by migration.
  */
 export type JobScope =
   | 'Windows'
@@ -277,11 +295,13 @@ export type JobScope =
   | 'Screens'
   | "IGU's"
   | 'Storefront'
+  // Work-request-only catch-all for niche one-off work.
+  | 'Other'
   // Retired as a scope (2026-08): no longer selectable anywhere, but kept in
   // the type so rows that already carry it still read/display cleanly.
   | 'Service';
 
-/** All selectable scopes, in display order. ('Service' is retired.) */
+/** Scopes selectable on jobs and sub-jobs, in display order. ('Service' is retired.) */
 export const JOB_SCOPES: JobScope[] = [
   'Windows',
   'Mirrors',
@@ -291,6 +311,9 @@ export const JOB_SCOPES: JobScope[] = [
   "IGU's",
   'Storefront',
 ];
+
+/** Scopes selectable on a WORK REQUEST: every job scope plus 'Other'. */
+export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Other'];
 
 /**
  * Preset answers to "is this work request ready for installers?". Only 'Yes'
@@ -346,12 +369,13 @@ export interface WorkRequest {
   /** Scheduled calendar day (yyyy-MM-dd). Always set. */
   date: string;
   /**
-   * Optional time window the worker is expected on site. Most cards won't have
-   * one assigned — the office side can set it when a window matters.
-   * ISO datetime string.
+   * Optional time of day the installers must ARRIVE on site (the office sets
+   * it from the quick view's "Arrival time" field when it matters — most
+   * cards won't have one). With {@link endTime} also set it reads as a full
+   * time window. ISO datetime string.
    */
   startTime?: string;
-  /** ISO datetime string. Set together with startTime. */
+  /** ISO datetime string. Optional even when startTime is set. */
   endTime?: string;
   status: WorkRequestStatus;
   /**
@@ -366,6 +390,12 @@ export interface WorkRequest {
   statusChangedAt?: string;
   /** Worker who made the last status change. */
   statusChangedById?: string;
+  /**
+   * Every status change ever made on this card, oldest first — reviewed by
+   * the office from the quick view's "Status log". Appended by
+   * `setWorkRequestStatus`; absent on cards that predate the log.
+   */
+  statusLog?: WorkRequestStatusLogEntry[];
   /**
    * The day (yyyy-MM-dd) the "status needs updating" reminder last went out
    * for this card — stops other sessions from re-pinging the foreman the

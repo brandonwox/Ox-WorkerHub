@@ -1997,6 +1997,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const me = currentWorkerOf(get());
     const before = get().workRequests.find((c) => c.id === workRequestId);
     let updated: WorkRequest | undefined;
+    const changedAt = new Date().toISOString();
     set((state) => ({
       workRequests: state.workRequests.map((card) => {
         if (card.id !== workRequestId) return card;
@@ -2006,8 +2007,20 @@ export const useAppStore = create<AppState>((set, get) => ({
           // The reason (Untouched / False Start) or completion note
           // (Finished); statuses without one clear any stale note.
           statusNote: note?.trim() || undefined,
-          statusChangedAt: new Date().toISOString(),
+          statusChangedAt: changedAt,
           statusChangedById: me?.id,
+          // Every change — including a reset to 'Undefined' — appends to the
+          // permanent status log the office reviews from the quick view.
+          statusLog: [
+            ...(card.statusLog ?? []),
+            {
+              id: uuid(),
+              status,
+              note: note?.trim() || undefined,
+              at: changedAt,
+              byId: me?.id,
+            },
+          ],
         };
         return updated;
       }),
@@ -2028,7 +2041,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: recipients,
           type: 'status_reported',
-          title: `Work request reported ${updated.status}`,
+          // A move back to 'Undefined' is an office reset, not a field report.
+          title:
+            updated.status === 'Undefined'
+              ? 'Work request status reset'
+              : `Work request reported ${updated.status}`,
           body: `${updated.title}${jobSuffix(state, updated.jobId)}${
             updated.statusNote ? ` — ${updated.statusNote}` : ''
           }`,

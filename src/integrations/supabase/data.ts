@@ -9,6 +9,7 @@ import {
   WorkRequest,
   WorkRequestPriority,
   WorkRequestStatus,
+  WorkRequestStatusLogEntry,
   WorkRequestTask,
   JobDocument,
   JobDocumentKind,
@@ -106,6 +107,8 @@ interface WorkRequestRow {
   status_note: string | null;
   status_changed_at: string | null;
   status_changed_by: string | null;
+  /** jsonb array of WorkRequestStatusLogEntry objects, oldest first. */
+  status_log: WorkRequestStatusLogEntry[] | null;
   undefined_reminder_date: string | null;
   details: {
     generalContractor?: string;
@@ -302,6 +305,7 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     statusNote: r.status_note ?? undefined,
     statusChangedAt: r.status_changed_at ?? undefined,
     statusChangedById: r.status_changed_by ?? undefined,
+    statusLog: r.status_log && r.status_log.length > 0 ? r.status_log : undefined,
     undefinedReminderDate: r.undefined_reminder_date ?? undefined,
     priority: r.priority as WorkRequestPriority,
     priorityOrder: r.priority_order,
@@ -718,6 +722,8 @@ function workRequestToRow(card: WorkRequest) {
     status_note: card.statusNote ?? null,
     status_changed_at: card.statusChangedAt ?? null,
     status_changed_by: card.statusChangedById ?? null,
+    // Column is NOT NULL — an absent log writes as the empty jsonb array.
+    status_log: card.statusLog ?? [],
     undefined_reminder_date: card.undefinedReminderDate ?? null,
     priority: card.priority,
     priority_order: card.priorityOrder,

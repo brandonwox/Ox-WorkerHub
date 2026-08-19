@@ -39,6 +39,12 @@ export function priorityValueComplete(value: PriorityValue): boolean {
 interface Props {
   value: PriorityValue;
   onChange: (value: PriorityValue) => void;
+  /**
+   * Open the choices dropdown immediately on mount — for click-to-edit hosts
+   * where the click that revealed this selector already meant "pick one"
+   * (skips the redundant second click on the trigger).
+   */
+  autoOpen?: boolean;
 }
 
 /**
@@ -49,8 +55,8 @@ interface Props {
  * manual picking. The two dates cross-clamp so the end can never precede the
  * start — whichever side creates the paradox pulls the other along.
  */
-export function PrioritySelect({ value, onChange }: Props) {
-  const [open, setOpen] = useState(false);
+export function PrioritySelect({ value, onChange, autoOpen }: Props) {
+  const [open, setOpen] = useState(!!autoOpen);
   const wrapRef = useRef<View>(null);
 
   const pick = (choice: PriorityChoice) => {

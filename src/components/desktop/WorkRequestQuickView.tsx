@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleProp,
@@ -36,10 +37,11 @@ import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
   Job,
-  JOB_SCOPES,
   SELECTABLE_WORK_REQUEST_STATUSES,
+  WORK_REQUEST_SCOPES,
   WorkRequest,
   WorkRequestStatus,
+  WorkRequestStatusLogEntry,
   JobScope,
   READINESS_PRESETS,
 } from '@/types';
@@ -53,10 +55,10 @@ import {
   workRequestPoLabel,
 } from '@/utils/workRequestJobs';
 import { effectivePriority } from '@/utils/priorityRange';
-import { formatJobWindow } from '@/utils/time';
+import { formatJobWindow, formatTime, parseTimeInput } from '@/utils/time';
 import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
 
-const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
+const SCOPE_OPTIONS = WORK_REQUEST_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
 
 /**
@@ -71,6 +73,8 @@ export interface NewWorkRequestInput {
   /** Hand-typed jobsite address — standalone requests only (no job to inherit from). */
   address?: string;
   title: string;
+  /** Time of day the installers must arrive (ISO datetime), when it matters. */
+  startTime?: string;
   scopes: JobScope[];
   tasks: string[];
   readiness: string;
@@ -105,6 +109,7 @@ const emptyDraft = (): WorkRequest => ({
 type EditField =
   | 'title'
   | 'address'
+  | 'arrival'
   | 'scopes'
   | 'readiness'
   | 'priority'
@@ -197,7 +202,12 @@ export function WorkRequestQuickView({
   const assignments = useAppStore((s) => s.assignments);
   const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
+  const workers = useAppStore((s) => s.workers);
   const role = useCurrentRole();
+  // Office roles get the status history + reset controls (installers use the
+  // mobile work request view, not this one, but gate anyway).
+  const officeRole =
+    role === 'scheduler' || role === 'field_super' || role === 'operator';
   // The FULL job list. The `jobs` prop is the viewer's creation scope (a
   // Field Super's assigned jobs) — but a Field Super can view cards on
   // unassigned jobs too, whose parent job only exists in the store's list.
@@ -214,6 +224,7 @@ export function WorkRequestQuickView({
   /** In-progress priority edit (null = seed from the card when editing opens). */
   const [priorityDraft, setPriorityDraft] = useState<PriorityValue | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [statusLogOpen, setStatusLogOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<WorkRequestStatus | null>(null);
   // Status picks that need a typed note (Untouched / False Start / Finished)
   // route through the StatusChangeModal instead of the inline ConfirmBar.
@@ -291,6 +302,7 @@ export function WorkRequestQuickView({
     setDraft('');
     setPriorityDraft(null);
     setStatusMenuOpen(false);
+    setStatusLogOpen(false);
     setPendingStatus(null);
     setPendingReadinessNow(false);
     setNoJob(false);
@@ -388,6 +400,25 @@ export function WorkRequestQuickView({
     ? SCOPE_OPTIONS
     : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
   const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
+  // The status history, newest first. A card whose current status predates
+  // the log still shows one row synthesized from the last-change columns.
+  const statusLogEntries: WorkRequestStatusLogEntry[] = (
+    workRequest.statusLog && workRequest.statusLog.length > 0
+      ? [...workRequest.statusLog]
+      : workRequest.status !== 'Undefined' && workRequest.statusChangedAt
+        ? [
+            {
+              id: 'pre-log',
+              status: workRequest.status,
+              note: workRequest.statusNote,
+              at: workRequest.statusChangedAt,
+              byId: workRequest.statusChangedById,
+            },
+          ]
+        : []
+  ).reverse();
+  const workerName = (id?: string) =>
+    (id && workers.find((w) => w.id === id)?.name) || 'Unknown';
   // The parent JOB's scope counts, shown on every one of its work requests.
   const cardCounts = jobCounts(parentJob);
   // Crew assignment drives the title square: permanent crews first so colors
@@ -483,6 +514,29 @@ export function WorkRequestQuickView({
     if (v !== workRequest.address) applyChange({ address: v });
   };
 
+  // Arrival time: a typed time-of-day ("7:30 AM", "15:45") stored on the
+  // card's startTime; blank clears it (installers then see no time at all).
+  const commitArrival = () => {
+    setEditing(null);
+    const t = draft.trim();
+    if (!t) {
+      if (workRequest.startTime || workRequest.endTime) {
+        applyChange({ startTime: undefined, endTime: undefined });
+      }
+      return;
+    }
+    const parsed = parseTimeInput(
+      t,
+      workRequest.date || format(new Date(), 'yyyy-MM-dd')
+    );
+    if (!parsed) {
+      flash('Could not read that time — try something like "7:30 AM".', 'warning');
+      return;
+    }
+    const iso = parsed.toISOString();
+    if (iso !== workRequest.startTime) applyChange({ startTime: iso });
+  };
+
   const changeScopes = (vals: string[]) => {
     if (vals.length === 0) {
       flash('A work request needs at least one scope.', 'warning');
@@ -523,6 +577,24 @@ export function WorkRequestQuickView({
     applyChange({
       tasks: [...tasks, { id: uuid(), text: t, done: false }],
     });
+  };
+
+  // Web: Enter commits the new task and starts the next one right away (the
+  // editor stays open and focused), so several tasks can be typed in a row;
+  // Shift+Enter makes a plain line break inside the task being typed.
+  const newTaskKeyPress = (e: {
+    nativeEvent: { key?: string; shiftKey?: boolean };
+    shiftKey?: boolean;
+    preventDefault?: () => void;
+  }) => {
+    if (Platform.OS !== 'web') return;
+    const shift = e.nativeEvent.shiftKey ?? e.shiftKey ?? false;
+    if (e.nativeEvent.key !== 'Enter' || shift) return;
+    e.preventDefault?.();
+    const t = draft.trim();
+    if (!t) return;
+    applyChange({ tasks: [...tasks, { id: uuid(), text: t, done: false }] });
+    setDraft('');
   };
 
   const changeReadiness = (value: string) => {
@@ -622,7 +694,12 @@ export function WorkRequestQuickView({
   const confirmStatusChange = () => {
     if (pendingStatus) {
       setWorkRequestStatus(workRequest.id, pendingStatus);
-      flash(`Status changed to "${pendingStatus}"`, 'success');
+      flash(
+        pendingStatus === 'Undefined'
+          ? 'Status reset — installers report it fresh from here.'
+          : `Status changed to "${pendingStatus}"`,
+        'success'
+      );
     }
     setPendingStatus(null);
   };
@@ -774,6 +851,7 @@ export function WorkRequestQuickView({
       jobIds: workRequest.jobIds,
       address: noJob ? workRequest.address.trim() : undefined,
       title: workRequest.title.trim(),
+      startTime: workRequest.startTime,
       scopes,
       tasks: cleanTasks,
       readiness: workRequest.readiness.trim(),
@@ -850,41 +928,50 @@ export function WorkRequestQuickView({
         <View style={styles.header}>
           {creating ? (
             <View style={styles.parentJobPicker}>
-              {!noJob &&
-                (jobOptions.length > 0 || selectedJobIds.length > 0 ? (
-                  <MultiCombobox
-                    values={selectedJobIds}
-                    options={jobOptions}
-                    onChange={changeJobs}
-                    placeholder="Search jobs by PO or name…"
-                  />
-                ) : (
+              {/* Standalone ("No parent job") lives INSIDE the job dropdown —
+                  picked there, it swaps the picker for a removable chip and
+                  opens the address for typing (no job to inherit it from). */}
+              {noJob ? (
+                <View style={styles.noJobChip}>
+                  <Text style={styles.noJobChipText}>
+                    No parent job — standalone work request
+                  </Text>
+                  <Pressable onPress={toggleNoJob} hitSlop={6}>
+                    <Feather name="x" size={13} color={colors.danger} />
+                  </Pressable>
+                </View>
+              ) : jobOptions.length > 0 || selectedJobIds.length > 0 ? (
+                <MultiCombobox
+                  values={selectedJobIds}
+                  options={jobOptions}
+                  onChange={changeJobs}
+                  placeholder="Search jobs by PO or name…"
+                  collapseOnSelect
+                  addLabel="Add related job"
+                  footer={{
+                    label: 'No parent job — standalone work request',
+                    onPress: toggleNoJob,
+                  }}
+                />
+              ) : (
+                <>
                   <Text style={styles.mutedText}>
                     No active jobs available — create one first, or make this a
-                    standalone work request below.
+                    standalone work request.
                   </Text>
-                ))}
-              {/* Standalone: a request that hangs off no job (rarely needed).
-                  The address is typed by hand since there's no job to
-                  inherit it from. */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.noJobToggle,
-                  pressed && styles.pressed,
-                ]}
-                onPress={toggleNoJob}
-              >
-                <Feather
-                  name={noJob ? 'check-square' : 'square'}
-                  size={16}
-                  color={noJob ? colors.primary : colors.textSecondary}
-                />
-                <Text
-                  style={[styles.noJobText, noJob && styles.noJobTextOn]}
-                >
-                  No parent job — standalone work request
-                </Text>
-              </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.noJobInlineBtn,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={toggleNoJob}
+                  >
+                    <Text style={styles.noJobInlineText}>
+                      No parent job — standalone work request
+                    </Text>
+                  </Pressable>
+                </>
+              )}
               {missingAddress && (
                 <View style={styles.prereqWarning}>
                   <Feather
@@ -1115,11 +1202,34 @@ export function WorkRequestQuickView({
               : 'Not Scheduled'}
           </Text>
         </Row>
-        {timeWindow ? (
-          <Row icon="clock">
-            <Text style={styles.mutedText}>{timeWindow}</Text>
-          </Row>
-        ) : null}
+        {/* Arrival time — the time of day the installers must be on site.
+            Optional; when unset the installer view shows no time at all. */}
+        <Row icon="clock" label="Arrival time">
+          {editing === 'arrival' ? (
+            <TextInput
+              style={styles.textEditor}
+              value={draft}
+              onChangeText={setDraft}
+              onBlur={commitArrival}
+              placeholder="e.g. 7:30 AM — leave blank for none"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+            />
+          ) : (
+            <Editable
+              onPress={() =>
+                startEdit(
+                  'arrival',
+                  workRequest.startTime ? formatTime(workRequest.startTime) : ''
+                )
+              }
+            >
+              <Text style={timeWindow ? styles.valueText : styles.placeholderText}>
+                {timeWindow ?? 'Set an arrival time…'}
+              </Text>
+            </Editable>
+          )}
+        </Row>
 
         {/* Parent job's scope counts, "done/total" (installers update the
             done numbers from their work request view). */}
@@ -1147,24 +1257,65 @@ export function WorkRequestQuickView({
             </View>
           ) : (
             <View ref={statusWrapRef}>
-              <Editable
-                onPress={() => {
-                  setStatusMenuOpen((open) => !open);
-                  setPendingStatus(null);
-                }}
-                style={styles.statusEditable}
-              >
-                <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
-                  <Text style={[styles.statusPillText, { color: palette.fg }]}>
-                    {workRequest.status}
-                  </Text>
-                  <Feather
-                    name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
-                    size={13}
-                    color={palette.fg}
-                  />
-                </View>
-              </Editable>
+              <View style={styles.statusLine}>
+                <Editable
+                  onPress={() => {
+                    setStatusMenuOpen((open) => !open);
+                    setPendingStatus(null);
+                  }}
+                  style={styles.statusEditable}
+                >
+                  <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
+                    <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                      {workRequest.status}
+                    </Text>
+                    <Feather
+                      name={statusMenuOpen ? 'chevron-up' : 'chevron-down'}
+                      size={13}
+                      color={palette.fg}
+                    />
+                  </View>
+                </Editable>
+                {/* Office-only controls: the status history, and — whenever a
+                    status has been reported — a reset back to 'Undefined' so
+                    the next report starts from a clean slate (the log keeps
+                    everything). */}
+                {officeRole && (
+                  <Pressable
+                    style={({ pressed, hovered }: PressState) => [
+                      styles.statusActionBtn,
+                      statusLogOpen && styles.statusActionBtnOn,
+                      (hovered || pressed) && styles.iconButtonHover,
+                    ]}
+                    onPress={() => {
+                      setStatusMenuOpen(false);
+                      setStatusLogOpen((open) => !open);
+                    }}
+                  >
+                    <Feather name="list" size={13} color={colors.textSecondary} />
+                    <Text style={styles.statusActionText}>Status log</Text>
+                  </Pressable>
+                )}
+                {officeRole && workRequest.status !== 'Undefined' && (
+                  <Pressable
+                    style={({ pressed, hovered }: PressState) => [
+                      styles.statusActionBtn,
+                      (hovered || pressed) && styles.iconButtonHover,
+                    ]}
+                    onPress={() => {
+                      setStatusMenuOpen(false);
+                      setPendingStatus('Undefined');
+                    }}
+                  >
+                    <Feather
+                      name="rotate-ccw"
+                      size={13}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.statusActionText}>Reset status</Text>
+                  </Pressable>
+                )}
+              </View>
               {statusMenuOpen && (
                 <View style={styles.menu}>
                   {SELECTABLE_WORK_REQUEST_STATUSES.map((status) => {
@@ -1204,8 +1355,14 @@ export function WorkRequestQuickView({
           )}
           {pendingStatus && (
             <ConfirmBar
-              message={`Change status to “${pendingStatus}”?`}
-              confirmLabel="Change status"
+              message={
+                pendingStatus === 'Undefined'
+                  ? 'Reset the status to “Undefined”? The change is kept in the status log.'
+                  : `Change status to “${pendingStatus}”?`
+              }
+              confirmLabel={
+                pendingStatus === 'Undefined' ? 'Reset status' : 'Change status'
+              }
               onConfirm={confirmStatusChange}
               onCancel={() => setPendingStatus(null)}
             />
@@ -1213,6 +1370,50 @@ export function WorkRequestQuickView({
           {!creating && workRequest.statusNote ? (
             <Text style={styles.statusNoteText}>{workRequest.statusNote}</Text>
           ) : null}
+          {/* The status history: one row per change, newest first — when,
+              who, which status, and the reason / completion detail. */}
+          {!creating && officeRole && statusLogOpen && (
+            <View style={styles.statusLogList}>
+              {statusLogEntries.length === 0 ? (
+                <Text style={styles.statusLogEmpty}>
+                  No status changes yet — installers haven&apos;t reported on
+                  this work request.
+                </Text>
+              ) : (
+                statusLogEntries.map((entry) => {
+                  const entryPalette =
+                    workRequestStatusColors[entry.status] ??
+                    workRequestStatusColors.Undefined;
+                  return (
+                    <View key={entry.id} style={styles.statusLogRow}>
+                      <View
+                        style={[
+                          styles.statusLogDot,
+                          { backgroundColor: entryPalette.fg },
+                        ]}
+                      />
+                      <View style={styles.statusLogBody}>
+                        <Text style={styles.statusLogTitle}>
+                          {entry.status === 'Undefined'
+                            ? 'Reset to Undefined'
+                            : entry.status}
+                          <Text style={styles.statusLogMeta}>
+                            {'  —  '}
+                            {workerName(entry.byId)}
+                            {' · '}
+                            {format(new Date(entry.at), 'MMM d, yyyy, h:mm a')}
+                          </Text>
+                        </Text>
+                        {entry.note ? (
+                          <Text style={styles.statusLogNote}>{entry.note}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
           <StatusChangeModal
             status={pendingNoteStatus}
             workRequestTitle={workRequest.title}
@@ -1347,6 +1548,7 @@ export function WorkRequestQuickView({
                 value={draft}
                 onChangeText={setDraft}
                 onBlur={commitNewTask}
+                onKeyPress={newTaskKeyPress}
                 placeholder="Describe a task for the installers…"
                 placeholderTextColor={colors.textTertiary}
                 autoFocus
@@ -1424,6 +1626,9 @@ export function WorkRequestQuickView({
                     }
                   }
                   onChange={changePriority}
+                  // "Set priority…" already meant "pick one" — skip the
+                  // second click on the trigger and open the choices now.
+                  autoOpen={!workRequest.priority}
                 />
               ) : (
                 <Editable
@@ -1911,22 +2116,36 @@ const styles = themed(() => StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  noJobToggle: {
+  // Standalone-request chip: shown in place of the job picker once "No parent
+  // job" is picked from the dropdown; the × puts the picker back. Quiet red —
+  // it's an unusual choice, not an error.
+  noJobChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+  },
+  noJobChipText: {
+    color: colors.danger,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  // Fallback standalone button when there are no active jobs to pick from
+  // (the dropdown — and its footer — never renders then).
+  noJobInlineBtn: {
+    alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
-  noJobText: {
-    color: colors.textSecondary,
+  noJobInlineText: {
+    color: colors.danger,
     fontFamily: fonts.medium,
     fontSize: 12,
-  },
-  noJobTextOn: {
-    color: colors.primary,
-    fontFamily: fonts.semiBold,
   },
   prereqWarning: {
     flexDirection: 'row',
@@ -2103,6 +2322,79 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     marginTop: spacing.xs,
+  },
+  // The status pill with its office-side controls (log / reset) on one line.
+  statusLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  statusActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+  },
+  statusActionBtnOn: {
+    backgroundColor: colors.surfaceLight,
+  },
+  statusActionText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  statusLogList: {
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginTop: spacing.xs,
+  },
+  statusLogEmpty: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  statusLogRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  statusLogDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radii.pill,
+    marginTop: 5,
+  },
+  statusLogBody: {
+    flex: 1,
+    gap: 1,
+  },
+  statusLogTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  statusLogMeta: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  statusLogNote: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 17,
   },
   menu: {
     backgroundColor: colors.surfaceLight,
