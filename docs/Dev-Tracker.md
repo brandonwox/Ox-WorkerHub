@@ -4,6 +4,10 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+job scopes should be editable ( when the user clicks the edit button in the top right of the job details sidebar the scopes should be adjustable so scopes can be removed or added.) (Don't forget that any job with a scope also needs the specific counts for done / total for that scope.)
+
+manage crews popup: the foreman section on each crew shows every installer on the crew. can you change it so it just shows one person, and is a dropdown selector, rather than showing every person.
+
 when on web -> creating a task in a work request -> pressing enter should create the task, pressing shift + enter should start a new line
 
 when creating or editing work requests, the user should be able to set or change the time during the day that the installers need to arrive at. I believe there is already a variable for this, but it is not able to be set or edited currently. (If it is not set, it should not display in the work request for installers.)

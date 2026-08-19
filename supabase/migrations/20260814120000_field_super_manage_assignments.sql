@@ -17,6 +17,10 @@
 drop policy if exists job_field_supers_write_office on public.job_field_supers;
 drop policy if exists job_field_supers_self_assign on public.job_field_supers;
 drop policy if exists job_field_supers_self_unassign on public.job_field_supers;
+-- Self-drop makes this migration safely re-runnable (it originally shipped
+-- under a version stamp that collided with 20260813120000_job_archive and had
+-- to be renumbered — the content may or may not already be applied).
+drop policy if exists job_field_supers_write on public.job_field_supers;
 
 create policy job_field_supers_write on public.job_field_supers
   for all to authenticated

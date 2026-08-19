@@ -136,7 +136,14 @@ export function PrioritySelect({ value, onChange }: Props) {
             value={value.startDate}
             onChange={setStart}
           />
-          <DateField label="End" value={value.endDate} onChange={setEnd} />
+          {/* Right-aligned: the End field sits at the form's right edge, so a
+              left-aligned picker (252px wide) ran off the screen. */}
+          <DateField
+            label="End"
+            value={value.endDate}
+            onChange={setEnd}
+            align="right"
+          />
         </View>
       )}
     </View>
@@ -150,11 +157,14 @@ function DateField({
   label,
   value,
   onChange,
+  align = 'left',
 }: {
   label: string;
   /** yyyy-MM-dd, or '' when unset. */
   value: string;
   onChange: (date: string) => void;
+  /** Which field edge the picker hugs — 'right' keeps it on-screen for the End field. */
+  align?: 'left' | 'right';
 }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() =>
@@ -190,7 +200,7 @@ function DateField({
         open={open}
         onClose={() => setOpen(false)}
         minWidth={252}
-        align="left"
+        align={align}
       >
         <View style={styles.picker}>
           <View style={styles.pickerHeader}>
