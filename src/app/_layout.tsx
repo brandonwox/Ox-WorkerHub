@@ -116,9 +116,14 @@ export default function RootLayout() {
               transparentModal (not 'modal'): the iOS pageSheet dims/scales the
               page behind it, and the tracker wants the page visible undimmed —
               so the screen draws its own sheet card over a transparent
-              backdrop. */}
+              backdrop.
+              dangerouslySingular (here and on job-site below): one live
+              instance per id — revisiting a page already in the stack moves
+              it to the top instead of pushing a duplicate, so bouncing
+              job ↔ sub-job ↔ work request can't grow the stack unboundedly. */}
           <Stack.Screen
             name="work-request/[id]"
+            dangerouslySingular
             options={{
               presentation: 'transparentModal',
               animation: 'slide_from_bottom',
@@ -129,7 +134,7 @@ export default function RootLayout() {
           {/* A parent Job's page (cover photo + jobsite info + photo wall),
               opened from the installer Jobs tab. Renders its own X close
               button — no nav header. */}
-          <Stack.Screen name="job-site/[id]" />
+          <Stack.Screen name="job-site/[id]" dangerouslySingular />
           {/* Full-screen in-app camera (native only). */}
           <Stack.Screen
             name="camera/[jobId]"

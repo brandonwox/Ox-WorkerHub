@@ -166,6 +166,13 @@ export default function JobSiteScreen() {
     else router.replace(Platform.OS === 'web' ? '/installer-pics' : '/pics');
   };
 
+  // Escape hatch out of a deep job → sub-job → work request trail: pop the
+  // whole detail stack back to the tabs in one tap.
+  const goHome = () => {
+    if (router.canDismiss()) router.dismissAll();
+    else close();
+  };
+
   if (!job) {
     return (
       <View style={[styles.screen, styles.center]}>
@@ -289,6 +296,14 @@ export default function JobSiteScreen() {
             onPress={close}
           >
             <Feather name="x" size={26} color={colors.textPrimary} />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [pressed && styles.pressed]}
+            hitSlop={12}
+            onPress={goHome}
+            accessibilityLabel="Back to the main tabs"
+          >
+            <Feather name="home" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>
 
@@ -876,6 +891,7 @@ const styles = themed(() => StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   coverWrap: {
     alignSelf: 'center',

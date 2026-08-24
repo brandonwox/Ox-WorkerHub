@@ -263,13 +263,28 @@ export default function JobDetailsScreen() {
         scrollEventThrottle={16}
       >
         <View style={styles.topRow}>
-          <Pressable
-            style={({ pressed }) => [pressed && styles.closePressed]}
-            hitSlop={12}
-            onPress={() => router.back()}
-          >
-            <Feather name="x" size={28} color={colors.textPrimary} />
-          </Pressable>
+          <View style={styles.topRowLeft}>
+            <Pressable
+              style={({ pressed }) => [pressed && styles.closePressed]}
+              hitSlop={12}
+              onPress={() => router.back()}
+            >
+              <Feather name="x" size={28} color={colors.textPrimary} />
+            </Pressable>
+            {/* Escape hatch out of a deep job → sub-job → work request
+                trail: pop the whole detail stack back to the tabs. */}
+            <Pressable
+              style={({ pressed }) => [pressed && styles.closePressed]}
+              hitSlop={12}
+              onPress={() => {
+                if (router.canDismiss()) router.dismissAll();
+                else router.back();
+              }}
+              accessibilityLabel="Back to the main tabs"
+            >
+              <Feather name="home" size={22} color={colors.textPrimary} />
+            </Pressable>
+          </View>
           <View ref={statusWrapRef} style={styles.statusWrap}>
             <Pressable
               style={[styles.statusPill, { backgroundColor: palette.bg }]}
@@ -906,6 +921,11 @@ const styles = themed(() => StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: -spacing.sm,
     zIndex: 10,
+  },
+  topRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
   },
   closePressed: {
     opacity: 0.6,
