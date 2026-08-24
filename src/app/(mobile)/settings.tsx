@@ -28,7 +28,7 @@ export default function SettingsScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.heading}>Settings</Text>
 
-          <SettingsContent />
+          <SettingsContent personalInfoSubPage />
 
           <DevRoleSwitcher variant="card" />
           <AuthControl variant="card" />

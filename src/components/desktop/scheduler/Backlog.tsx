@@ -79,12 +79,13 @@ export function Backlog({
     const selected = placingCardId === card.id;
     return (
       // Draggable: schedulers can drag a request straight onto a calendar day
-      // instead of the Schedule-then-click flow. The buttons inside still win
-      // the touch, so Open/Schedule keep working.
+      // instead of the Schedule-then-click flow. A plain click (no drag)
+      // opens the request; the Schedule button inside still wins the touch.
       <DragSource
         key={card.id}
         item={{ kind: 'request', id: card.id }}
         ghost={{ title: card.title, color: effectivePriority(card).color }}
+        onPress={() => onOpenCard(card)}
         style={[
           styles.card,
           selected && styles.cardSelected,
@@ -109,18 +110,8 @@ export function Backlog({
           </Text>
         ) : null}
 
-        <View style={styles.cardActions}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionBtn,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => onOpenCard(card)}
-          >
-            <Feather name="edit-2" size={10} color={colors.textPrimary} />
-            <Text style={styles.actionText}>Open</Text>
-          </Pressable>
-          {canSchedule && (
+        {canSchedule && (
+          <View style={styles.cardActions}>
             <Pressable
               style={({ pressed }) => [
                 styles.actionBtn,
@@ -171,8 +162,8 @@ export function Backlog({
                 )}
               </Text>
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
       </DragSource>
     );
   };
@@ -196,8 +187,8 @@ export function Backlog({
       </View>
       <Text style={styles.hint}>
         {canSchedule
-          ? 'Open a request to view details, or Schedule it onto the calendar.'
-          : 'Open a request to view or edit its details.'}
+          ? 'Click a request to view details, or Schedule it onto the calendar.'
+          : 'Click a request to view or edit its details.'}
       </Text>
 
       <ScrollView contentContainerStyle={styles.list}>
