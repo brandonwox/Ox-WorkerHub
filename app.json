@@ -9,7 +9,6 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#1C1C1C",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.oxglass.workerhub",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
