@@ -38,6 +38,7 @@ import {
   JobDocumentType,
   JobIssue,
   JobPhoto,
+  JobPhotoType,
   JobScope,
   JobStatus,
   NotificationType,
@@ -396,6 +397,8 @@ const OUTBOX_EXECUTORS = {
     backend.updateJobPhotoNote(p.id, p.note),
   updateJobPhotoSgd: (p: { id: string; sgdVideo: boolean }) =>
     backend.updateJobPhotoSgd(p.id, p.sgdVideo),
+  updateJobPhotoType: (p: { id: string; photoType?: JobPhotoType }) =>
+    backend.updateJobPhotoType(p.id, p.photoType),
   deleteJobPhoto: (p: { id: string; storagePath: string }) =>
     backend.deleteJobPhoto(p.id, p.storagePath),
   insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
@@ -1065,6 +1068,8 @@ interface AppState {
   setJobPhotoNote: (id: string, note: string) => void;
   /** Tag/untag a video as an SGD video (pending or uploaded). Owner-only in the UI. */
   setJobPhotoSgd: (id: string, sgdVideo: boolean) => void;
+  /** Set/clear a photo's type (pending or uploaded). Owner-only in the UI. */
+  setJobPhotoType: (id: string, photoType: JobPhotoType | undefined) => void;
   /** Delete a photo — a queued one locally, an uploaded one from the backend too. */
   deleteJobPhoto: (id: string) => void;
   /** Re-queue failed uploads and kick the queue (also fired by the retry timer). */
@@ -2653,6 +2658,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  setJobPhotoType: (id, photoType) => {
+    // Mirrors setJobPhotoSgd: a still-pending photo carries the type along in
+    // the queue; an uploaded one writes through the outbox.
+    if (get().pendingPhotos.some((p) => p.id === id)) {
+      set((s) => ({
+        pendingPhotos: s.pendingPhotos.map((p) =>
+          p.id === id ? { ...p, photoType } : p
+        ),
+      }));
+      persistPendingPhotos(get().pendingPhotos);
+      return;
+    }
+    let found = false;
+    set((s) => ({
+      jobPhotos: s.jobPhotos.map((p) => {
+        if (p.id !== id) return p;
+        found = true;
+        return { ...p, photoType };
+      }),
+    }));
+    if (backendActive(get()) && found) {
+      // A toggled chip — the UI already shows it; no pill.
+      write(
+        'updateJobPhotoType',
+        { id, photoType },
+        { map: 'photoNote', id },
+        { silent: true }
+      );
+    }
+  },
+
   deleteJobPhoto: (id) => {
     const state = get();
     const pending = state.pendingPhotos.find((p) => p.id === id);
@@ -3245,6 +3281,7 @@ async function processPhotoQueue(): Promise<void> {
           takenAt: current.takenAt,
           isVideo: current.isVideo,
           sgdVideo: current.sgdVideo,
+          photoType: current.photoType,
         };
         await backend.insertJobPhoto(photo);
         useAppStore.setState((s) => ({

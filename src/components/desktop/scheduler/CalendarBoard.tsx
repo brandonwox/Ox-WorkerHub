@@ -20,7 +20,10 @@ import {
 } from 'react-native';
 
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
-import { WorkRequestQuickView } from '@/components/desktop/WorkRequestQuickView';
+import {
+  NewWorkRequestInput,
+  WorkRequestQuickView,
+} from '@/components/desktop/WorkRequestQuickView';
 import { Backlog } from '@/components/desktop/scheduler/Backlog';
 import { BacklogCalendar } from '@/components/desktop/scheduler/BacklogCalendar';
 import { DaySidebar } from '@/components/desktop/scheduler/DaySidebar';
@@ -32,12 +35,18 @@ import {
 } from '@/components/desktop/scheduler/DragBoard';
 import { ManageCrewsModal } from '@/components/desktop/scheduler/ManageCrewsModal';
 import { MonthCalendar } from '@/components/desktop/scheduler/MonthCalendar';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import {
+  jobsForFieldSuper,
+  useAppStore,
+  useCurrentRole,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 import { buildDayItems } from '@/utils/daySchedule';
-import { activeWorkRequests } from '@/utils/jobArchive';
+import { activeJobs, activeWorkRequests } from '@/utils/jobArchive';
+import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
 interface Props {
@@ -99,9 +108,11 @@ export function CalendarBoard({
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
+  const addWorkRequest = useAppStore((s) => s.addWorkRequest);
   const reorderDaySchedule = useAppStore((s) => s.reorderDaySchedule);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
+  const me = useCurrentWorker();
 
   // Crews toggled OFF in the calendar view. Empty = every crew is visible, so
   // crews added later show up automatically until the scheduler hides them.
@@ -126,6 +137,14 @@ export function CalendarBoard({
   const [month, setMonth] = useState(() => new Date());
   // The day currently flashing from a "View on calendar" jump (clears itself).
   const [flashDate, setFlashDate] = useState<string | null>(null);
+  // A day cell's hover-＋ was clicked: the creation popup opens with this
+  // target date preset (null = closed). `assign` = it came from the MAIN
+  // calendar, so the created card also schedules onto the active crew(s)
+  // that day (the pool calendar's ＋ just targets the date).
+  const [createTarget, setCreateTarget] = useState<{
+    date: string;
+    assign: boolean;
+  } | null>(null);
   // The card whose chip is blinking from a "Show in calendar" reveal, and the
   // month the pool calendar should jump to for an unscheduled one.
   const [flashCard, setFlashCard] = useState<{
@@ -355,6 +374,41 @@ export function CalendarBoard({
 
   const jobNameFor = (card: WorkRequest) =>
     workRequestJobsLabel(card, jobs) || 'No parent job';
+
+  // Creation scope for the hover-＋ popup: a Field Super creates only within
+  // their own jobs; the Scheduler within every active job.
+  const creationJobs = useMemo(() => {
+    const active = activeJobs(jobs);
+    return role === 'field_super' && me
+      ? jobsForFieldSuper(active, me.id)
+      : active;
+  }, [jobs, role, me]);
+
+  const handleCreate = (input: NewWorkRequestInput) => {
+    const created = addWorkRequest(newWorkRequestPayload(input, jobs));
+    // The main calendar's ＋ also schedules the new card right onto the
+    // clicked day, assigned to the current assign target crew(s).
+    if (createTarget?.assign && canAssign && activeCrews.length > 0) {
+      activeCrews.forEach((c) =>
+        assignWorkRequest(created.id, c.id, createTarget.date)
+      );
+      const names = activeCrews.map((c) => c.name).join(', ');
+      flash(
+        `Work Request "${input.title}" created — assigned to ${names}`,
+        'success'
+      );
+      return;
+    }
+    if (createTarget?.assign && canAssign) {
+      // No assign target picked — the card still exists, just unscheduled.
+      flash(
+        `Work Request "${input.title}" created in the pool — tap a crew to make it the assign target, then schedule it.`,
+        'warning'
+      );
+      return;
+    }
+    flash(`Work Request "${input.title}" created`, 'success');
+  };
 
   // Work Requests = work requests with no assignment row anywhere.
   const unassigned = useMemo(
@@ -633,6 +687,13 @@ export function CalendarBoard({
             canAssign={canAssign}
             crewNameFor={crewTagFor}
             jobNameFor={jobNameFor}
+            // The main calendar's hover-＋ is a Scheduler tool (Field Supers
+            // share this board read-only — they create from the pool calendar).
+            onCreateRequest={
+              canAssign
+                ? (date) => setCreateTarget({ date, assign: true })
+                : undefined
+            }
             flashCard={flashCard}
           />
         </Animated.View>
@@ -666,6 +727,7 @@ export function CalendarBoard({
               focusDate={backlogFocusDate}
               focusNonce={showCardNonce}
               flashCard={flashCard}
+              onCreateRequest={(date) => setCreateTarget({ date, assign: false })}
             />
           ) : (
             <Backlog
@@ -704,6 +766,20 @@ export function CalendarBoard({
         onDelete={handleDelete}
         onOpenJob={setViewingJobId}
       />
+
+      {/* A day cell's hover-＋: the creation popup with that day preset as
+          the draft's target date. */}
+      {createTarget != null && (
+        <WorkRequestQuickView
+          creating
+          initialDate={createTarget.date}
+          workRequestId={null}
+          jobs={creationJobs}
+          onClose={() => setCreateTarget(null)}
+          onDelete={() => {}}
+          onCreate={handleCreate}
+        />
+      )}
 
       {/* The popup's parent-job link opens the job dashboard over it (its own
           Modal stacks above the popup's); back returns to the work request. */}

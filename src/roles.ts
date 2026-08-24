@@ -152,7 +152,7 @@ export interface MobileNavItem {
 export const MOBILE_NAV: Record<AppRole, MobileNavItem[]> = {
   installer: [
     { name: 'timesheets', label: 'Timesheets', icon: 'file-text' },
-    { name: 'index', label: 'Calendar', icon: 'calendar' },
+    { name: 'index', label: 'Schedule', icon: 'calendar' },
     // The former "Pics" tab — now the installer's job dashboard (route file
     // stays pics.tsx; the field_super already owns the 'jobs' tab name).
     { name: 'pics', label: 'Jobs', icon: 'briefcase' },

@@ -73,6 +73,11 @@ export interface NewWorkRequestInput {
   jobIds?: string[];
   /** Hand-typed jobsite address — standalone requests only (no job to inherit from). */
   address?: string;
+  /**
+   * Target date (yyyy-MM-dd) — preset by the calendars' hover-＋ creation.
+   * Unset = today.
+   */
+  date?: string;
   title: string;
   /** Time of day the installers must arrive (ISO datetime), when it matters. */
   startTime?: string;
@@ -138,6 +143,11 @@ interface Props {
    * Request" button) — the picker still allows adding family members.
    */
   initialJobId?: string;
+  /**
+   * Pre-set the create draft's target date (yyyy-MM-dd) — the calendars'
+   * hover-＋ "create a work request on this day".
+   */
+  initialDate?: string;
   /** Jobs in the viewer's scope — parent-job options and lookups. */
   jobs: Job[];
   /**
@@ -181,6 +191,7 @@ export function WorkRequestQuickView({
   workRequestId,
   creating = false,
   initialJobId,
+  initialDate,
   jobs,
   variant = 'popup',
   popupShifted = false,
@@ -298,6 +309,8 @@ export function WorkRequestQuickView({
         seed.address = initialJob.location ?? '';
       }
     }
+    // The calendars' hover-＋ creation targets a specific day.
+    if (creating && initialDate) seed.date = initialDate;
     setDraftCard(seed);
     setCreateError(null);
     setEditing(null);
@@ -315,7 +328,7 @@ export function WorkRequestQuickView({
     // `jobs` is deliberately not a dep — a background refresh must not wipe an
     // in-progress draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workRequestId, creating, initialJobId]);
+  }, [workRequestId, creating, initialJobId, initialDate]);
 
   // An armed delete disarms itself after 4s if the second click never comes.
   useEffect(() => {
@@ -853,6 +866,7 @@ export function WorkRequestQuickView({
       jobId: parentJob?.id,
       jobIds: workRequest.jobIds,
       address: noJob ? workRequest.address.trim() : undefined,
+      date: workRequest.date || undefined,
       title: workRequest.title.trim(),
       startTime: workRequest.startTime,
       scopes,
@@ -1214,20 +1228,26 @@ export function WorkRequestQuickView({
         </Row>
         <Row icon="calendar">
           <Text style={styles.mutedText}>
-            {scheduledRange
-              ? scheduledRange.start === scheduledRange.end
-                ? format(
-                    parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
-                    'EEEE, MMMM d'
-                  )
-                : `${format(
-                    parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
-                    'MMMM d'
-                  )} – ${format(
-                    parse(scheduledRange.end, 'yyyy-MM-dd', new Date()),
-                    'MMMM d'
-                  )}`
-              : 'Not Scheduled'}
+            {creating && workRequest.date
+              ? // The hover-＋ creation preset a target date — show it.
+                `Target date · ${format(
+                  parse(workRequest.date, 'yyyy-MM-dd', new Date()),
+                  'EEEE, MMMM d'
+                )}`
+              : scheduledRange
+                ? scheduledRange.start === scheduledRange.end
+                  ? format(
+                      parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
+                      'EEEE, MMMM d'
+                    )
+                  : `${format(
+                      parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
+                      'MMMM d'
+                    )} – ${format(
+                      parse(scheduledRange.end, 'yyyy-MM-dd', new Date()),
+                      'MMMM d'
+                    )}`
+                : 'Not Scheduled'}
           </Text>
         </Row>
         {/* Arrival time — the time of day the installers must be on site.

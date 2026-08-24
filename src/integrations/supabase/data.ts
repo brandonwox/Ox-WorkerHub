@@ -17,6 +17,7 @@ import {
   JobIssue,
   JobIssueStatus,
   JobPhoto,
+  JobPhotoType,
   JobScope,
   JobStatus,
   ScheduleAssignment,
@@ -171,6 +172,7 @@ interface JobPhotoRow {
   taken_at: string;
   is_video: boolean | null;
   sgd_video: boolean | null;
+  photo_type: string | null;
 }
 
 interface JobIssueRow {
@@ -371,6 +373,7 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
     takenAt: r.taken_at,
     isVideo: r.is_video || undefined,
     sgdVideo: r.sgd_video || undefined,
+    photoType: (r.photo_type as JobPhotoType | null) ?? undefined,
   };
 }
 
@@ -1021,7 +1024,23 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
         taken_at: photo.takenAt,
         is_video: photo.isVideo ?? false,
         sgd_video: photo.sgdVideo ?? false,
+        photo_type: photo.photoType ?? null,
       })
+    ).error
+  );
+}
+
+/** Set/clear an uploaded photo's type (Window, SGD, …; owner-only per RLS). */
+export async function updateJobPhotoType(
+  id: string,
+  photoType: JobPhotoType | undefined
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_photos')
+        .update({ photo_type: photoType ?? null })
+        .eq('id', id)
     ).error
   );
 }

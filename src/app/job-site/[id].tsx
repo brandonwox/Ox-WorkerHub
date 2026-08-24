@@ -194,14 +194,17 @@ export default function JobSiteScreen() {
     }, 700);
   };
 
-  const openInMaps = () => {
+  // Universal links — each opens the matching app when installed (no
+  // canOpenURL scheme querying needed, which Expo Go can't do anyway). Same
+  // menu as the work request page.
+  const openMapsApp = (app: 'apple' | 'google' | 'waze') => {
     const q = encodeURIComponent(job.location);
     const url =
-      Platform.OS === 'ios'
+      app === 'apple'
         ? `http://maps.apple.com/?q=${q}`
-        : Platform.OS === 'android'
-          ? `geo:0,0?q=${q}`
-          : `https://www.google.com/maps/search/?api=1&query=${q}`;
+        : app === 'google'
+          ? `https://www.google.com/maps/search/?api=1&query=${q}`
+          : `https://waze.com/ul?q=${q}&navigate=yes`;
     void Linking.openURL(url);
     setMapsOpen(false);
   };
@@ -770,7 +773,9 @@ export default function JobSiteScreen() {
         </View>
       </Modal>
 
-      {/* Location popup: copy the address, or open it in the maps app. */}
+      {/* Maps menu: open the jobsite address in an installed maps app, or
+          copy it. Waze/Apple Maps are native-only offerings; web keeps
+          Google Maps + copy. Same options as the work request page. */}
       <Modal
         visible={mapsOpen}
         transparent
@@ -784,6 +789,40 @@ export default function JobSiteScreen() {
           />
           <View style={styles.mapsCard}>
             <Text style={styles.mapsAddress}>{job.location}</Text>
+            {Platform.OS === 'ios' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.mapsButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => openMapsApp('apple')}
+              >
+                <Feather name="map" size={15} color={colors.primary} />
+                <Text style={styles.mapsButtonText}>Apple Maps</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.mapsButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => openMapsApp('google')}
+            >
+              <Feather name="map-pin" size={15} color={colors.primary} />
+              <Text style={styles.mapsButtonText}>Google Maps</Text>
+            </Pressable>
+            {Platform.OS !== 'web' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.mapsButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => openMapsApp('waze')}
+              >
+                <Feather name="navigation" size={15} color={colors.primary} />
+                <Text style={styles.mapsButtonText}>Waze</Text>
+              </Pressable>
+            )}
             <Pressable
               style={({ pressed }) => [
                 styles.mapsButton,
@@ -797,20 +836,7 @@ export default function JobSiteScreen() {
                 color={colors.primary}
               />
               <Text style={styles.mapsButtonText}>
-                {copied ? 'Copied' : 'Copy'}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.mapsButton,
-                styles.mapsButtonPrimary,
-                pressed && styles.pressed,
-              ]}
-              onPress={openInMaps}
-            >
-              <Feather name="map" size={15} color={colors.textOnAccent} />
-              <Text style={styles.mapsButtonPrimaryText}>
-                {Platform.OS === 'web' ? 'Open in Google Maps' : 'Open in Maps'}
+                {copied ? 'Copied' : 'Copy address'}
               </Text>
             </Pressable>
           </View>
@@ -1201,14 +1227,6 @@ const styles = themed(() => StyleSheet.create({
   },
   mapsButtonText: {
     color: colors.primary,
-    fontFamily: fonts.bold,
-    fontSize: 14,
-  },
-  mapsButtonPrimary: {
-    backgroundColor: colors.primary,
-  },
-  mapsButtonPrimaryText: {
-    color: colors.textOnAccent,
     fontFamily: fonts.bold,
     fontSize: 14,
   },

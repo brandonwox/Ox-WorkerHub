@@ -344,6 +344,13 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   );
 }
 
+// The note input grows with its content, one line at a time, up to 6 lines
+// (it scrolls internally past that).
+const NOTE_LINE_HEIGHT = 20;
+const NOTE_PAD_V = spacing.sm;
+const NOTE_MIN_HEIGHT = NOTE_LINE_HEIGHT + NOTE_PAD_V * 2;
+const NOTE_MAX_HEIGHT = NOTE_LINE_HEIGHT * 6 + NOTE_PAD_V * 2;
+
 /**
  * The photographer's editable caption; commits on blur/submit — and on unmount
  * (closing the viewer or swiping to the next photo re-keys this input before
@@ -357,6 +364,7 @@ function NoteInput({
   onCommit: (text: string) => void;
 }) {
   const [text, setText] = useState(note ?? '');
+  const [contentHeight, setContentHeight] = useState(0);
   const latest = useRef({ text, note, onCommit });
   latest.current = { text, note, onCommit };
   useEffect(
@@ -368,14 +376,29 @@ function NoteInput({
   );
   return (
     <TextInput
-      style={styles.noteInput}
+      style={[
+        styles.noteInput,
+        {
+          height: Math.min(
+            NOTE_MAX_HEIGHT,
+            Math.max(NOTE_MIN_HEIGHT, contentHeight + NOTE_PAD_V * 2)
+          ),
+        },
+      ]}
       value={text}
       onChangeText={setText}
       onBlur={() => onCommit(text)}
       onSubmitEditing={() => onCommit(text)}
+      onContentSizeChange={(e) =>
+        setContentHeight(e.nativeEvent.contentSize.height)
+      }
       placeholder="Add a note to this photo…"
       placeholderTextColor={colors.textTertiary}
       returnKeyType="done"
+      // Multiline so long notes wrap and grow the input; the checkmark key
+      // still drops the keyboard instead of line-breaking.
+      multiline
+      submitBehavior="blurAndSubmit"
     />
   );
 }
@@ -493,5 +516,7 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.regular,
     fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'top',
   },
 }));

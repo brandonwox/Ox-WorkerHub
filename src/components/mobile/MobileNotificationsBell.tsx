@@ -5,14 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotificationList } from '@/components/notifications/NotificationList';
 import { useUnreadNotificationCount } from '@/store/useAppStore';
-import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
+import { colors, fonts, radii, spacing, themed } from '@/theme';
 
 /**
  * The phone's notification bell — mobile previously had only the 5-second
  * toasts, so a missed toast was gone until the user opened the web console.
- * A small floating button above the tab bar (bottom-right, clear of every
- * screen's own header actions) carrying the unread badge; tapping it opens a
- * full-screen sheet with the shared {@link NotificationList}.
+ * An icon-only item (no label) inside the tab bar's second island, next to
+ * Settings, carrying the unread badge; tapping it opens a full-screen sheet
+ * with the shared {@link NotificationList}.
  */
 export function MobileNotificationsBell() {
   const unread = useUnreadNotificationCount();
@@ -27,19 +27,27 @@ export function MobileNotificationsBell() {
   return (
     <>
       <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        style={({ pressed }) => [
+          styles.tabButton,
+          pressed && styles.tabPressed,
+        ]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={
           unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'
         }
       >
-        <Feather name="bell" size={20} color={colors.textSecondary} />
-        {unread > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
-          </View>
-        )}
+        {/* The badge anchors to the icon, not the (taller) touch target. */}
+        <View>
+          <Feather name="bell" size={22} color={colors.textSecondary} />
+          {unread > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unread > 99 ? '99+' : unread}
+              </Text>
+            </View>
+          )}
+        </View>
       </Pressable>
 
       <Modal
@@ -67,28 +75,19 @@ export function MobileNotificationsBell() {
 }
 
 const styles = themed(() => StyleSheet.create({
-  fab: {
-    position: 'absolute',
-    // Above the tab bar, clear of list content's bottom padding.
-    bottom: 96,
-    right: spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+  tabButton: {
+    width: 52,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    ...modalShadow,
   },
-  fabPressed: {
-    opacity: 0.8,
+  tabPressed: {
+    opacity: 0.7,
   },
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -6,
+    right: -8,
     minWidth: 18,
     height: 18,
     borderRadius: radii.pill,

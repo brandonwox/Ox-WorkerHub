@@ -20,8 +20,9 @@ export function newWorkRequestPayload(input: NewWorkRequestInput, jobs: Job[]) {
     // Standalone requests carry their hand-typed address; linked ones
     // inherit the primary job's location.
     address: input.jobId ? (parent?.location ?? '') : (input.address ?? ''),
-    // No calendar date at creation — the Scheduler places it later.
-    date: format(new Date(), 'yyyy-MM-dd'),
+    // Target date: the calendars' hover-＋ creation presets a specific day;
+    // everywhere else it defaults to today (the Scheduler places it later).
+    date: input.date ?? format(new Date(), 'yyyy-MM-dd'),
     startTime: input.startTime,
     priority: input.priority,
     priorityStartDate: input.priorityStartDate || undefined,

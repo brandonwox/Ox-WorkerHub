@@ -36,6 +36,9 @@ import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/** RN's Pressable state on web also carries `hovered` (react-native-web). */
+type PressState = { pressed: boolean; hovered?: boolean };
+
 // Multi-day bar geometry: bars overlay the week row at fixed lane slots, and
 // every covered cell reserves the same vertical space so its single-day chips
 // start below the bars.
@@ -79,6 +82,11 @@ interface Props {
   crewNameFor: (crewId: string) => string;
   /** Job label rendered under each chip's title (same as the pool calendar). */
   jobNameFor: (card: WorkRequest) => string;
+  /**
+   * Hovering a day cell shows a bottom ＋ row that creates a work request
+   * targeted at that day. Unset = no ＋ (Field Supers' read-only board).
+   */
+  onCreateRequest?: (date: string) => void;
   /**
    * Blink this card's chips/bars ("Show in calendar"). The nonce keys the
    * animation so repeating the same card replays it.
@@ -134,6 +142,7 @@ export function MonthCalendar({
   canAssign = true,
   crewNameFor,
   jobNameFor,
+  onCreateRequest,
   flashCard,
 }: Props) {
   const monthStart = startOfMonth(month);
@@ -279,6 +288,7 @@ export function MonthCalendar({
               onOpenCard={onOpenCard}
               canUnassign={canUnassign}
               hoveredCol={hoveredCol}
+              onCreateRequest={onCreateRequest}
               flashCard={flashCard}
             />
           ))}
@@ -306,6 +316,7 @@ interface WeekRowProps {
   canUnassign: boolean;
   /** The weekday column the pointer is over anywhere on the calendar (0…6). */
   hoveredCol: number | null;
+  onCreateRequest?: (date: string) => void;
   flashCard?: { id: string; nonce: string } | null;
 }
 
@@ -331,6 +342,7 @@ function WeekRow({
   onOpenCard,
   canUnassign,
   hoveredCol,
+  onCreateRequest,
   flashCard,
 }: WeekRowProps) {
   // Each column's measured x/width within the row. Columns are flex-sized
@@ -436,6 +448,7 @@ function WeekRow({
                 onOpenCard={onOpenCard}
                 canUnassign={canUnassign}
                 topPad={lanesOver(col) * LANE_H}
+                onCreateRequest={onCreateRequest}
                 flashCard={flashCard}
               />
             ) : null}
@@ -467,7 +480,7 @@ function WeekRow({
 }
 
 /** Web-only mouse-hover props (RNW passes them through; native ignores). */
-function hoverProps(setHovered: (on: boolean) => void): object {
+export function hoverProps(setHovered: (on: boolean) => void): object {
   if (Platform.OS !== 'web') return {};
   return {
     onMouseEnter: () => setHovered(true),
@@ -477,7 +490,7 @@ function hoverProps(setHovered: (on: boolean) => void): object {
 
 /**
  * A multi-crew chip/bar's border: equal vertical segments of each crew's
- * color drawn as a 2px ring — slightly thicker than the single-crew 1px
+ * color drawn as a 3px ring — noticeably thicker than the single-crew 1px
  * border so shared cards read at a glance (an absolute color row under an
  * inset of the chip's own background). Render it FIRST inside the chip, with
  * the chip's own border and background made transparent.
@@ -496,7 +509,7 @@ function CrewSplitBorder({
   squareRight?: boolean;
 }) {
   const r = radii.sm;
-  const ri = Math.max(r - 2, 0);
+  const ri = Math.max(r - 3, 0);
   const outer = {
     borderTopLeftRadius: squareLeft ? 0 : r,
     borderBottomLeftRadius: squareLeft ? 0 : r,
@@ -694,6 +707,7 @@ interface DayCellProps {
   canUnassign: boolean;
   /** Vertical space reserved for the week's bars covering this day. */
   topPad: number;
+  onCreateRequest?: (date: string) => void;
   flashCard?: { id: string; nonce: string } | null;
 }
 
@@ -718,9 +732,12 @@ function DayCell({
   onOpenCard,
   canUnassign,
   topPad,
+  onCreateRequest,
   flashCard,
 }: DayCellProps) {
   const board = useDragBoard();
+  // Mouse-hover on the whole cell reveals the bottom create-＋ row.
+  const [cellHovered, setCellHovered] = useState(false);
   const zoneId = `cal:${date}`;
   const { ref, hovered, hoverIndex } = useDropZone(zoneId, {
     type: 'day',
@@ -753,6 +770,7 @@ function DayCell({
         highlight && styles.cellHighlight,
         hovered && styles.cellDropHover,
       ]}
+      {...(onCreateRequest ? hoverProps(setCellHovered) : {})}
     >
       {/* The day-open (or click-to-place) surface is a BACKGROUND layer the
           chips are not children of — so clicking a work request can never
@@ -798,6 +816,23 @@ function DayCell({
             {hoverIndex === lineAfter[i] && !resizing && <DropLine />}
           </Fragment>
         ))}
+
+        {/* Hover-only ＋ row IN the chip stack — right below the last work
+            request (top of the stack when the day is empty). Creates a work
+            request targeted at this day. */}
+        {onCreateRequest && cellHovered && (
+          <Pressable
+            style={({ pressed, hovered: h }: PressState) => [
+              styles.addRequestRow,
+              (h || pressed) && styles.addRequestRowHover,
+            ]}
+            onPress={() => onCreateRequest(date)}
+            accessibilityRole="button"
+            accessibilityLabel={`Create a work request on ${date}`}
+          >
+            <Feather name="plus" size={13} color={colors.textSecondary} />
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -1122,10 +1157,24 @@ const styles = themed(() => StyleSheet.create({
   },
   splitInner: {
     position: 'absolute',
-    top: 2,
-    left: 2,
-    right: 2,
-    bottom: 2,
+    top: 3,
+    left: 3,
+    right: 3,
+    bottom: 3,
+  },
+  // Hover-only ＋ row flowing in the chip stack: creates a work request on
+  // that day.
+  addRequestRow: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addRequestRowHover: {
+    borderColor: colors.primary,
   },
   // Crew letters shown inside a multi-crew chip/bar while hovered.
   placedCrews: {

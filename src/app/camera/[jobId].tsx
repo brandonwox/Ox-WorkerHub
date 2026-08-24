@@ -9,6 +9,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,6 +21,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import {
   CameraZoomControl,
@@ -28,15 +30,24 @@ import {
 } from '@/components/CameraZoomControl';
 import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { VideoPage } from '@/components/photos/VideoPage';
+import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { compressJobPhoto } from '@/lib/photoCapture';
 import { useAppStore } from '@/store/useAppStore';
 // Camera chrome sits over the viewfinder — pinned to the dark palette so it
 // stays dark-styled in light mode too.
 import { darkColors as colors, fonts, radii, spacing, themed } from '@/theme';
+import { JobPhotoType, photoTypesForScopes } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
 
 /** Recording cap — keeps worst-case uploads inside the bucket's size limit. */
 const MAX_VIDEO_SECONDS = 120;
+
+// The expanded view's note input grows with its content, one line at a time,
+// from a 2-line floor to a 6-line ceiling (it scrolls internally past that).
+const NOTE_LINE_HEIGHT = 20;
+const NOTE_PAD_V = spacing.sm + 2;
+const NOTE_MIN_HEIGHT = NOTE_LINE_HEIGHT * 2 + NOTE_PAD_V * 2;
+const NOTE_MAX_HEIGHT = NOTE_LINE_HEIGHT * 6 + NOTE_PAD_V * 2;
 
 /**
  * In-app camera for job photos. Stays open across shots so an installer can
@@ -62,6 +73,7 @@ export default function JobCameraScreen() {
   const setJobPhotoNote = useAppStore((s) => s.setJobPhotoNote);
   const deleteJobPhoto = useAppStore((s) => s.deleteJobPhoto);
   const setJobPhotoSgd = useAppStore((s) => s.setJobPhotoSgd);
+  const setJobPhotoType = useAppStore((s) => s.setJobPhotoType);
 
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -78,13 +90,26 @@ export default function JobCameraScreen() {
   // Every shot taken this session (oldest first); the last one is the
   // thumbnail. Deleting the latest falls back to the one before it.
   const [shots, setShots] = useState<
-    { id: string; uri: string; isVideo?: boolean }[]
+    { id: string; uri: string; isVideo?: boolean; photoType?: JobPhotoType }[]
   >([]);
   const [note, setNote] = useState('');
-  // Tapping the thumbnail expands the latest shot into a popup with delete
-  // (two-tap confirm) and the note input.
-  const [previewOpen, setPreviewOpen] = useState(false);
+  // Tapping the thumbnail expands the session's shots into a swipeable pager
+  // with delete (two-tap confirm), the type chips, and the note input. The
+  // index is which shot is being viewed; null = closed.
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  // The note draft for the shot currently shown in the pager (the bottom-left
+  // quick input's `note` keeps belonging to the LAST shot).
+  const [previewNote, setPreviewNote] = useState('');
+  const [previewNoteHeight, setPreviewNoteHeight] = useState(0);
+  // True while the previewed photo is pinch-zoomed — locks the pager so a drag
+  // pans the photo instead of swiping to a neighbour.
+  const [previewZoomed, setPreviewZoomed] = useState(false);
+  const previewListRef = useRef<FlatList<(typeof shots)[number]>>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Auto-type for the session: when set (via the button under the flip
+  // control), every new capture is tagged with this type.
+  const [defaultType, setDefaultType] = useState<JobPhotoType | null>(null);
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   // "Were any SGD videos taken?" popup shown on leaving a Windows-scope work
   // request's camera when this session recorded videos.
   const [sgdPopupOpen, setSgdPopupOpen] = useState(false);
@@ -92,10 +117,16 @@ export default function JobCameraScreen() {
 
   const lastShot = shots.length > 0 ? shots[shots.length - 1] : null;
   const sessionVideos = shots.filter((s) => s.isVideo);
+  const workRequest = workRequests.find((c) => c.id === workRequestId);
+  // The task this session's photos attach to (opened from a task's camera
+  // button) — its text is shown in the top bar so the taker knows the target.
+  const task = taskId
+    ? workRequest?.tasks?.find((t) => t.id === taskId)
+    : undefined;
   // The SGD question only applies to videos taken FOR a Windows-scope work request.
-  const windowsWorkRequest = !!workRequests
-    .find((c) => c.id === workRequestId)
-    ?.scopes?.includes('Windows');
+  const windowsWorkRequest = !!workRequest?.scopes?.includes('Windows');
+  // Type choices follow the work request's scopes (falling back to the job's).
+  const typeOptions = photoTypesForScopes(workRequest?.scopes ?? job?.scopes);
 
   // The camera is native-only; the job page offers file upload on web instead.
   if (Platform.OS === 'web') {
@@ -156,7 +187,11 @@ export default function JobCameraScreen() {
           stored.pendingPhotos.find((p) => p.id === photoId)?.localUri ??
           stored.jobPhotos.find((p) => p.id === photoId)?.url ??
           compressed;
-        setShots((prev) => [...prev, { id: photoId, uri }]);
+        if (defaultType) setJobPhotoType(photoId, defaultType);
+        setShots((prev) => [
+          ...prev,
+          { id: photoId, uri, photoType: defaultType ?? undefined },
+        ]);
         setNote('');
       }
     } catch (e) {
@@ -194,7 +229,16 @@ export default function JobCameraScreen() {
           stored.pendingPhotos.find((p) => p.id === photoId)?.localUri ??
           stored.jobPhotos.find((p) => p.id === photoId)?.url ??
           video.uri;
-        setShots((prev) => [...prev, { id: photoId, uri, isVideo: true }]);
+        if (defaultType) setJobPhotoType(photoId, defaultType);
+        setShots((prev) => [
+          ...prev,
+          {
+            id: photoId,
+            uri,
+            isVideo: true,
+            photoType: defaultType ?? undefined,
+          },
+        ]);
         setNote('');
       }
     } catch (e) {
@@ -249,34 +293,102 @@ export default function JobCameraScreen() {
     router.back();
   };
 
-  const closePreview = () => {
-    commitNote();
-    setConfirmingDelete(false);
-    setPreviewOpen(false);
+  /** A shot's saved note from the store (pending queue first, then uploaded). */
+  const storedNote = (id: string) => {
+    const stored = useAppStore.getState();
+    return (
+      stored.pendingPhotos.find((p) => p.id === id)?.note ??
+      stored.jobPhotos.find((p) => p.id === id)?.note ??
+      ''
+    );
   };
 
-  const deleteLastShot = () => {
-    if (!lastShot) return;
-    // Two-tap confirm — the first tap arms the button, the second deletes.
+  // Opens the pager on the latest shot. Its draft is the quick input's `note`
+  // (possibly uncommitted), not the store copy.
+  const openPreview = () => {
+    if (shots.length === 0) return;
+    setPreviewNote(note);
+    setPreviewNoteHeight(0);
+    setPreviewZoomed(false);
+    setConfirmingDelete(false);
+    setPreviewIndex(shots.length - 1);
+  };
+
+  // Commit the pager's note draft to the shot at `index`; when that shot is
+  // the latest one, the quick input's state must follow so a later commitNote
+  // can't overwrite this edit with a stale draft.
+  const commitPreviewNote = (index: number, text: string) => {
+    const shot = shots[index];
+    if (!shot) return;
+    setJobPhotoNote(shot.id, text);
+    if (index === shots.length - 1) setNote(text);
+  };
+
+  const onPreviewPageChange = (next: number) => {
+    if (previewIndex == null || next === previewIndex) return;
+    commitPreviewNote(previewIndex, previewNote);
+    const shot = shots[next];
+    // The latest shot's draft lives in `note`; others read the store.
+    setPreviewNote(next === shots.length - 1 ? note : storedNote(shot.id));
+    setPreviewNoteHeight(0);
+    setPreviewZoomed(false);
+    setConfirmingDelete(false);
+    setPreviewIndex(next);
+  };
+
+  const closePreview = () => {
+    if (previewIndex != null) commitPreviewNote(previewIndex, previewNote);
+    setConfirmingDelete(false);
+    setPreviewIndex(null);
+  };
+
+  // Deletes the shot currently shown in the pager (two-tap confirm), then
+  // lands on the nearest remaining neighbour — or closes when none are left.
+  const deletePreviewShot = () => {
+    if (previewIndex == null) return;
+    const shot = shots[previewIndex];
+    if (!shot) return;
     if (!confirmingDelete) {
       setConfirmingDelete(true);
       return;
     }
-    deleteJobPhoto(lastShot.id);
-    const remaining = shots.slice(0, -1);
+    deleteJobPhoto(shot.id);
+    const remaining = shots.filter((_, i) => i !== previewIndex);
     setShots(remaining);
-    // The note input now belongs to the new latest shot — load its saved note.
-    const previous = remaining.length ? remaining[remaining.length - 1] : null;
-    const stored = useAppStore.getState();
-    setNote(
-      previous
-        ? (stored.pendingPhotos.find((p) => p.id === previous.id)?.note ??
-            stored.jobPhotos.find((p) => p.id === previous.id)?.note ??
-            '')
-        : ''
-    );
     setConfirmingDelete(false);
-    setPreviewOpen(false);
+    if (remaining.length === 0) {
+      setNote('');
+      setPreviewIndex(null);
+      return;
+    }
+    const wasLast = previewIndex === shots.length - 1;
+    const nextIndex = Math.min(previewIndex, remaining.length - 1);
+    // The quick input belongs to whichever shot is now latest — reload its
+    // saved note when the old latest was the one deleted.
+    let lastDraft = note;
+    if (wasLast) {
+      lastDraft = storedNote(remaining[remaining.length - 1].id);
+      setNote(lastDraft);
+    }
+    setPreviewNote(
+      nextIndex === remaining.length - 1
+        ? lastDraft
+        : storedNote(remaining[nextIndex].id)
+    );
+    setPreviewNoteHeight(0);
+    setPreviewIndex(nextIndex);
+    previewListRef.current?.scrollToIndex({ index: nextIndex, animated: false });
+  };
+
+  // Set/clear the type on the shot at `index` (store + the local session list
+  // the chips render from).
+  const setShotType = (index: number, type: JobPhotoType | undefined) => {
+    const shot = shots[index];
+    if (!shot) return;
+    setJobPhotoType(shot.id, type);
+    setShots((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, photoType: type } : s))
+    );
   };
 
   // Zoom only applies to the back camera; the front lens stays at 1x.
@@ -307,23 +419,64 @@ export default function JobCameraScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         pointerEvents="box-none"
       >
-        {/* Top bar: close, job name, flip. */}
+        {/* Top bar: close, job (+ task) name, flip with the session auto-type
+            button beneath it. */}
         <View style={styles.topBar}>
           <Pressable style={styles.roundButton} onPress={leave} hitSlop={8}>
             <Feather name="x" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={styles.jobName} numberOfLines={1}>
-            {job ? jobDisplayName(job, jobs) : 'Job photos'}
-          </Text>
-          <Pressable
-            style={styles.roundButton}
-            onPress={() =>
-              setFacing((f) => (f === 'back' ? 'front' : 'back'))
-            }
-            hitSlop={8}
-          >
-            <Feather name="refresh-ccw" size={19} color={colors.textPrimary} />
-          </Pressable>
+          <View style={styles.topCenter}>
+            <Text style={styles.jobName} numberOfLines={1}>
+              {job ? jobDisplayName(job, jobs) : 'Job photos'}
+            </Text>
+            {task && (
+              <Text style={styles.taskName} numberOfLines={1}>
+                Task: {task.text}
+              </Text>
+            )}
+          </View>
+          <View style={styles.topRightColumn}>
+            <Pressable
+              style={styles.roundButton}
+              onPress={() =>
+                setFacing((f) => (f === 'back' ? 'front' : 'back'))
+              }
+              hitSlop={8}
+            >
+              <Feather
+                name="refresh-ccw"
+                size={19}
+                color={colors.textPrimary}
+              />
+            </Pressable>
+            {typeOptions.length > 0 && (
+              <Pressable
+                style={[
+                  styles.typeButton,
+                  defaultType != null && styles.typeButtonActive,
+                ]}
+                onPress={() => setTypeMenuOpen(true)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  defaultType
+                    ? `Auto photo type: ${defaultType}`
+                    : 'Set auto photo type'
+                }
+              >
+                <Feather
+                  name="tag"
+                  size={16}
+                  color={
+                    defaultType ? colors.textOnAccent : colors.textPrimary
+                  }
+                />
+                {defaultType != null && (
+                  <Text style={styles.typeButtonText}>{defaultType}</Text>
+                )}
+              </Pressable>
+            )}
+          </View>
         </View>
 
         <View style={styles.bottomArea}>
@@ -331,7 +484,7 @@ export default function JobCameraScreen() {
               the thumbnail expands it into the preview popup. */}
           {lastShot && (
             <View style={styles.lastShotRow}>
-              <Pressable onPress={() => setPreviewOpen(true)} hitSlop={4}>
+              <Pressable onPress={openPreview} hitSlop={4}>
                 {lastShot.isVideo ? (
                   <View style={[styles.lastShotThumb, styles.videoThumb]}>
                     <Feather
@@ -430,77 +583,223 @@ export default function JobCameraScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Expanded view of the latest shot: delete (confirmed) + note. */}
+      {/* Expanded view of the session's shots: swipe between them; each has
+          delete (confirmed), the type chips, and its note. */}
       <Modal
-        visible={previewOpen && lastShot != null}
+        visible={previewIndex != null && shots.length > 0}
         transparent
         animationType="fade"
         onRequestClose={closePreview}
       >
-        <View style={styles.previewBackdrop}>
-          <KeyboardAvoidingView
-            style={styles.previewFlex}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            {lastShot &&
-              (lastShot.isVideo ? (
-                <View style={styles.previewImage}>
+        {/* RN Modals don't inherit the app root's gesture root — mount our own
+            so pinch-to-zoom works inside the pager. */}
+        <GestureHandlerRootView style={styles.previewFlex}>
+          <View style={styles.previewBackdrop}>
+            <FlatList
+              ref={previewListRef}
+              style={StyleSheet.absoluteFill}
+              data={shots}
+              keyExtractor={(s) => s.id}
+              horizontal
+              pagingEnabled
+              scrollEnabled={!previewZoomed}
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={Math.min(
+                previewIndex ?? 0,
+                shots.length - 1
+              )}
+              getItemLayout={(_, i) => ({
+                length: windowWidth,
+                offset: windowWidth * i,
+                index: i,
+              })}
+              onMomentumScrollEnd={(e) =>
+                onPreviewPageChange(
+                  Math.round(e.nativeEvent.contentOffset.x / windowWidth)
+                )
+              }
+              renderItem={({ item }) =>
+                item.isVideo ? (
                   <VideoPage
-                    uri={lastShot.uri}
+                    uri={item.uri}
                     width={windowWidth}
                     height={windowHeight}
                   />
-                </View>
-              ) : (
-                <Image
-                  source={{ uri: lastShot.uri }}
-                  style={styles.previewImage}
-                  contentFit="contain"
-                />
-              ))}
+                ) : (
+                  <View style={{ width: windowWidth, height: windowHeight }}>
+                    <ZoomableImage
+                      uri={item.uri}
+                      width={windowWidth}
+                      height={windowHeight}
+                      onZoomChange={setPreviewZoomed}
+                    />
+                  </View>
+                )
+              }
+            />
 
-            <View style={styles.previewTopBar}>
-              <Text style={styles.previewCounter}>
-                {lastShot?.isVideo ? 'Video' : 'Photo'} {shots.length} of{' '}
-                {shots.length}
-              </Text>
-              <Pressable
-                style={styles.roundButton}
-                onPress={closePreview}
-                hitSlop={10}
-              >
-                <Feather name="x" size={22} color={colors.textPrimary} />
-              </Pressable>
-            </View>
-
-            <View style={styles.previewBottomBar}>
-              <Pressable
-                style={[
-                  styles.deleteButton,
-                  confirmingDelete && styles.deleteConfirm,
-                ]}
-                onPress={deleteLastShot}
-              >
-                <Feather name="trash-2" size={15} color={colors.danger} />
-                <Text style={styles.deleteText}>
-                  {confirmingDelete ? 'Tap again to delete' : 'Delete photo'}
+            <KeyboardAvoidingView
+              style={styles.previewFlex}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              pointerEvents="box-none"
+            >
+              <View style={styles.previewTopBar}>
+                <Text style={styles.previewCounter}>
+                  {previewIndex != null && shots[previewIndex]?.isVideo
+                    ? 'Video'
+                    : 'Photo'}{' '}
+                  {(previewIndex ?? 0) + 1} of {shots.length}
                 </Text>
-              </Pressable>
-              {/* The keyboard's mic button gives speech-to-text dictation. */}
-              <TextInput
-                style={styles.noteInput}
-                value={note}
-                onChangeText={setNote}
-                onBlur={commitNote}
-                onSubmitEditing={commitNote}
-                placeholder="Note — tap the mic on your keyboard to dictate…"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                multiline
-                inputAccessoryViewID={KEYBOARD_DONE_ID}
-              />
-            </View>
-          </KeyboardAvoidingView>
+                <Pressable
+                  style={styles.roundButton}
+                  onPress={closePreview}
+                  hitSlop={10}
+                >
+                  <Feather name="x" size={22} color={colors.textPrimary} />
+                </Pressable>
+              </View>
+
+              <View style={styles.previewBottomBar}>
+                {/* What the shot shows — tap to tag, tap again to clear. */}
+                {typeOptions.length > 0 && previewIndex != null && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <View style={styles.typeChipRow}>
+                      {typeOptions.map((t) => {
+                        const selected =
+                          shots[previewIndex]?.photoType === t;
+                        return (
+                          <Pressable
+                            key={t}
+                            style={[
+                              styles.typeChip,
+                              selected && styles.typeChipSelected,
+                            ]}
+                            onPress={() =>
+                              setShotType(
+                                previewIndex,
+                                selected ? undefined : t
+                              )
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.typeChipText,
+                                selected && styles.typeChipTextSelected,
+                              ]}
+                            >
+                              {t}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                )}
+                <Pressable
+                  style={[
+                    styles.deleteButton,
+                    confirmingDelete && styles.deleteConfirm,
+                  ]}
+                  onPress={deletePreviewShot}
+                >
+                  <Feather name="trash-2" size={15} color={colors.danger} />
+                  <Text style={styles.deleteText}>
+                    {confirmingDelete ? 'Tap again to delete' : 'Delete photo'}
+                  </Text>
+                </Pressable>
+                {/* The keyboard's mic button gives speech-to-text dictation.
+                    Grows with its content up to 6 lines; the checkmark key
+                    drops the keyboard instead of line-breaking. */}
+                <TextInput
+                  style={[
+                    styles.noteInput,
+                    styles.previewNoteInput,
+                    {
+                      height: Math.min(
+                        NOTE_MAX_HEIGHT,
+                        Math.max(
+                          NOTE_MIN_HEIGHT,
+                          previewNoteHeight + NOTE_PAD_V * 2
+                        )
+                      ),
+                    },
+                  ]}
+                  value={previewNote}
+                  onChangeText={setPreviewNote}
+                  onBlur={() =>
+                    previewIndex != null &&
+                    commitPreviewNote(previewIndex, previewNote)
+                  }
+                  onSubmitEditing={() =>
+                    previewIndex != null &&
+                    commitPreviewNote(previewIndex, previewNote)
+                  }
+                  onContentSizeChange={(e) =>
+                    setPreviewNoteHeight(e.nativeEvent.contentSize.height)
+                  }
+                  placeholder="Note — tap the mic on your keyboard to dictate…"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  submitBehavior="blurAndSubmit"
+                  multiline
+                  inputAccessoryViewID={KEYBOARD_DONE_ID}
+                />
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </GestureHandlerRootView>
+      </Modal>
+
+      {/* Session auto-type menu (the tag button under the flip control). */}
+      <Modal
+        visible={typeMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTypeMenuOpen(false)}
+      >
+        <View style={styles.typeMenuBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setTypeMenuOpen(false)}
+          />
+          <View style={styles.typeMenuCard}>
+            <Text style={styles.typeMenuTitle}>Auto photo type</Text>
+            <Text style={styles.typeMenuHint}>
+              New shots are tagged with this type automatically.
+            </Text>
+            {[null, ...typeOptions].map((t) => {
+              const selected = defaultType === t;
+              return (
+                <Pressable
+                  key={t ?? 'none'}
+                  style={[
+                    styles.typeMenuOption,
+                    selected && styles.typeMenuOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setDefaultType(t);
+                    setTypeMenuOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.typeMenuOptionText,
+                      selected && styles.typeMenuOptionTextSelected,
+                    ]}
+                  >
+                    {t ?? 'No auto type'}
+                  </Text>
+                  {selected && (
+                    <Feather name="check" size={16} color={colors.primary} />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </Modal>
 
@@ -596,7 +895,9 @@ const styles = themed(() => StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Flex-start, not center: the right column (flip + auto-type) grows
+    // downward without pushing the title around.
+    alignItems: 'flex-start',
     gap: spacing.md,
     paddingTop: spacing.xxl + spacing.md,
     paddingHorizontal: spacing.lg,
@@ -606,14 +907,49 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.pill,
     padding: spacing.sm + 2,
   },
-  jobName: {
+  topCenter: {
     flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    // Centers a one-line title against the round buttons beside it.
+    paddingTop: spacing.md,
+  },
+  jobName: {
     textAlign: 'center',
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 14,
     textShadowColor: 'rgba(0, 0, 0, 0.7)',
     textShadowRadius: 4,
+  },
+  taskName: {
+    textAlign: 'center',
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowRadius: 4,
+  },
+  topRightColumn: {
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  typeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.overlay,
+    borderRadius: radii.pill,
+    padding: spacing.sm + 2,
+  },
+  typeButtonActive: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+  },
+  typeButtonText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.bold,
+    fontSize: 12,
   },
   bottomArea: {
     gap: spacing.md,
@@ -698,9 +1034,6 @@ const styles = themed(() => StyleSheet.create({
   previewFlex: {
     flex: 1,
   },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
   previewTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -743,6 +1076,89 @@ const styles = themed(() => StyleSheet.create({
     color: colors.danger,
     fontFamily: fonts.semiBold,
     fontSize: 13,
+  },
+  previewNoteInput: {
+    // The bar's height is driven by the input's explicit (grown) height, so
+    // no flexing here — see NOTE_MIN/MAX_HEIGHT.
+    flex: 0,
+    lineHeight: NOTE_LINE_HEIGHT,
+    paddingVertical: NOTE_PAD_V,
+    textAlignVertical: 'top',
+  },
+  typeChipRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  typeChip: {
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.overlay,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  typeChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  typeChipText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  typeChipTextSelected: {
+    color: colors.textOnAccent,
+  },
+  typeMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'flex-end',
+    paddingTop: 110,
+    paddingRight: spacing.lg,
+  },
+  typeMenuCard: {
+    minWidth: 200,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    gap: 2,
+  },
+  typeMenuTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  typeMenuHint: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  typeMenuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  typeMenuOptionSelected: {
+    backgroundColor: colors.primaryDim,
+  },
+  typeMenuOptionText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  typeMenuOptionTextSelected: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
   },
   shutter: {
     width: 74,

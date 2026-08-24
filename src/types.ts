@@ -316,6 +316,47 @@ export const JOB_SCOPES: JobScope[] = [
 export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Other'];
 
 /**
+ * What a job photo/video shows — picked by the taker in the camera (a session
+ * default via the camera's type button, or per shot from the expanded view).
+ * Optional: untyped photos are fine. Windows-scope work splits into Window +
+ * SGD, matching the job scope counts; every other scope maps to its own type.
+ */
+export type JobPhotoType =
+  | 'Window'
+  | 'SGD'
+  | 'Mirror'
+  | 'Shower'
+  | 'Swing Door'
+  | 'Screen'
+  | 'IGU'
+  | 'Storefront';
+
+/** Photo types offered when the camera's context covers `scope`. */
+export const PHOTO_TYPES_BY_SCOPE: Partial<Record<JobScope, JobPhotoType[]>> = {
+  Windows: ['Window', 'SGD'],
+  Mirrors: ['Mirror'],
+  Showers: ['Shower'],
+  'Swing Doors': ['Swing Door'],
+  Screens: ['Screen'],
+  "IGU's": ['IGU'],
+  Storefront: ['Storefront'],
+};
+
+/**
+ * The photo types selectable for a camera session covering `scopes` (the work
+ * request's, falling back to the job's). Unset/empty scopes (legacy "not
+ * narrowed", or 'Other'-only requests) offer every type.
+ */
+export function photoTypesForScopes(
+  scopes: JobScope[] | undefined
+): JobPhotoType[] {
+  const all = Object.values(PHOTO_TYPES_BY_SCOPE).flat();
+  if (!scopes || scopes.length === 0) return all;
+  const offered = scopes.flatMap((s) => PHOTO_TYPES_BY_SCOPE[s] ?? []);
+  return offered.length > 0 ? offered : all;
+}
+
+/**
  * Preset answers to "is this work request ready for installers?". Only 'Yes'
  * requests enter the schedulers' backlog pool; everything else waits in the
  * "Not ready yet" section. (Legacy values 'Now' / 'Over 2 Weeks' are mapped to
@@ -608,6 +649,8 @@ export interface JobPhoto {
    * Drives the "SGD Videos" filter in the Pictures sections.
    */
   sgdVideo?: boolean;
+  /** What the photo shows (Window, SGD, …) — see {@link JobPhotoType}. */
+  photoType?: JobPhotoType;
 }
 
 /** Upload lifecycle of a photo that hasn't reached the backend yet. */
@@ -637,6 +680,8 @@ export interface PendingJobPhoto {
   isVideo?: boolean;
   /** Tagged as an SGD video before the upload landed (rides along). */
   sgdVideo?: boolean;
+  /** Photo type picked before the upload landed (rides along). */
+  photoType?: JobPhotoType;
 }
 
 // --- Job issues ---------------------------------------------------------------

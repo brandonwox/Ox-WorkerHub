@@ -20,10 +20,10 @@ import {
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
 import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
+import { hoverProps } from '@/components/desktop/scheduler/MonthCalendar';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
-import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -47,6 +47,11 @@ interface Props {
   focusNonce?: string;
   /** Blink this card's chip; the nonce keys the animation for replays. */
   flashCard?: { id: string; nonce: string } | null;
+  /**
+   * Hovering a day cell shows a bottom ＋ row that creates a work request
+   * targeted at that day (Schedulers AND Field Supers).
+   */
+  onCreateRequest?: (date: string) => void;
 }
 
 /**
@@ -68,6 +73,7 @@ export function BacklogCalendar({
   focusDate,
   focusNonce,
   flashCard,
+  onCreateRequest,
 }: Props) {
   const [month, setMonth] = useState(() => new Date());
 
@@ -199,6 +205,7 @@ export function BacklogCalendar({
                         jobNameFor={jobNameFor}
                         onOpenCard={onOpenCard}
                         flashCard={flashCard}
+                        onCreateRequest={onCreateRequest}
                       />
                     ) : null}
                   </View>
@@ -220,6 +227,7 @@ function BacklogDayCell({
   jobNameFor,
   onOpenCard,
   flashCard,
+  onCreateRequest,
 }: {
   date: string;
   today: boolean;
@@ -227,12 +235,15 @@ function BacklogDayCell({
   jobNameFor: (card: WorkRequest) => string;
   onOpenCard: (card: WorkRequest) => void;
   flashCard?: { id: string; nonce: string } | null;
+  onCreateRequest?: (date: string) => void;
 }) {
   const { ref, hovered } = useDropZone(`bcal:${date}`, {
     type: 'backlog-day',
     date,
     priority: 2,
   });
+  // Mouse-hover on the whole cell reveals the bottom create-＋ row.
+  const [cellHovered, setCellHovered] = useState(false);
   return (
     <View
       ref={ref}
@@ -242,6 +253,7 @@ function BacklogDayCell({
         today && styles.cellToday,
         hovered && styles.cellDropHover,
       ]}
+      {...(onCreateRequest ? hoverProps(setCellHovered) : {})}
     >
       <Text style={[styles.dayNum, today && styles.dayNumToday]}>
         {format(parseISO(date), 'd')}
@@ -256,14 +268,9 @@ function BacklogDayCell({
               item={{ kind: 'request', id: card.id }}
               ghost={{ title: card.title, color: accent }}
               onPress={() => onOpenCard(card)}
-              style={[
-                styles.request,
-                {
-                  backgroundColor: withAlpha(accent, 0.14),
-                  borderColor: withAlpha(accent, 0.5),
-                },
-                !ready && styles.requestNotReady,
-              ]}
+              // Neutral gray chip — priority already lives in the left dot;
+              // color belongs to the crew calendar once it's scheduled.
+              style={[styles.request, !ready && styles.requestNotReady]}
             >
               {flashCard?.id === card.id && (
                 <FlashBorder key={flashCard.nonce} />
@@ -295,6 +302,23 @@ function BacklogDayCell({
             </DragSource>
           );
         })}
+
+        {/* Hover-only ＋ row IN the chip stack — right below the last work
+            request (top of the stack when the day is empty). Creates a work
+            request targeted at this day. */}
+        {onCreateRequest && cellHovered && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.addRequestRow,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => onCreateRequest(date)}
+            accessibilityRole="button"
+            accessibilityLabel={`Create a work request on ${date}`}
+          >
+            <Feather name="plus" size={13} color={colors.textSecondary} />
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -458,6 +482,8 @@ const styles = themed(() => StyleSheet.create({
     gap: 5,
     borderRadius: radii.sm,
     borderWidth: 1,
+    backgroundColor: colors.surfaceLight,
+    borderColor: colors.border,
     paddingHorizontal: 5,
     paddingVertical: 3,
   },
@@ -487,6 +513,17 @@ const styles = themed(() => StyleSheet.create({
   },
   requestNotReady: {
     opacity: 0.55,
+  },
+  // Hover-only ＋ row flowing in the chip stack: creates a work request on
+  // that day.
+  addRequestRow: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   // Slashed-calendar stand-in for the priority dot on not-ready requests.
   notReadyIcon: {
