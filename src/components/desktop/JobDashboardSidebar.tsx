@@ -66,15 +66,16 @@ interface Props {
   job: Job | null;
   onClose: () => void;
   /**
-   * Whether the viewer may edit the job's details inline — jobsite address,
-   * PO, flashing material, and the assigned Field Supers (Field Supers and
-   * the Operator; RLS matches). Gates the Edit pencil.
+   * Whether the viewer may edit the job's details inline — name, PO, jobsite
+   * address, flashing material, scopes/counts, builder, and the assigned
+   * Field Supers (Field Supers, Schedulers, and the Operator; RLS matches).
+   * Gates the Edit pencil.
    */
   editable?: boolean;
   /**
    * Whether the viewer may edit ONLY the flashing material (+ its photo) via
-   * the same Edit pencil — Schedulers, whose DB guard allows exactly that.
-   * Defaults to `editable` (full editors already cover it).
+   * the same Edit pencil. Defaults to `editable` (full editors already cover
+   * it) — kept for any future flashing-only role.
    */
   canEditFlashing?: boolean;
   /**
@@ -85,8 +86,7 @@ interface Props {
   canCreateWorkRequests?: boolean;
   /**
    * Whether the viewer may toggle "This job has Sub-Jobs" and create sub-jobs
-   * (schedulers may, despite not being `editable`; RLS matches). Defaults to
-   * `editable`.
+   * (RLS matches). Defaults to `editable`.
    */
   canManageSubJobs?: boolean;
   /**
@@ -166,8 +166,9 @@ export function JobDashboardSidebar({
     defaultSectionFor(job)
   );
   const [resolvedOpen, setResolvedOpen] = useState(false);
-  // Sub-Jobs section: name search + collapse-to-3.
+  // Sub-Jobs section: search (behind the header's search icon) + collapse-to-3.
   const [subJobSearch, setSubJobSearch] = useState('');
+  const [subJobSearchOpen, setSubJobSearchOpen] = useState(false);
   const [subJobsExpanded, setSubJobsExpanded] = useState(false);
   // Edit toggle: address (and flashing) are read-only until this is on.
   const [editMode, setEditMode] = useState(false);
@@ -194,6 +195,7 @@ export function JobDashboardSidebar({
     setSection(defaultSectionFor(job));
     setResolvedOpen(false);
     setSubJobSearch('');
+    setSubJobSearchOpen(false);
     setSubJobsExpanded(false);
     setEditMode(false);
     setCoverModal(null);
@@ -475,6 +477,20 @@ export function JobDashboardSidebar({
           )}
         </View>
 
+        {/* Edit-mode banner — the unmissable "you are editing" signal, paired
+            with the accented Save pill above and the form below. */}
+        {editMode && (
+          <View style={styles.editBanner}>
+            <Feather name="edit-3" size={16} color={colors.primary} />
+            <View style={styles.editBannerText}>
+              <Text style={styles.editBannerTitle}>Editing job details</Text>
+              <Text style={styles.editBannerHint}>
+                Changes save as you go — click “Save changes” when you’re done.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Cover: centered rounded square; tap to view / change. */}
         <Pressable
           style={({ pressed }) => [
@@ -522,56 +538,24 @@ export function JobDashboardSidebar({
               </View>
             )}
           </View>
-          {/* The job's PO, right under the name (smaller than the name) — an
-              inline editor while Edit mode is on. */}
-          {editMode && editable ? (
-            <View style={styles.headerEditRow}>
-              <Feather name="hash" size={14} color={colors.textSecondary} />
-              <PoInput
-                key={`po-${job.id}`}
-                value={job.po ?? ''}
-                onCommit={(po) => {
-                  if (poTaken(po, jobs, job.id)) {
-                    flash(
-                      'That PO is already used by another job — change discarded.',
-                      'warning'
-                    );
-                    return;
-                  }
-                  updateJob(job.id, { po });
-                }}
-              />
-            </View>
-          ) : job.po ? (
-            <Text style={styles.poLine}>{job.po}</Text>
-          ) : null}
-          {/* The one jobsite address: a tappable maps link, or an inline
-              editor while Edit mode is on (no duplicate field below).
-              Flashing-only editors (Schedulers) keep the read-only link. */}
-          {editMode && editable ? (
-            <View style={styles.headerEditRow}>
-              <Feather name="map-pin" size={14} color={colors.textSecondary} />
-              <AddressInput
-                key={`addr-${job.id}`}
-                value={job.location ?? ''}
-                onCommit={(location) => updateJob(job.id, { location })}
-              />
-            </View>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
-              onPress={() => job.location && setMapsOpen(true)}
-              disabled={!job.location}
+          {/* The job's PO, right under the name (smaller than the name). Its
+              editor lives in the edit form below. */}
+          {job.po ? <Text style={styles.poLine}>{job.po}</Text> : null}
+          {/* The one jobsite address: a tappable maps link (edited via the
+              form below — the header keeps displaying the saved value). */}
+          <Pressable
+            style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}
+            onPress={() => job.location && setMapsOpen(true)}
+            disabled={!job.location}
+          >
+            <Feather name="map-pin" size={14} color={colors.textSecondary} />
+            <Text
+              style={[styles.infoValue, job.location && styles.locationText]}
+              numberOfLines={2}
             >
-              <Feather name="map-pin" size={14} color={colors.textSecondary} />
-              <Text
-                style={[styles.infoValue, job.location && styles.locationText]}
-                numberOfLines={2}
-              >
-                {job.location || 'No location set'}
-              </Text>
-            </Pressable>
-          )}
+              {job.location || 'No location set'}
+            </Text>
+          </Pressable>
           <View style={styles.infoRow}>
             <Feather name="user" size={14} color={colors.textSecondary} />
             <Text style={styles.infoValue} numberOfLines={2}>
@@ -623,18 +607,55 @@ export function JobDashboardSidebar({
           <FlashingMaterialBanner job={job} />
         </View>
 
-        {/* Edit mode extras: flashing material (window jobs), the scope
-            counts' done/total numbers, the Builder, the "This job has
-            Sub-Jobs" controls, and Delete (the last two moved here from the
-            old 3-dots menu). The address is edited up in the header. */}
+        {/* The edit form: every editable job-detail field in one labeled,
+            borderless stack — name / PO / address first, then flashing,
+            scopes, counts, Builder, Field Supers, the "This job has
+            Sub-Jobs" controls, and (divider-separated) Archive. */}
         {editMode &&
           ((canEditFlashing && windowsAllowed) ||
             editable ||
             (canManageSubJobs && !job.parentJobId) ||
             canDelete) && (
           <View style={styles.editBlock}>
-            {canEditFlashing && windowsAllowed && (
+            {editable && (
               <>
+                <View style={styles.countPair}>
+                  <Text style={styles.fieldLabel}>Job name</Text>
+                  <NameInput
+                    key={`name-${job.id}`}
+                    value={job.name}
+                    onCommit={(name) => updateJob(job.id, { name })}
+                  />
+                </View>
+                <View style={styles.countPair}>
+                  <Text style={styles.fieldLabel}>PO number</Text>
+                  <PoInput
+                    key={`po-${job.id}`}
+                    value={job.po ?? ''}
+                    onCommit={(po) => {
+                      if (poTaken(po, jobs, job.id)) {
+                        flash(
+                          'That PO is already used by another job — change discarded.',
+                          'warning'
+                        );
+                        return;
+                      }
+                      updateJob(job.id, { po });
+                    }}
+                  />
+                </View>
+                <View style={styles.countPair}>
+                  <Text style={styles.fieldLabel}>Jobsite address</Text>
+                  <AddressInput
+                    key={`addr-${job.id}`}
+                    value={job.location ?? ''}
+                    onCommit={(location) => updateJob(job.id, { location })}
+                  />
+                </View>
+              </>
+            )}
+            {canEditFlashing && windowsAllowed && (
+              <View style={styles.countPair}>
                 <Text style={styles.fieldLabel}>
                   Window Opening Flashing Material
                 </Text>
@@ -648,7 +669,7 @@ export function JobDashboardSidebar({
                   />
                   <FlashingPhotoField job={job} editable />
                 </View>
-              </>
+              </View>
             )}
             {/* Scopes — the trades this job covers. Changing them re-gates
                 the count editors below (and the flashing field) live. */}
@@ -732,6 +753,7 @@ export function JobDashboardSidebar({
                 sub-jobs are called (it drives sub-job naming: "Lot 159"). */}
             {canManageSubJobs && !job.parentJobId && (
               <View style={styles.countPair}>
+                <View style={styles.editDivider} />
                 <Pressable
                   style={({ pressed }) => [
                     styles.optionRow,
@@ -817,18 +839,21 @@ export function JobDashboardSidebar({
                 Recoverable from the jobs pages' Archived section; permanent
                 deletion lives only there. */}
             {canDelete && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.optionRow,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => setOptionsOpen('confirm-delete')}
-              >
-                <Feather name="archive" size={18} color={colors.danger} />
-                <Text style={[styles.optionRowText, styles.optionRowDanger]}>
-                  Archive this {job.parentJobId ? 'Sub-Job' : 'Job'}…
-                </Text>
-              </Pressable>
+              <>
+                <View style={styles.editDivider} />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.archiveRow,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setOptionsOpen('confirm-delete')}
+                >
+                  <Feather name="archive" size={18} color={colors.danger} />
+                  <Text style={[styles.optionRowText, styles.optionRowDanger]}>
+                    Archive this {job.parentJobId ? 'Sub-Job' : 'Job'}…
+                  </Text>
+                </Pressable>
+              </>
             )}
           </View>
         )}
@@ -987,21 +1012,47 @@ export function JobDashboardSidebar({
           <View style={styles.section}>
             <View style={styles.picturesHeader}>
               <Text style={styles.sectionHeader}>Sub-Jobs</Text>
-              {canManageSubJobs && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.uploadButton,
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => setSubJobModalOpen(true)}
-                >
-                  <Feather name="plus" size={13} color={colors.primary} />
-                  <Text style={styles.uploadText}>New Sub-Job</Text>
-                </Pressable>
-              )}
+              <View style={styles.sectionHeaderActions}>
+                {/* The search icon expands/collapses the filter field. */}
+                {subJobs.length > 0 && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.iconButton,
+                      subJobSearchOpen && styles.iconButtonActive,
+                      pressed && styles.pressed,
+                    ]}
+                    hitSlop={6}
+                    onPress={() => {
+                      if (subJobSearchOpen) setSubJobSearch('');
+                      setSubJobSearchOpen(!subJobSearchOpen);
+                    }}
+                  >
+                    <Feather
+                      name={subJobSearchOpen ? 'x' : 'search'}
+                      size={14}
+                      color={
+                        subJobSearchOpen
+                          ? colors.primary
+                          : colors.textSecondary
+                      }
+                    />
+                  </Pressable>
+                )}
+                {canManageSubJobs && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.uploadButton,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setSubJobModalOpen(true)}
+                  >
+                    <Feather name="plus" size={13} color={colors.primary} />
+                    <Text style={styles.uploadText}>New Sub-Job</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
-            {/* Search once the list is long enough to warrant it (name only). */}
-            {subJobs.length > 3 && (
+            {subJobSearchOpen && (
               <View style={styles.searchRow}>
                 <Feather name="search" size={14} color={colors.textTertiary} />
                 <TextInput
@@ -1010,6 +1061,7 @@ export function JobDashboardSidebar({
                   onChangeText={setSubJobSearch}
                   placeholder="Search sub-jobs by name or PO…"
                   placeholderTextColor={colors.textTertiary}
+                  autoFocus
                 />
               </View>
             )}
@@ -1420,6 +1472,33 @@ function AddressInput({
   );
 }
 
+/** Inline editable job name; commits on blur (empty reverts — required). */
+function NameInput({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+}) {
+  const [text, setText] = useState(value);
+  const commit = () => {
+    const trimmed = text.trim();
+    if (trimmed && trimmed !== value) onCommit(trimmed);
+    else if (!trimmed) setText(value);
+  };
+  return (
+    <TextInput
+      style={styles.addressInput}
+      value={text}
+      onChangeText={setText}
+      onBlur={commit}
+      onEndEditing={commit}
+      placeholder="Job name"
+      placeholderTextColor={colors.textTertiary}
+    />
+  );
+}
+
 /** Inline editable PO number; commits on blur (empty clears). */
 function PoInput({
   value,
@@ -1567,11 +1646,28 @@ const styles = themed(() =>
       fontFamily: fonts.semiBold,
       fontSize: 13,
     },
-    headerEditRow: {
+    editBanner: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs + 2,
-      alignSelf: 'stretch',
+      gap: spacing.md,
+      backgroundColor: colors.primaryDim,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+    },
+    editBannerText: {
+      flex: 1,
+      gap: 1,
+    },
+    editBannerTitle: {
+      color: colors.primary,
+      fontFamily: fonts.bold,
+      fontSize: 14,
+    },
+    editBannerHint: {
+      color: colors.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 12,
     },
     searchRow: {
       flexDirection: 'row',
@@ -1724,11 +1820,21 @@ const styles = themed(() =>
       color: colors.primary,
     },
     editBlock: {
-      gap: spacing.xs + 2,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.lg,
-      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    editDivider: {
+      alignSelf: 'stretch',
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: spacing.xs,
+    },
+    archiveRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: colors.dangerDim,
+      borderRadius: radii.md,
+      padding: spacing.md,
     },
     countPair: {
       gap: spacing.xs + 2,
@@ -1909,6 +2015,21 @@ const styles = themed(() =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+    },
+    sectionHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    iconButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.pill,
+      padding: spacing.xs + 1,
+    },
+    iconButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryDim,
     },
     uploadButton: {
       flexDirection: 'row',

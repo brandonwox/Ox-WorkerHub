@@ -209,10 +209,9 @@ export default function SchedulerJobsScreen() {
       <JobDashboardSidebar
         job={selectedJob}
         onClose={() => setSelectedJobId(null)}
-        editable={false}
-        // Schedulers may set the flashing material (their DB guard allows
-        // exactly that) and create work requests from the job's page.
-        canEditFlashing
+        // Schedulers get the same full job-details editing as Field Supers
+        // (the DB guard matches) and create work requests from the job's page.
+        editable
         canCreateWorkRequests
         canManageSubJobs
         canDelete

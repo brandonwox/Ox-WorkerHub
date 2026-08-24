@@ -13,7 +13,7 @@ import {
   ScheduleFilter,
 } from '@/components/desktop/WorkRequestFilters';
 import { WorkRequestRow } from '@/components/desktop/WorkRequestRow';
-import { useAppStore, useCurrentRole } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
@@ -69,7 +69,6 @@ export function WorkRequestsScreen({
   const addWorkRequest = useAppStore((s) => s.addWorkRequest);
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const flash = useAppStore((s) => s.flash);
-  const role = useCurrentRole();
 
   // The right sidebar shows either one work request or the creation draft —
   // opening one closes the other.
@@ -417,11 +416,10 @@ export function WorkRequestsScreen({
         job={jobs.find((j) => j.id === openJobId) ?? null}
         onClose={closeSidebar}
         onBack={() => setOpenJobId(null)}
-        editable={role === 'field_super'}
-        // Only the Scheduler and Field Supers render this screen — both may
-        // manage sub-jobs, delete jobs, edit flashing material, and create
+        // Only the Scheduler and Field Supers render this screen — both get
+        // full job-details editing, manage sub-jobs, delete jobs, and create
         // work requests (RLS matches).
-        canEditFlashing
+        editable
         canCreateWorkRequests
         canManageSubJobs
         canDelete
