@@ -320,6 +320,7 @@ export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Other'];
  * default via the camera's type button, or per shot from the expanded view).
  * Optional: untyped photos are fine. Windows-scope work splits into Window +
  * SGD, matching the job scope counts; every other scope maps to its own type.
+ * 'Completion Photos' (finished work) is scope-independent — always offered.
  */
 export type JobPhotoType =
   | 'Window'
@@ -329,7 +330,8 @@ export type JobPhotoType =
   | 'Swing Door'
   | 'Screen'
   | 'IGU'
-  | 'Storefront';
+  | 'Storefront'
+  | 'Completion Photos';
 
 /** Photo types offered when the camera's context covers `scope`. */
 export const PHOTO_TYPES_BY_SCOPE: Partial<Record<JobScope, JobPhotoType[]>> = {
@@ -345,15 +347,18 @@ export const PHOTO_TYPES_BY_SCOPE: Partial<Record<JobScope, JobPhotoType[]>> = {
 /**
  * The photo types selectable for a camera session covering `scopes` (the work
  * request's, falling back to the job's). Unset/empty scopes (legacy "not
- * narrowed", or 'Other'-only requests) offer every type.
+ * narrowed", or 'Other'-only requests) offer every type. 'Completion Photos'
+ * closes every list regardless of scope.
  */
 export function photoTypesForScopes(
   scopes: JobScope[] | undefined
 ): JobPhotoType[] {
   const all = Object.values(PHOTO_TYPES_BY_SCOPE).flat();
-  if (!scopes || scopes.length === 0) return all;
-  const offered = scopes.flatMap((s) => PHOTO_TYPES_BY_SCOPE[s] ?? []);
-  return offered.length > 0 ? offered : all;
+  const offered =
+    !scopes || scopes.length === 0
+      ? all
+      : scopes.flatMap((s) => PHOTO_TYPES_BY_SCOPE[s] ?? []);
+  return [...(offered.length > 0 ? offered : all), 'Completion Photos'];
 }
 
 /**

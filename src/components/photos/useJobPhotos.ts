@@ -1,7 +1,12 @@
 import { useMemo } from 'react';
 
 import { useAppStore } from '@/store/useAppStore';
-import { JobPhoto, PendingJobPhoto, PendingPhotoState } from '@/types';
+import {
+  JobPhoto,
+  JobPhotoType,
+  PendingJobPhoto,
+  PendingPhotoState,
+} from '@/types';
 
 /**
  * One photo as the grid/viewer render it: an uploaded {@link import('@/types').JobPhoto}
@@ -21,6 +26,7 @@ export interface DisplayPhoto {
   pending?: PendingPhotoState;
   isVideo?: boolean;
   sgdVideo?: boolean;
+  photoType?: JobPhotoType;
 }
 
 function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
@@ -36,6 +42,7 @@ function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
     takenAt: p.takenAt,
     isVideo: p.isVideo,
     sgdVideo: p.sgdVideo,
+    photoType: p.photoType,
   };
 }
 
@@ -53,6 +60,7 @@ function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
     pending: p.state,
     isVideo: p.isVideo,
     sgdVideo: p.sgdVideo,
+    photoType: p.photoType,
   };
 }
 

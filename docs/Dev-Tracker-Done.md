@@ -1,6 +1,10 @@
 # Dev Tracker — DONE
 Completed edits, newest first — moved out of Dev-Tracker.md to keep the working file small. (Agents: when an Awaiting edit from Dev-Tracker.md is implemented, log it at the TOP of this file, same style as the entries below.)
 
+Pass 32 — "Completion Photos" photo type + Pictures filter becomes a dropdown (chat-requested; no DB migration — photo_type is free text by design):
+- COMPLETION PHOTOS TYPE: JobPhotoType gained 'Completion Photos', appended to every photoTypesForScopes result regardless of scope — so both camera selectors (the session auto-type button and the expanded shot view's per-shot chips) always offer it.
+- PICTURES FILTER DROPDOWN (job pages' Pictures section, web sidebar + mobile job-site page): the always-visible chip row is now a single dropdown-style button showing the active filter (filter icon + label + chevron, flips while open); tapping expands the option chips below, picking one collapses them. Defaults to "All"; options are the buckets that actually have photos: work-request scopes, the new "Completion Photos" (photos tagged with that type — DisplayPhoto now carries photoType through both uploaded and pending converters), and "SGD Videos". Hides entirely when there's nothing to filter.
+
 Pass 31 — Multi-day calendar bars show the job name (chat-requested; no DB migration):
 - A multi-day work request's SpanBar on the desktop month calendar now renders the same two-line text block as a single-day chip — title with the job name under it (hover still swaps the job line for the crew letters). The bar grew to fit (BAR_H 21 → 34, lane pitch follows), and the day cells' top padding tracks it automatically.
 
