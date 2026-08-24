@@ -1481,15 +1481,16 @@ export function WorkRequestQuickView({
         <Row icon="tag" label="Scope">
           {editing === 'scopes' ? (
             <View style={styles.scopeEdit}>
+              {/* Opens its dropdown immediately; clicking anywhere outside
+                  (or picking is done) dismisses — no Done link needed. */}
               <MultiCombobox
                 values={scopes}
                 options={scopeOptions}
                 onChange={changeScopes}
                 placeholder="Search scopes…"
+                autoFocus
+                onDismiss={() => setEditing(null)}
               />
-              <Pressable onPress={() => setEditing(null)} hitSlop={6}>
-                <Text style={styles.doneLink}>Done</Text>
-              </Pressable>
             </View>
           ) : (
             <Editable onPress={() => setEditing('scopes')}>
@@ -2556,14 +2557,6 @@ const styles = themed(() => StyleSheet.create({
   },
   scopeEdit: {
     gap: spacing.xs,
-  },
-  doneLink: {
-    color: colors.primary,
-    fontFamily: fonts.semiBold,
-    fontSize: 13,
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
   },
   chipWrap: {
     flexDirection: 'row',

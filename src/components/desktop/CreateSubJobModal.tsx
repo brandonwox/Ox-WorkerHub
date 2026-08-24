@@ -14,10 +14,14 @@ import { FormInput } from '@/components/FormInput';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { JOB_SCOPES, Job, JobScope } from '@/types';
+import { CountTotalField, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { subJobTypeSingular } from '@/utils/jobName';
 import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 
-export interface NewSubJobInput {
+// The count totals ride at the top level so the input can be handed straight
+// to addSubJob (they're Job fields: windowCountTotal, sgdCountTotal, …).
+export interface NewSubJobInput
+  extends Partial<Record<CountTotalField, number>> {
   name: string;
   /** The sub-job's own PO number — required at creation, typed next to the name. */
   po: string;
@@ -53,6 +57,13 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const [location, setLocation] = useState<string | null>(null);
   const [scopes, setScopes] = useState<JobScope[] | null>(null);
   const [flashing, setFlashing] = useState<string | null>(null);
+  // The sub-job's OWN count totals as typed, keyed by their Job field —
+  // deliberately NOT prefilled from the parent (each sub-job carries its own
+  // counts). Kept when a scope is toggled off (only selected scopes' values
+  // are validated/submitted).
+  const [totals, setTotals] = useState<
+    Partial<Record<CountTotalField, string>>
+  >({});
   const [error, setError] = useState<string | null>(null);
   // For the duplicate-PO check (archived jobs included).
   const jobs = useAppStore((s) => s.jobs);
@@ -62,6 +73,12 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const effectiveScopes = scopes ?? parentJob?.scopes ?? [];
   const effectiveFlashing = flashing ?? parentJob?.flashingMaterial ?? '';
 
+  // The count pairs the selected scopes require (Windows carries two: Window
+  // + SGD; Storefront carries none) — same rule as the create-job forms.
+  const countDefs = JOB_COUNT_DEFS.filter((def) =>
+    effectiveScopes.includes(def.scope)
+  );
+
   const reset = () => {
     setName('');
     setPo('');
@@ -69,6 +86,7 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
     setLocation(null);
     setScopes(null);
     setFlashing(null);
+    setTotals({});
     setError(null);
   };
 
@@ -104,6 +122,17 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
       setError(PO_TAKEN_MESSAGE);
       return;
     }
+    // Every selected scope's count total is required (0 is fine — it just has
+    // to be entered deliberately).
+    const countTotals: Partial<Record<CountTotalField, number>> = {};
+    for (const def of countDefs) {
+      const raw = (totals[def.totalField] ?? '').trim();
+      if (!/^\d+$/.test(raw)) {
+        setError(`Enter the ${def.label} total — 0 is fine.`);
+        return;
+      }
+      countTotals[def.totalField] = Number(raw);
+    }
     onSubmit({
       // "159" typed under type "Lots" is stored as "Lot 159".
       name: typePrefix ? `${typePrefix} ${name.trim()}` : name.trim(),
@@ -111,6 +140,7 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
       location: effectiveLocation.trim(),
       scopes: effectiveScopes.length > 0 ? effectiveScopes : undefined,
       flashingMaterial: effectiveFlashing.trim() || undefined,
+      ...countTotals,
     });
     close();
   };
@@ -201,6 +231,37 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
               onChange={(vals) => setScopes(vals as JobScope[])}
               placeholder="Windows, Mirrors, Storefront…"
             />
+            {/* Each selected scope requires the SUB-JOB's own count total up
+                front (the Windows scope carries two — Window + SGD). Never
+                prefilled from the parent. */}
+            {countDefs.length > 0 && (
+              <>
+                <View style={styles.countGrid}>
+                  {countDefs.map((def) => (
+                    <View key={def.totalField} style={styles.countCell}>
+                      <FormInput
+                        label={`${def.label} total`}
+                        value={totals[def.totalField] ?? ''}
+                        onChangeText={(t) =>
+                          setTotals((prev) => ({
+                            ...prev,
+                            [def.totalField]: t,
+                          }))
+                        }
+                        placeholder="0"
+                        keyboardType="number-pad"
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.fieldHint}>
+                  How many of each this sub-job covers — its own numbers, not
+                  the parent&apos;s. Required for the selected scopes (0 is
+                  fine).
+                </Text>
+              </>
+            )}
           </View>
 
           {effectiveScopes.includes('Windows') && (
@@ -274,6 +335,16 @@ const styles = themed(() =>
     },
     field: {
       gap: spacing.xs + 2,
+    },
+    countGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.md,
+      marginTop: spacing.xs,
+    },
+    countCell: {
+      flexGrow: 1,
+      flexBasis: '40%',
     },
     fieldLabel: {
       color: colors.textSecondary,

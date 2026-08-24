@@ -20,7 +20,11 @@ import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useApp
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
-import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
+import {
+  CountTotalField,
+  editableCountDefs,
+  JOB_COUNT_DEFS,
+} from '@/utils/jobCounts';
 import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
@@ -193,26 +197,41 @@ function CreateJobSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (input: {
-    name: string;
-    po: string;
-    location: string;
-    scopes?: JobScope[];
-  }) => void;
+  onSubmit: (
+    input: {
+      name: string;
+      po: string;
+      location: string;
+      builder?: string;
+      scopes?: JobScope[];
+    } & Partial<Record<CountTotalField, number>>
+  ) => void;
 }) {
   const [name, setName] = useState('');
   const [po, setPo] = useState('');
   const [location, setLocation] = useState('');
+  const [builder, setBuilder] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
+  // Count totals as typed, keyed by their Job field — kept when a scope is
+  // toggled off (only selected scopes' values are validated/submitted).
+  const [totals, setTotals] = useState<
+    Partial<Record<CountTotalField, string>>
+  >({});
   const [error, setError] = useState<string | null>(null);
   // For the duplicate-PO check (archived jobs included).
   const allJobs = useAppStore((s) => s.jobs);
+
+  // The count pairs the selected scopes require (Windows carries two: Window
+  // + SGD; Storefront carries none) — same rule as the desktop form.
+  const countDefs = JOB_COUNT_DEFS.filter((def) => scopes.includes(def.scope));
 
   const close = () => {
     setName('');
     setPo('');
     setLocation('');
+    setBuilder('');
     setScopes([]);
+    setTotals({});
     setError(null);
     onClose();
   };
@@ -237,11 +256,24 @@ function CreateJobSheet({
       setError(PO_TAKEN_MESSAGE);
       return;
     }
+    // Every selected scope's count total is required (0 is fine — it just
+    // has to be entered deliberately).
+    const countTotals: Partial<Record<CountTotalField, number>> = {};
+    for (const def of countDefs) {
+      const raw = (totals[def.totalField] ?? '').trim();
+      if (!/^\d+$/.test(raw)) {
+        setError(`Enter the ${def.label} total — 0 is fine.`);
+        return;
+      }
+      countTotals[def.totalField] = Number(raw);
+    }
     onSubmit({
       name: name.trim(),
       po: po.trim(),
       location: location.trim(),
+      builder: builder.trim() || undefined,
       scopes: scopes.length > 0 ? scopes : undefined,
+      ...countTotals,
     });
     close();
   };
@@ -285,6 +317,13 @@ function CreateJobSheet({
             onChangeText={setLocation}
             placeholder="123 Main St, Park City, UT"
           />
+          <FormInput
+            label="Builder (optional)"
+            value={builder}
+            onChangeText={setBuilder}
+            placeholder="The builder/GC this job is for"
+            autoCapitalize="words"
+          />
 
           <View style={styles.scopeField}>
             <Text style={styles.scopeLabel}>Scopes</Text>
@@ -309,6 +348,29 @@ function CreateJobSheet({
                 );
               })}
             </View>
+            {/* Each selected scope requires its count total up front (the
+                Windows scope carries two — Window + SGD). */}
+            {countDefs.length > 0 && (
+              <View style={styles.countGrid}>
+                {countDefs.map((def) => (
+                  <View key={def.totalField} style={styles.countCell}>
+                    <FormInput
+                      label={`${def.label} total`}
+                      value={totals[def.totalField] ?? ''}
+                      onChangeText={(t) =>
+                        setTotals((prev) => ({
+                          ...prev,
+                          [def.totalField]: t,
+                        }))
+                      }
+                      placeholder="0"
+                      keyboardType="number-pad"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
             <Text style={styles.sheetHint}>
               The QuickBooks Time jobcode ID is filled in later by the Finance
               Manager.
@@ -774,6 +836,15 @@ const styles = themed(() => StyleSheet.create({
   },
   scopeField: {
     gap: spacing.sm,
+  },
+  countGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  countCell: {
+    flexGrow: 1,
+    flexBasis: '40%',
   },
   scopeLabel: {
     color: colors.textSecondary,

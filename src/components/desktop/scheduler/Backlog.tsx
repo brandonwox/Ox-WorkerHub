@@ -125,6 +125,13 @@ export function Backlog({
               style={({ pressed }) => [
                 styles.actionBtn,
                 styles.scheduleBtn,
+                // Idle: solid fill in the assign target's color when exactly
+                // one crew is targeted (primary otherwise / multi-assign).
+                !selected &&
+                  activeCrews.length === 1 && {
+                    backgroundColor: activeCrews[0].color,
+                    borderColor: activeCrews[0].color,
+                  },
                 selected && styles.scheduleBtnActive,
                 selected && {
                   backgroundColor: withAlpha(crewTint, 0.18),

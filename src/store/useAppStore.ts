@@ -51,6 +51,7 @@ import {
   TimesheetLog,
   Worker,
 } from '@/types';
+import { CountTotalField } from '@/utils/jobCounts';
 import { jobDisplayNameById } from '@/utils/jobName';
 import { hoursBetween } from '@/utils/time';
 
@@ -908,18 +909,22 @@ interface AppState {
    * parent's name. Returns null when the parent is missing or is itself a
    * sub-job (one level only).
    */
-  addSubJob: (input: {
-    parentJobId: string;
-    name: string;
-    /** The sub-job's own PO, typed at creation (not inherited). */
-    po?: string;
-    /** Override the inherited jobsite address (creation form edit). */
-    location?: string;
-    /** Override the inherited scopes (creation form edit). */
-    scopes?: JobScope[];
-    /** Override the inherited flashing material (creation form edit). */
-    flashingMaterial?: string;
-  }) => Job | null;
+  addSubJob: (
+    input: {
+      parentJobId: string;
+      name: string;
+      /** The sub-job's own PO, typed at creation (not inherited). */
+      po?: string;
+      /** Override the inherited jobsite address (creation form edit). */
+      location?: string;
+      /** Override the inherited scopes (creation form edit). */
+      scopes?: JobScope[];
+      /** Override the inherited flashing material (creation form edit). */
+      flashingMaterial?: string;
+      // Plus the sub-job's OWN count totals (windowCountTotal, …) — never
+      // inherited from the parent; the creation form collects them per scope.
+    } & Partial<Record<CountTotalField, number>>
+  ) => Job | null;
   updateJob: (id: string, changes: Partial<Job>) => void;
   /**
    * Archive a job — what the "delete" actions now do. Sub-jobs archive with
@@ -1725,7 +1730,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     return local;
   },
 
-  addSubJob: ({ parentJobId, name, po, location, scopes, flashingMaterial }) => {
+  addSubJob: ({
+    parentJobId,
+    name,
+    po,
+    location,
+    scopes,
+    flashingMaterial,
+    // The sub-job's own count totals (windowCountTotal, …).
+    ...countTotals
+  }) => {
     const state = get();
     const parent = state.jobs.find((j) => j.id === parentJobId);
     // One level only — a sub-job can't parent another.
@@ -1737,6 +1751,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       po,
       status: 'Active',
       parentJobId,
+      ...countTotals,
       // Inherited from the parent (the creation form may override; all remain
       // editable on the sub-job afterwards).
       location: location ?? parent.location,

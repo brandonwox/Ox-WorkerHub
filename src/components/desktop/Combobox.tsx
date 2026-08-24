@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -177,6 +177,15 @@ interface MultiProps {
    * picker's "No parent job". Pressing it closes the menu.
    */
   footer?: { label: string; onPress: () => void };
+  /** Focus the input (and open the menu) on mount — for click-to-edit fields. */
+  autoFocus?: boolean;
+  /**
+   * Fires when the user clicks away from the input AND the menu (after the
+   * menu's press-delay). Click-to-edit callers use it to leave edit mode —
+   * picking an option keeps the menu open (the input refocuses) so several
+   * can be added in a row.
+   */
+  onDismiss?: () => void;
 }
 
 /** Multi-select searchable input: selected items become removable chips. */
@@ -188,11 +197,17 @@ export function MultiCombobox({
   collapseOnSelect,
   addLabel = 'Add',
   footer,
+  autoFocus,
+  onDismiss,
 }: MultiProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!autoFocus);
   const [query, setQuery] = useState('');
   // collapseOnSelect: whether the "+ add" affordance re-opened the input.
   const [adding, setAdding] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  // The blur-close is delayed so a press on an option lands first; refocusing
+  // (picking an option, clicking back in) cancels the pending close.
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedOptions = options.filter((o) => values.includes(o.value));
   const available = useMemo(
@@ -212,6 +227,10 @@ export function MultiCombobox({
     if (collapseOnSelect) {
       setAdding(false);
       setOpen(false);
+    } else {
+      // Keep the menu open for the next pick — the press blurred the input,
+      // so refocus (which also cancels the pending blur-close/dismiss).
+      inputRef.current?.focus();
     }
   };
   const remove = (val: string) => onChange(values.filter((v) => v !== val));
@@ -259,22 +278,32 @@ export function MultiCombobox({
           )
         ) : (
           <TextInput
+            ref={inputRef}
             style={styles.tokenInput}
             value={query}
             onChangeText={(t) => {
               setQuery(t);
               setOpen(true);
             }}
-            onFocus={() => setOpen(true)}
-            onBlur={() =>
-              setTimeout(() => {
+            onFocus={() => {
+              if (blurTimer.current) {
+                clearTimeout(blurTimer.current);
+                blurTimer.current = null;
+              }
+              setOpen(true);
+            }}
+            // Delay so a press on an option lands before the menu unmounts.
+            onBlur={() => {
+              blurTimer.current = setTimeout(() => {
+                blurTimer.current = null;
                 setOpen(false);
                 setAdding(false);
-              }, 120)
-            }
+                onDismiss?.();
+              }, 120);
+            }}
             placeholder={selectedOptions.length === 0 ? placeholder : ''}
             placeholderTextColor={colors.textTertiary}
-            autoFocus={adding}
+            autoFocus={autoFocus || adding}
           />
         )}
       </Pressable>
