@@ -42,8 +42,9 @@ type PressState = { pressed: boolean; hovered?: boolean };
 // Multi-day bar geometry: bars overlay the week row at fixed lane slots, and
 // every covered cell reserves the same vertical space so its single-day chips
 // start below the bars.
-const LANE_H = 24; // one lane's slot (bar + gap)
-const BAR_H = 21;
+// Two text lines (title + job name), same as a single-day chip.
+const BAR_H = 34;
+const LANE_H = BAR_H + 3; // one lane's slot (bar + gap)
 // Distance from the week row's top to lane 0: cell padding + day number line.
 const BAR_TOP = 25;
 // The hovered day column widens to at least this, squeezing the other six, so
@@ -468,6 +469,7 @@ function WeekRow({
             width={endRect.x + endRect.w - startRect.x}
             colorForCrew={colorForCrew}
             crewNameFor={crewNameFor}
+            jobNameFor={jobNameFor}
             onOpenCard={onOpenCard}
             onUnassign={onUnassign}
             canUnassign={canUnassign}
@@ -576,6 +578,7 @@ interface SpanBarProps {
   width: number;
   colorForCrew: (crewId: string) => string;
   crewNameFor: (crewId: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   onOpenCard: (workRequestId: string) => void;
   onUnassign: (assignmentId: string) => void;
   canUnassign: boolean;
@@ -595,6 +598,7 @@ function SpanBar({
   width,
   colorForCrew,
   crewNameFor,
+  jobNameFor,
   onOpenCard,
   onUnassign,
   canUnassign,
@@ -604,9 +608,9 @@ function SpanBar({
   const { span } = seg;
   const crewIds = [...new Set(span.group.map((a) => a.crewId))];
   const color = colorForCrew(crewIds[0]);
-  // No standing crew letters (they crowd the title) — hovering ANY bar shows
-  // its crew letters inline; a multi-crew bar also splits its border into
-  // the crews' colors.
+  // No standing crew letters (they crowd the title) — hovering ANY bar swaps
+  // its job line for the crew letters; a multi-crew bar also splits its
+  // border into the crews' colors.
   const multi = crewIds.length > 1;
   const [hovered, setHovered] = useState(false);
 
@@ -652,16 +656,28 @@ function SpanBar({
             { backgroundColor: effectivePriority(span.card).color },
           ]}
         />
-        <Text style={styles.placedTitle} numberOfLines={1}>
-          {span.card.title}
-        </Text>
-        {hovered && (
-          <CrewLetters
-            crewIds={crewIds}
-            colorForCrew={colorForCrew}
-            crewNameFor={crewNameFor}
-          />
-        )}
+        <View style={styles.placedText}>
+          <Text
+            style={[styles.placedTitle, styles.placedTitleChip]}
+            numberOfLines={1}
+          >
+            {span.card.title}
+          </Text>
+          {/* Same as the single-day chip: hovering swaps the job line for
+              the crew letters — the title stays put. */}
+          {hovered ? (
+            <CrewLetters
+              crewIds={crewIds}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              style={styles.placedJob}
+            />
+          ) : (
+            <Text style={styles.placedJob} numberOfLines={1}>
+              {jobNameFor(span.card)}
+            </Text>
+          )}
+        </View>
         {canUnassign && (
           <Pressable
             // Unassigning removes the request's WHOLE stretch from every crew

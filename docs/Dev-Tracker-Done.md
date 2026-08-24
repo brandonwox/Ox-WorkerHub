@@ -1,6 +1,9 @@
 # Dev Tracker — DONE
 Completed edits, newest first — moved out of Dev-Tracker.md to keep the working file small. (Agents: when an Awaiting edit from Dev-Tracker.md is implemented, log it at the TOP of this file, same style as the entries below.)
 
+Pass 31 — Multi-day calendar bars show the job name (chat-requested; no DB migration):
+- A multi-day work request's SpanBar on the desktop month calendar now renders the same two-line text block as a single-day chip — title with the job name under it (hover still swaps the job line for the crew letters). The bar grew to fit (BAR_H 21 → 34, lane pitch follows), and the day cells' top padding tracks it automatically.
+
 Pass 30 — New logo, backlog Open button removal, mobile Personal information sub-page (tracker-requested; no DB migration):
 - NEW LOGO: replaced icon.png (1024²), the Android adaptive icon set (foreground/background/monochrome), favicon, and splash image; dropped the old assets/expo.icon liquid-glass composition and its ios.icon reference — iOS now uses the shared icon.png. The Android adaptive config already points at the new set, so the next APK build carries the new logo too. NOTE: icons are native — they reach TestFlight/APK only via a new EAS build (not OTA); that build is still pending (see Awaiting).
 - BACKLOG OPEN BUTTON REMOVED (desktop scheduler/field-super Work Requests pool): clicking a request card itself now opens the quick view (DragSource's existing click-vs-drag handling — a plain click opens, movement drags; the Schedule button inside still wins the touch). The hint texts now say "Click a request …". For non-scheduling viewers the actions row is gone entirely.
