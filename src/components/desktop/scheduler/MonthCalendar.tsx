@@ -9,7 +9,16 @@ import {
   startOfMonth,
 } from 'date-fns';
 import { Fragment, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextStyle,
+  View,
+} from 'react-native';
 
 import {
   DragSource,
@@ -68,6 +77,8 @@ interface Props {
   canAssign?: boolean;
   /** Crew display name (a single letter) for the multi-crew tags on cards. */
   crewNameFor: (crewId: string) => string;
+  /** Job label rendered under each chip's title (same as the pool calendar). */
+  jobNameFor: (card: WorkRequest) => string;
   /**
    * Blink this card's chips/bars ("Show in calendar"). The nonce keys the
    * animation so repeating the same card replays it.
@@ -122,6 +133,7 @@ export function MonthCalendar({
   canUnassign = true,
   canAssign = true,
   crewNameFor,
+  jobNameFor,
   flashCard,
 }: Props) {
   const monthStart = startOfMonth(month);
@@ -258,6 +270,7 @@ export function MonthCalendar({
               workRequests={workRequests}
               colorForCrew={colorForCrew}
               crewNameFor={crewNameFor}
+              jobNameFor={jobNameFor}
               placing={placing}
               onAssignToDate={onAssignToDate}
               onUnassign={onUnassign}
@@ -283,6 +296,7 @@ interface WeekRowProps {
   workRequests: WorkRequest[];
   colorForCrew: (crewId: string) => string;
   crewNameFor: (crewId: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   placing: boolean;
   onAssignToDate: (date: string) => void;
   onUnassign: (assignmentId: string) => void;
@@ -308,6 +322,7 @@ function WeekRow({
   workRequests,
   colorForCrew,
   crewNameFor,
+  jobNameFor,
   placing,
   onAssignToDate,
   onUnassign,
@@ -413,6 +428,7 @@ function WeekRow({
                 workRequests={workRequests}
                 colorForCrew={colorForCrew}
                 crewNameFor={crewNameFor}
+                jobNameFor={jobNameFor}
                 placing={placing}
                 onAssignToDate={onAssignToDate}
                 onUnassign={onUnassign}
@@ -447,6 +463,96 @@ function WeekRow({
         );
       })}
     </View>
+  );
+}
+
+/** Web-only mouse-hover props (RNW passes them through; native ignores). */
+function hoverProps(setHovered: (on: boolean) => void): object {
+  if (Platform.OS !== 'web') return {};
+  return {
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+  };
+}
+
+/**
+ * A multi-crew chip/bar's border: equal vertical segments of each crew's
+ * color drawn as a 2px ring — slightly thicker than the single-crew 1px
+ * border so shared cards read at a glance (an absolute color row under an
+ * inset of the chip's own background). Render it FIRST inside the chip, with
+ * the chip's own border and background made transparent.
+ */
+function CrewSplitBorder({
+  crewColors,
+  borderAlpha,
+  squareLeft = false,
+  squareRight = false,
+}: {
+  crewColors: string[];
+  /** Alpha of the border ring segments (matches the single-crew border). */
+  borderAlpha: number;
+  /** Square off an edge (a bar continuing past the week edge). */
+  squareLeft?: boolean;
+  squareRight?: boolean;
+}) {
+  const r = radii.sm;
+  const ri = Math.max(r - 2, 0);
+  const outer = {
+    borderTopLeftRadius: squareLeft ? 0 : r,
+    borderBottomLeftRadius: squareLeft ? 0 : r,
+    borderTopRightRadius: squareRight ? 0 : r,
+    borderBottomRightRadius: squareRight ? 0 : r,
+  };
+  const inner = {
+    borderTopLeftRadius: squareLeft ? 0 : ri,
+    borderBottomLeftRadius: squareLeft ? 0 : ri,
+    borderTopRightRadius: squareRight ? 0 : ri,
+    borderBottomRightRadius: squareRight ? 0 : ri,
+  };
+  return (
+    <>
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.splitRing, outer]}
+      >
+        {crewColors.map((c, i) => (
+          <View
+            key={i}
+            style={{ flex: 1, backgroundColor: withAlpha(c, borderAlpha) }}
+          />
+        ))}
+      </View>
+      {/* Multi-crew fill: the calendar's own background (no single crew owns
+          the card, so no crew's tint) — the ring alone carries the colors. */}
+      <View
+        pointerEvents="none"
+        style={[styles.splitInner, inner, { backgroundColor: colors.surface }]}
+      />
+    </>
+  );
+}
+
+/** The colored crew letters shown inside a multi-crew chip/bar on hover. */
+function CrewLetters({
+  crewIds,
+  colorForCrew,
+  crewNameFor,
+  style,
+}: {
+  crewIds: string[];
+  colorForCrew: (crewId: string) => string;
+  crewNameFor: (crewId: string) => string;
+  style?: StyleProp<TextStyle>;
+}) {
+  return (
+    <Text style={style} numberOfLines={1}>
+      {crewIds.map((id, j) => (
+        <Text key={id} style={[styles.placedCrews, { color: colorForCrew(id) }]}>
+          {j > 0 ? '  ' : ''}
+          {crewNameFor(id)}
+        </Text>
+      ))}
+    </Text>
   );
 }
 
@@ -485,6 +591,11 @@ function SpanBar({
   const { span } = seg;
   const crewIds = [...new Set(span.group.map((a) => a.crewId))];
   const color = colorForCrew(crewIds[0]);
+  // No standing crew letters (they crowd the title) — hovering ANY bar shows
+  // its crew letters inline; a multi-crew bar also splits its border into
+  // the crews' colors.
+  const multi = crewIds.length > 1;
+  const [hovered, setHovered] = useState(false);
 
   return (
     <View
@@ -494,20 +605,31 @@ function SpanBar({
       ]}
       pointerEvents="box-none"
     >
+      <View style={styles.barHoverWrap} {...hoverProps(setHovered)}>
       <DragSource
         item={{ kind: 'request', id: span.card.id }}
         ghost={{ title: span.card.title, color }}
         onPress={() => onOpenCard(span.card.id)}
         style={[
           styles.bar,
-          {
-            backgroundColor: withAlpha(color, 0.28),
-            borderColor: withAlpha(color, 0.6),
-          },
+          multi
+            ? styles.barMulti
+            : {
+                backgroundColor: withAlpha(color, 0.28),
+                borderColor: withAlpha(color, 0.6),
+              },
           seg.continuesBefore && styles.barContinuesBefore,
           seg.continuesAfter && styles.barContinuesAfter,
         ]}
       >
+        {multi && (
+          <CrewSplitBorder
+            crewColors={crewIds.map(colorForCrew)}
+            borderAlpha={0.6}
+            squareLeft={seg.continuesBefore}
+            squareRight={seg.continuesAfter}
+          />
+        )}
         {flashCard?.id === span.card.id && (
           <FlashBorder key={flashCard.nonce} />
         )}
@@ -520,15 +642,12 @@ function SpanBar({
         <Text style={styles.placedTitle} numberOfLines={1}>
           {span.card.title}
         </Text>
-        {crewIds.length > 1 && (
-          <Text style={styles.placedCrews} numberOfLines={1}>
-            {crewIds.map((crewId, j) => (
-              <Text key={crewId} style={{ color: colorForCrew(crewId) }}>
-                {j > 0 ? ' ' : ''}
-                {crewNameFor(crewId)}
-              </Text>
-            ))}
-          </Text>
+        {hovered && (
+          <CrewLetters
+            crewIds={crewIds}
+            colorForCrew={colorForCrew}
+            crewNameFor={crewNameFor}
+          />
         )}
         {canUnassign && (
           <Pressable
@@ -552,6 +671,7 @@ function SpanBar({
           </DragSource>
         )}
       </DragSource>
+      </View>
     </View>
   );
 }
@@ -565,6 +685,7 @@ interface DayCellProps {
   workRequests: WorkRequest[];
   colorForCrew: (crewId: string) => string;
   crewNameFor: (crewId: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
   placing: boolean;
   onAssignToDate: (date: string) => void;
   onUnassign: (assignmentId: string) => void;
@@ -589,6 +710,7 @@ function DayCell({
   workRequests,
   colorForCrew,
   crewNameFor,
+  jobNameFor,
   placing,
   onAssignToDate,
   onUnassign,
@@ -659,85 +781,150 @@ function DayCell({
         {hoverIndex === 0 && !resizing && <DropLine />}
         {items.map((item, i) => (
           <Fragment key={item.key}>
-            <DragSource
-              item={{ kind: 'request', id: item.card.id }}
-              ghost={{
-                title: item.card.title,
-                color: colorForCrew(item.group[0].crewId),
-              }}
+            <DayChip
+              item={item}
               zoneId={zoneId}
-              onPress={
-                placing ? () => onAssignToDate(date) : () => onOpenCard(item.card.id)
-              }
-              style={[
-                styles.placed,
-                {
-                  backgroundColor: withAlpha(colorForCrew(item.group[0].crewId), 0.18),
-                  borderColor: withAlpha(colorForCrew(item.group[0].crewId), 0.55),
-                },
-              ]}
-            >
-              {flashCard?.id === item.card.id && (
-                <FlashBorder key={flashCard.nonce} />
-              )}
-              <View
-                style={[
-                  styles.placedDot,
-                  { backgroundColor: effectivePriority(item.card).color },
-                ]}
-              />
-              <Text style={styles.placedTitle} numberOfLines={1}>
-                {item.card.title}
-              </Text>
-              {item.group.length > 1 && (
-                <Text style={styles.placedCrews} numberOfLines={1}>
-                  {item.group.map((a, j) => (
-                    <Text key={a.id} style={{ color: colorForCrew(a.crewId) }}>
-                      {j > 0 ? ' ' : ''}
-                      {crewNameFor(a.crewId)}
-                    </Text>
-                  ))}
-                </Text>
-              )}
-              {canUnassign && (
-                <Pressable
-                  // Unassigning a shared card removes it from every
-                  // crew (the handler fans out from any assignment).
-                  onPress={() => onUnassign(item.group[0].id)}
-                  hitSlop={6}
-                  style={({ pressed }) => pressed && styles.pressed}
-                >
-                  <Feather name="x" size={12} color={colors.textTertiary} />
-                </Pressable>
-              )}
-              {board.enabled && (
-                <DragSource
-                  item={{ kind: 'resize', id: item.card.id }}
-                  ghost={{
-                    title: `Stretch — ${item.card.title}`,
-                    color: colorForCrew(item.group[0].crewId),
-                  }}
-                  cursor="ew-resize"
-                  style={styles.resizeGrip}
-                >
-                  <View
-                    style={[
-                      styles.resizeGripBar,
-                      {
-                        backgroundColor: withAlpha(
-                          colorForCrew(item.group[0].crewId),
-                          0.9
-                        ),
-                      },
-                    ]}
-                  />
-                </DragSource>
-              )}
-            </DragSource>
+              placing={placing}
+              date={date}
+              onAssignToDate={onAssignToDate}
+              onOpenCard={onOpenCard}
+              onUnassign={onUnassign}
+              canUnassign={canUnassign}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              jobNameFor={jobNameFor}
+              flashCard={flashCard}
+            />
             {hoverIndex === lineAfter[i] && !resizing && <DropLine />}
           </Fragment>
         ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * One single-day request chip. No standing crew letters (they crowded the
+ * title) — hovering ANY chip swaps its job line for the crew letters (the
+ * title stays put), and a multi-crew chip also splits its border into the
+ * crews' colors over a plain calendar-background fill.
+ */
+function DayChip({
+  item,
+  zoneId,
+  placing,
+  date,
+  onAssignToDate,
+  onOpenCard,
+  onUnassign,
+  canUnassign,
+  colorForCrew,
+  crewNameFor,
+  jobNameFor,
+  flashCard,
+}: {
+  item: ReturnType<typeof buildDayItems>[number];
+  zoneId: string;
+  placing: boolean;
+  date: string;
+  onAssignToDate: (date: string) => void;
+  onOpenCard: (workRequestId: string) => void;
+  onUnassign: (assignmentId: string) => void;
+  canUnassign: boolean;
+  colorForCrew: (crewId: string) => string;
+  crewNameFor: (crewId: string) => string;
+  jobNameFor: (card: WorkRequest) => string;
+  flashCard?: { id: string; nonce: string } | null;
+}) {
+  const board = useDragBoard();
+  const crewIds = [...new Set(item.group.map((a) => a.crewId))];
+  const color = colorForCrew(crewIds[0]);
+  const multi = crewIds.length > 1;
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <View {...hoverProps(setHovered)}>
+      <DragSource
+        item={{ kind: 'request', id: item.card.id }}
+        ghost={{ title: item.card.title, color }}
+        zoneId={zoneId}
+        onPress={
+          placing ? () => onAssignToDate(date) : () => onOpenCard(item.card.id)
+        }
+        style={[
+          styles.placed,
+          multi
+            ? styles.placedMulti
+            : {
+                backgroundColor: withAlpha(color, 0.18),
+                borderColor: withAlpha(color, 0.55),
+              },
+        ]}
+      >
+        {multi && (
+          <CrewSplitBorder
+            crewColors={crewIds.map(colorForCrew)}
+            borderAlpha={0.55}
+          />
+        )}
+        {flashCard?.id === item.card.id && (
+          <FlashBorder key={flashCard.nonce} />
+        )}
+        <View
+          style={[
+            styles.placedDot,
+            { backgroundColor: effectivePriority(item.card).color },
+          ]}
+        />
+        <View style={styles.placedText}>
+          <Text
+            style={[styles.placedTitle, styles.placedTitleChip]}
+            numberOfLines={1}
+          >
+            {item.card.title}
+          </Text>
+          {/* Hovering swaps the job line for the crew letters — the title
+              stays put. */}
+          {hovered ? (
+            <CrewLetters
+              crewIds={crewIds}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              style={styles.placedJob}
+            />
+          ) : (
+            <Text style={styles.placedJob} numberOfLines={1}>
+              {jobNameFor(item.card)}
+            </Text>
+          )}
+        </View>
+        {canUnassign && (
+          <Pressable
+            // Unassigning a shared card removes it from every
+            // crew (the handler fans out from any assignment).
+            onPress={() => onUnassign(item.group[0].id)}
+            hitSlop={6}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Feather name="x" size={12} color={colors.textTertiary} />
+          </Pressable>
+        )}
+        {board.enabled && (
+          <DragSource
+            item={{ kind: 'resize', id: item.card.id }}
+            ghost={{ title: `Stretch — ${item.card.title}`, color }}
+            cursor="ew-resize"
+            style={styles.resizeGrip}
+          >
+            <View
+              style={[
+                styles.resizeGripBar,
+                { backgroundColor: withAlpha(color, 0.9) },
+              ]}
+            />
+          </DragSource>
+        )}
+      </DragSource>
     </View>
   );
 }
@@ -894,12 +1081,53 @@ const styles = themed(() => StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
+  // Chip text column: title with the job label under it (bars keep the
+  // single-line title — their lane height is fixed).
+  placedText: {
+    flex: 1,
+    minWidth: 0,
+  },
   placedTitle: {
     flex: 1,
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 10,
   },
+  // Inside the chip's text COLUMN the title must not flex-stretch (flex: 1
+  // is for the bars' row layout).
+  placedTitleChip: {
+    flex: 0,
+  },
+  placedJob: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 9,
+  },
+  // Multi-crew chip/bar: its own border+background go transparent — the
+  // CrewSplitBorder overlays draw the segmented ring and the fill.
+  placedMulti: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  barMulti: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  barHoverWrap: {
+    flex: 1,
+  },
+  splitRing: {
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  splitInner: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: 2,
+    bottom: 2,
+  },
+  // Crew letters shown inside a multi-crew chip/bar while hovered.
   placedCrews: {
     fontFamily: fonts.bold,
     fontSize: 9,

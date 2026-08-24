@@ -14,7 +14,7 @@ import {
   statusNeedsNote,
 } from '@/components/StatusChangeModal';
 import { workRequestStatusColors } from '@/components/StatusPill';
-import { activeCrewIdFor, useAppStore, useCurrentWorker } from '@/store/useAppStore';
+import { activeCrewIdsFor, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
   SELECTABLE_WORK_REQUEST_STATUSES,
@@ -60,7 +60,11 @@ export function UndefinedStatusCatchUp() {
     const ids = new Set<string>();
     for (const a of assignments) {
       if (a.date > today || (a.date === today && !after430)) continue;
-      if (activeCrewIdFor({ crews, dailyCrews }, me.id, a.date) !== a.crewId) {
+      if (
+        !activeCrewIdsFor({ crews, dailyCrews, assignments }, me.id, a.date).includes(
+          a.crewId
+        )
+      ) {
         continue;
       }
       ids.add(a.workRequestId);

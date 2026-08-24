@@ -10,6 +10,7 @@ import {
   startOfMonth,
   subMonths,
 } from 'date-fns';
+import { CalendarDays } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -267,7 +268,22 @@ function BacklogDayCell({
               {flashCard?.id === card.id && (
                 <FlashBorder key={flashCard.nonce} />
               )}
-              <View style={[styles.requestDot, { backgroundColor: accent }]} />
+              {/* Not-ready swaps the priority dot for a slashed calendar in
+                  the same priority color (the sidebar menu's CalendarDays
+                  icon) — no text tag eating the title's space. */}
+              {ready ? (
+                <View style={[styles.requestDot, { backgroundColor: accent }]} />
+              ) : (
+                <View style={styles.notReadyIcon}>
+                  <CalendarDays size={11} color={accent} />
+                  <View
+                    style={[
+                      styles.notReadyIconSlash,
+                      { backgroundColor: accent },
+                    ]}
+                  />
+                </View>
+              )}
               <View style={styles.requestText}>
                 <Text style={styles.requestTitle} numberOfLines={1}>
                   {card.title}
@@ -276,11 +292,6 @@ function BacklogDayCell({
                   {jobNameFor(card)}
                 </Text>
               </View>
-              {!ready && (
-                <Text style={styles.notReadyTag} numberOfLines={1}>
-                  Not ready
-                </Text>
-              )}
             </DragSource>
           );
         })}
@@ -477,11 +488,18 @@ const styles = themed(() => StyleSheet.create({
   requestNotReady: {
     opacity: 0.55,
   },
-  notReadyTag: {
-    color: colors.textTertiary,
-    fontFamily: fonts.semiBold,
-    fontSize: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+  // Slashed-calendar stand-in for the priority dot on not-ready requests.
+  notReadyIcon: {
+    width: 12,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notReadyIconSlash: {
+    position: 'absolute',
+    width: 14,
+    height: 1,
+    borderRadius: 1,
+    transform: [{ rotate: '-45deg' }],
   },
 }));

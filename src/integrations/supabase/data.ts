@@ -131,7 +131,6 @@ interface CrewMemberRow {
 }
 interface DailyCrewRow {
   id: string;
-  date: string;
   name: string;
   color: string | null;
 }
@@ -521,7 +520,6 @@ export async function fetchAllData(): Promise<BackendData> {
     (dailyCrewsR.data ?? []) as DailyCrewRow[]
   ).map((c) => ({
     id: c.id,
-    date: c.date,
     name: c.name,
     color: c.color ?? undefined,
     installerIds: dailyMembers
@@ -887,7 +885,7 @@ export async function insertDailyCrew(dc: DailyCrew): Promise<void> {
     (
       await getSupabase()
         .from('daily_crews')
-        .insert({ id: dc.id, date: dc.date, name: dc.name, color: dc.color ?? null })
+        .insert({ id: dc.id, name: dc.name, color: dc.color ?? null })
     ).error
   );
   await replaceMembers('daily_crew_members', 'daily_crew_id', dc.id, dc.installerIds);
@@ -897,7 +895,7 @@ export async function updateDailyCrew(dc: DailyCrew): Promise<void> {
     (
       await getSupabase()
         .from('daily_crews')
-        .update({ date: dc.date, name: dc.name, color: dc.color ?? null })
+        .update({ name: dc.name, color: dc.color ?? null })
         .eq('id', dc.id)
     ).error
   );

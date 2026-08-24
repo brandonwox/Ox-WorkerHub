@@ -34,11 +34,13 @@ interface Input {
 }
 
 /**
- * Find every installer who is double-booked: a member of two or more crews that
- * each have a work request scheduled on the same day. A Daily Crew counts as its own
- * crew, so an installer pulled onto a Daily Crew while their permanent crew is
- * still working that day is a conflict. Pure/derived — safe to recompute from
- * store state whenever the schedule changes.
+ * Find every installer who is double-booked: expected in more than one place
+ * at once AFTER the daily-over-permanent resolution is applied. A working
+ * Daily Crew silently overrides the member's permanent crew (that's the
+ * feature, not a conflict) — so the only remaining conflict is an installer
+ * in TWO OR MORE daily crews that each have work the same day (they'd see
+ * the union of that work). Pure/derived — safe to recompute from store state
+ * whenever the schedule changes.
  */
 export function detectDoubleBookings({
   crews,
@@ -98,14 +100,18 @@ export function detectDoubleBookings({
     }
 
     for (const [installerId, refs] of installerCrews) {
-      if (refs.length < 2) continue;
+      // Resolve the daily-over-permanent rule first: with any working daily
+      // crew in the mix, the permanent crew's claim doesn't count that day.
+      const dailies = refs.filter((r) => r.isDaily);
+      const resolved = dailies.length > 0 ? dailies : refs;
+      if (resolved.length < 2) continue;
       const worker = workerById.get(installerId);
       result.push({
         id: `${installerId}:${date}`,
         installerId,
         installerName: worker?.name ?? 'Unknown installer',
         date,
-        crews: refs,
+        crews: resolved,
       });
     }
   }

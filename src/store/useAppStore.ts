@@ -78,9 +78,7 @@ function sortCrews(list: Crew[]): Crew[] {
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
 }
 function sortDailyCrews(list: DailyCrew[]): DailyCrew[] {
-  return [...list].sort(
-    (a, b) => a.name.localeCompare(b.name) || a.date.localeCompare(b.date)
-  );
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -180,18 +178,25 @@ function todayStr(): string {
 }
 
 /**
- * Installers whose ACTIVE crew on `date` is `crewId` — the people who actually
- * see that crew's cards that day (Daily-crew overrides applied). This is the
- * audience for any change to `crewId`'s board on `date`.
+ * Installers whose ACTIVE crews on `date` include `crewId` — the people who
+ * actually see that crew's cards that day (Daily-crew overrides applied).
+ * This is the audience for any change to `crewId`'s board on `date`.
  */
 function installersOnActiveCrewForDate(
-  state: { workers: Worker[]; crews: Crew[]; dailyCrews: DailyCrew[] },
+  state: {
+    workers: Worker[];
+    crews: Crew[];
+    dailyCrews: DailyCrew[];
+    assignments: ScheduleAssignment[];
+  },
   crewId: string,
   date: string
 ): string[] {
   return state.workers
     .filter(
-      (w) => w.role === 'installer' && activeCrewIdFor(state, w.id, date) === crewId
+      (w) =>
+        w.role === 'installer' &&
+        activeCrewIdsFor(state, w.id, date).includes(crewId)
     )
     .map((w) => w.id);
 }
@@ -997,7 +1002,10 @@ interface AppState {
   addCrew: (crew: Omit<Crew, 'id'> & { id?: string }) => Crew;
   updateCrew: (id: string, changes: Partial<Crew>) => void;
   removeCrew: (id: string) => void;
-  /** Create a date-specific crew override. Non-installer ids are dropped. */
+  /**
+   * Create an ad-hoc daily crew (overrides members' permanent crews on days
+   * it has work). Non-installer ids are dropped.
+   */
   addDailyCrew: (crew: Omit<DailyCrew, 'id'> & { id?: string }) => DailyCrew;
   updateDailyCrew: (id: string, changes: Partial<DailyCrew>) => void;
   removeDailyCrew: (id: string) => void;
@@ -3316,26 +3324,36 @@ export function currentWorkerOf(state: IdentityState): Worker | null {
 }
 
 /**
- * The crew id an installer is working under on `date`: a Daily Crew they're in
- * that day wins; otherwise their Permanent Crew. Returns null if they're on no
- * crew that day.
+ * The crew ids an installer is working under on `date`. A Daily Crew they're
+ * in takes priority on any day it actually HAS work scheduled: those days the
+ * installer sees only the daily crew's assignments, not their Permanent
+ * Crew's. In more than one working daily crew → all of them (they see the
+ * union of that work). No working daily crew → their Permanent Crew as
+ * normal. Empty when they're on no crew at all.
  *
- * Edge case (intentional): if an installer is pulled into a Daily Crew on a date,
- * they see that Daily Crew's assignments INSTEAD OF their Permanent Crew's that
- * day. This is what prevents double-booking.
+ * (Daily crews used to be pinned to a stored date; since 2026-08 the
+ * override days derive purely from the schedule — an idle daily crew does
+ * nothing.)
  */
-export function activeCrewIdFor(
-  state: { crews: Crew[]; dailyCrews: DailyCrew[] },
+export function activeCrewIdsFor(
+  state: {
+    crews: Crew[];
+    dailyCrews: DailyCrew[];
+    assignments: ScheduleAssignment[];
+  },
   installerId: string,
   date: string
-): string | null {
-  const daily = state.dailyCrews.find(
-    (dc) => dc.date === date && dc.installerIds.includes(installerId)
+): string[] {
+  const workingDailies = state.dailyCrews.filter(
+    (dc) =>
+      dc.installerIds.includes(installerId) &&
+      state.assignments.some((a) => a.crewId === dc.id && a.date === date)
   );
-  if (daily) return daily.id;
-  const permanent = state.crews.find((c) => c.installerIds.includes(installerId));
-  if (permanent) return permanent.id;
-  return null;
+  if (workingDailies.length > 0) return workingDailies.map((dc) => dc.id);
+  const permanent = state.crews.find((c) =>
+    c.installerIds.includes(installerId)
+  );
+  return permanent ? [permanent.id] : [];
 }
 
 /**
@@ -3360,8 +3378,9 @@ export function workRequestIdsForCrewOnDate(
 }
 
 /**
- * Convenience: the Work Requests an installer should see on `date` = assignments to
- * their active crew that day.
+ * Convenience: the Work Requests an installer should see on `date` =
+ * assignments to their active crew(s) that day (the union, when several
+ * daily crews of theirs are working).
  */
 export function workRequestsForInstallerOnDate(
   state: {
@@ -3373,10 +3392,12 @@ export function workRequestsForInstallerOnDate(
   installerId: string,
   date: string
 ): WorkRequest[] {
-  const crewId = activeCrewIdFor(state, installerId, date);
-  if (!crewId) return [];
-  const ids = workRequestIdsForCrewOnDate(state, crewId, date);
-  return state.workRequests.filter((card) => ids.includes(card.id));
+  const crewIds = activeCrewIdsFor(state, installerId, date);
+  if (crewIds.length === 0) return [];
+  const ids = new Set(
+    crewIds.flatMap((crewId) => workRequestIdsForCrewOnDate(state, crewId, date))
+  );
+  return state.workRequests.filter((card) => ids.has(card.id));
 }
 
 /**
@@ -3395,7 +3416,7 @@ export function assignedDatesForInstaller(
 ): Set<string> {
   const dates = new Set<string>();
   for (const a of state.assignments) {
-    if (activeCrewIdFor(state, installerId, a.date) === a.crewId) {
+    if (activeCrewIdsFor(state, installerId, a.date).includes(a.crewId)) {
       dates.add(a.date);
     }
   }

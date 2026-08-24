@@ -16,7 +16,6 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
 import { buildCrewColorMap, CREW_COLOR_CHOICES } from '@/utils/crewColors';
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** Permanent crew names are a single letter — they tag calendar chips. */
 const CREW_NAME_RE = /^[A-Za-z]$/;
 /** Daily crew names are freer: anything up to this many characters. */
@@ -73,7 +72,6 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   const [newCrewForeman, setNewCrewForeman] = useState<string | null>(null);
   const [newCrewColor, setNewCrewColor] = useState<string | undefined>();
   const [newDailyName, setNewDailyName] = useState('');
-  const [newDailyDate, setNewDailyDate] = useState('');
   const [newDailyMembers, setNewDailyMembers] = useState<string[]>([]);
   const [newDailyColor, setNewDailyColor] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
@@ -108,18 +106,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
       setError(`Daily crew names can be 1–${DAILY_NAME_MAX} characters.`);
       return;
     }
-    if (!DATE_RE.test(newDailyDate.trim())) {
-      setError('Daily crew date must be in YYYY-MM-DD format.');
-      return;
-    }
     addDailyCrew({
       name,
-      date: newDailyDate.trim(),
       installerIds: newDailyMembers,
       color: newDailyColor,
     });
     setNewDailyName('');
-    setNewDailyDate('');
     setNewDailyMembers([]);
     setNewDailyColor(undefined);
     setError(null);
@@ -249,18 +241,17 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
             <View style={styles.divider} />
 
-            {/* Daily crews */}
-            <Text style={styles.sectionTitle}>Daily crews (date overrides)</Text>
+            {/* Daily crews — ad-hoc crews with no date of their own: on any
+                day one has work scheduled, its members work it INSTEAD of
+                their permanent crew's board. */}
+            <Text style={styles.sectionTitle}>Daily crews</Text>
             {dailyCrews.length === 0 ? (
-              <Text style={styles.muted}>No daily overrides.</Text>
+              <Text style={styles.muted}>No daily crews yet.</Text>
             ) : (
               dailyCrews.map((dc) => (
                 <View key={dc.id} style={styles.crewBlock}>
                   <View style={styles.crewHead}>
-                    <Text style={styles.crewName}>
-                      {dc.name}{' '}
-                      <Text style={styles.crewDate}>· {dc.date}</Text>
-                    </Text>
+                    <Text style={styles.crewName}>{dc.name}</Text>
                     <Pressable
                       onPress={() => removeDailyCrew(dc.id)}
                       hitSlop={6}
@@ -301,13 +292,6 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                 onChangeText={setNewDailyName}
                 placeholder="Punch list"
                 maxLength={DAILY_NAME_MAX}
-              />
-              <FormInput
-                label="Date"
-                value={newDailyDate}
-                onChangeText={setNewDailyDate}
-                placeholder="YYYY-MM-DD"
-                autoCapitalize="none"
               />
               <Text style={styles.fieldLabel}>Members (installers only)</Text>
               <MemberEditor
@@ -588,11 +572,6 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.semiBold,
     fontSize: 14,
-  },
-  crewDate: {
-    color: colors.textTertiary,
-    fontFamily: fonts.regular,
-    fontSize: 12,
   },
   pressed: {
     opacity: 0.6,

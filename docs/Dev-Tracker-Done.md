@@ -1,6 +1,12 @@
 # Dev Tracker — DONE
 Completed edits, newest first — moved out of Dev-Tracker.md to keep the working file small. (Agents: when an Awaiting edit from Dev-Tracker.md is implemented, log it at the TOP of this file, same style as the entries below.)
 
+Pass 26 — Daily crews go date-free; override becomes schedule-driven (chat-requested; REQUIRES MIGRATION 20260824120000_daily_crews_drop_date.sql — apply BEFORE deploying; the daily_crews.date column and its data are dropped entirely):
+- CREATION: Manage crews' daily section drops the required Date field (name + members + color only); header "Daily crews (date overrides)" → "Daily crews"; the list no longer shows a date; the calendar toolbar chip hover tag is just "Daily".
+- NEW OVERRIDE RULE (per installer per day): a daily crew takes priority over a member's permanent crew on any day the daily crew actually HAS work scheduled — that day the installer sees ONLY the daily crew's work request(s); days it has nothing, the permanent board shows as normal (previously, being in a daily crew dated X blanked the member's X even if the daily crew had no work). Multiple working daily crews → the member sees the union. Implemented by replacing activeCrewIdFor with activeCrewIdsFor (assignment-aware, returns all active crew ids); the agenda, week-ribbon dots, clock-in picker, schedule-change/status-reminder notification audiences, and undefined-status catch-up all flow through it.
+- DOUBLE-BOOKING WARNINGS re-based on the resolved rule: permanent+daily on the same day is no longer flagged (that's the feature); only 2+ working daily crews sharing a member still is.
+- DailyCrew.date is REMOVED from the type, DB row mapping, writes, and mock data (the migration drops the column + data); mobile crew calendar offers daily crews on every day.
+
 Pass 24 — "Show in calendar" button on the work request quick view (chat-requested; scheduler, web):
 - The quick view header (next to trash/X) gained a "Show in calendar" button for schedulers. It routes to /scheduler-calendar with new showCard/sc params (nonce re-fires repeats) and closes the popup (it would cover the reveal). Works from any page, including the calendar itself.
 - CalendarBoard's reveal effect: a SCHEDULED card jumps the crew calendar to its next-upcoming (else last) scheduled month and collapses the expanded pool calendar; an UNSCHEDULED card expands the Work Requests pool calendar on the card's target-date month (BacklogCalendar gained focusDate/focusNonce props to steer its internal month). Quick view / job sidebar / day sidebar all close.

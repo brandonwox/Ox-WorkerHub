@@ -60,10 +60,12 @@ export function CrewCalendarMobile({ canAssign }: Props) {
     [assignments]
   );
 
-  // A Daily Crew only exists on its date; permanent crews are always shown.
+  // Daily crews are date-free ad-hoc crews — always offered alongside the
+  // permanent crews (they override members' permanent boards only on days
+  // they actually have work).
   const dayCrews = useMemo<(Crew | DailyCrew)[]>(
-    () => [...dailyCrews.filter((dc) => dc.date === dateKey), ...crews],
-    [dailyCrews, crews, dateKey]
+    () => [...dailyCrews, ...crews],
+    [dailyCrews, crews]
   );
 
   const crewColors = useMemo(() => buildCrewColorMap(dayCrews), [dayCrews]);

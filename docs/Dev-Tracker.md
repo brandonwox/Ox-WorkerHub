@@ -15,8 +15,6 @@ mobile (installer):
 8. when viewing a specific image (from clicking the image in the bottom right of the image taker) the user should be able to swipe left and right to view the other images they have taken in the current image taker session.
 9. work request -> task -> taking a picture for a specific task -> (The user has clicked the camera icon button for a task to take pictures for a specific task). Please add the title of the task to the top of the image taker so the user can see what task they are taking pictures for.
 
-All the awaiting edits below change a lot of stuff and need to be merged into cohesive edits. there are multiple edits mentioning the new "PO", and multiple edits mentioning the new change from "Jobcards" to "Work Requests", and other things like this. Please do not change the dev-tracker other than moving the edits to the done section once they've been implemented. This is simply a note to scan all the awaiting edits and make sure you understand any connecting pieces before making changes.
-
 
 # Unsure
 

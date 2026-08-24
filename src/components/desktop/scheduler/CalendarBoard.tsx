@@ -579,7 +579,7 @@ export function CalendarBoard({
                   color={colorForCrew(crew.id)}
                   visible={!hiddenCrewIds.has(crew.id)}
                   active={canAssign && activeCrewIds.has(crew.id)}
-                  dailyDate={'date' in crew ? crew.date : undefined}
+                  daily={dailyCrews.some((dc) => dc.id === crew.id)}
                   onPress={() => cycleCrew(crew.id)}
                 />
               ))}
@@ -632,6 +632,7 @@ export function CalendarBoard({
             canUnassign={canAssign}
             canAssign={canAssign}
             crewNameFor={crewTagFor}
+            jobNameFor={jobNameFor}
             flashCard={flashCard}
           />
         </Animated.View>
@@ -764,18 +765,18 @@ function CrewChip({
   color,
   visible,
   active,
-  dailyDate,
+  daily,
   onPress,
 }: {
   crew: Crew;
   color: string;
   visible: boolean;
   active: boolean;
-  /** yyyy-MM-dd when this is a Daily Crew, else undefined — drives the "Daily" tag. */
-  dailyDate?: string;
+  /** True for a Daily Crew — drives the hover "Daily" tag. */
+  daily?: boolean;
   onPress: () => void;
 }) {
-  // The "Daily · date" tag only shows on hover to keep the chip row compact.
+  // The "Daily" tag only shows on hover to keep the chip row compact.
   const [hovered, setHovered] = useState(false);
   return (
     <Pressable
@@ -810,11 +811,9 @@ function CrewChip({
       >
         {crew.name}
       </Text>
-      {dailyDate && hovered && (
+      {daily && hovered && (
         <View style={[styles.dailyTag, { borderColor: withAlpha(color, 0.6) }]}>
-          <Text style={[styles.dailyTagText, { color }]}>
-            Daily · {format(parseISO(dailyDate), 'MMM d')}
-          </Text>
+          <Text style={[styles.dailyTagText, { color }]}>Daily</Text>
         </View>
       )}
       {active && <Feather name="crosshair" size={12} color={color} />}

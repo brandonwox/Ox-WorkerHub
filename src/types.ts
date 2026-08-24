@@ -499,14 +499,13 @@ export interface Crew {
 }
 
 /**
- * A temporary, date-specific crew that overrides permanent crews for ONE day.
- * Installers listed here are treated as working under this crew on `date`
- * instead of their permanent crew (prevents double-booking).
+ * A temporary ad-hoc crew alongside the permanent crews. It has no date of
+ * its own — on any day it HAS work scheduled, it takes priority: its members
+ * see only its work request(s) that day instead of their permanent crew's.
+ * On days it has nothing scheduled it does nothing.
  */
 export interface DailyCrew {
   id: string;
-  /** The single day this override applies to (yyyy-MM-dd). */
-  date: string;
   /** Up to 20 characters (unlike permanent crews' single letter). */
   name: string;
   /** Members — installers only. */

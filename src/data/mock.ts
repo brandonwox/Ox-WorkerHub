@@ -395,7 +395,6 @@ export const mockCrews: Crew[] = [
 export const mockDailyCrews: DailyCrew[] = [
   {
     id: 'dc-1',
-    date: day(2),
     name: 'Punch List Crew',
     installerIds: [PRIMARY_INSTALLER_ID, 'w-i2'], // Marcus Lee, Sofia Ramirez
   },
