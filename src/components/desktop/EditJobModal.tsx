@@ -6,8 +6,10 @@ import { FormInput } from '@/components/FormInput';
 import { MultiCombobox } from '@/components/desktop/Combobox';
 import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
+import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 
 export interface JobChanges {
   name: string;
@@ -57,6 +59,8 @@ export function EditJobModal({
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // For the duplicate-PO check (archived jobs included).
+  const jobs = useAppStore((s) => s.jobs);
   // Archiving (the "delete" action) is a two-step confirm: arming reveals the
   // explanation + confirm button. No type-the-name gate anymore — archiving
   // is recoverable; the heavy confirm moved to permanent delete in the
@@ -80,6 +84,10 @@ export function EditJobModal({
     if (!job) return;
     if (!name.trim()) {
       setError('Job name is required.');
+      return;
+    }
+    if (poTaken(po, jobs, job.id)) {
+      setError(PO_TAKEN_MESSAGE);
       return;
     }
     // Address and flashing material are managed by the Field Super.

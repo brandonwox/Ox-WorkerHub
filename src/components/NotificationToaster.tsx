@@ -4,6 +4,7 @@ import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-nat
 
 import {
   NOTIFICATION_TYPE_ICON,
+  NotificationBodyText,
   useOpenNotification,
 } from '@/components/notifications/NotificationList';
 import { useAppStore, useMyNotifications } from '@/store/useAppStore';
@@ -141,9 +142,11 @@ function NotificationToast({
         </View>
         <View style={styles.toastBody}>
           <Text style={styles.toastTitle}>{notification.title}</Text>
-          <Text style={styles.toastText} numberOfLines={2}>
-            {notification.body}
-          </Text>
+          <NotificationBodyText
+            notification={notification}
+            style={styles.toastText}
+            numberOfLines={2}
+          />
         </View>
       </Pressable>
       <Pressable style={styles.toastClose} onPress={acknowledge} hitSlop={6}>

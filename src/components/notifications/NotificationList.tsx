@@ -2,15 +2,30 @@ import { Feather } from '@expo/vector-icons';
 import { formatDistanceToNow, isToday } from 'date-fns';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextStyle,
+  View,
+} from 'react-native';
 
+import { workRequestStatusColors } from '@/components/StatusPill';
 import {
   useAppStore,
   useCurrentRole,
   useMyNotifications,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { AppNotification, AppRole, NotificationType } from '@/types';
+import {
+  AppNotification,
+  AppRole,
+  NotificationType,
+  WorkRequestStatus,
+} from '@/types';
 import { notificationTarget } from '@/utils/notificationNav';
 
 /** Feather glyph per notification type (panel rows AND toasts). */
@@ -91,6 +106,68 @@ function timeAgo(iso: string): string {
   } catch {
     return '';
   }
+}
+
+const PRIORITY_PREFIX = 'Priority: ';
+const REPORTED_PREFIX = 'Reported ';
+
+/**
+ * A notification's body text, with the value word accented where it helps:
+ * the priority ping's "Now" renders red ("Priority: Now") and a status
+ * report's status word takes its status-pill color ("Reported False Start —
+ * reason"). Everything else is plain text. Shared by the panel rows and the
+ * toasts so both style it identically. (Notifications created before the
+ * short-body format keep their old text and render plain.)
+ */
+export function NotificationBodyText({
+  notification,
+  style,
+  numberOfLines,
+}: {
+  notification: AppNotification;
+  style: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
+  if (
+    notification.type === 'work_request_now' &&
+    notification.body.startsWith(PRIORITY_PREFIX)
+  ) {
+    return (
+      <Text style={style} numberOfLines={numberOfLines}>
+        {PRIORITY_PREFIX}
+        <Text style={styles.bodyDanger}>
+          {notification.body.slice(PRIORITY_PREFIX.length)}
+        </Text>
+      </Text>
+    );
+  }
+  if (
+    notification.type === 'status_reported' &&
+    notification.body.startsWith(REPORTED_PREFIX)
+  ) {
+    // "Reported <status>[ — note]" — color just the status word.
+    const rest = notification.body.slice(REPORTED_PREFIX.length);
+    const sep = rest.indexOf(' — ');
+    const statusWord = sep === -1 ? rest : rest.slice(0, sep);
+    const tail = sep === -1 ? '' : rest.slice(sep);
+    const palette = workRequestStatusColors[statusWord as WorkRequestStatus];
+    if (palette) {
+      return (
+        <Text style={style} numberOfLines={numberOfLines}>
+          {REPORTED_PREFIX}
+          <Text style={[styles.bodyAccent, { color: palette.fg }]}>
+            {statusWord}
+          </Text>
+          {tail}
+        </Text>
+      );
+    }
+  }
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {notification.body}
+    </Text>
+  );
 }
 
 /**
@@ -269,7 +346,10 @@ function NotificationItem({
       </View>
       <View style={styles.itemBody}>
         <Text style={styles.itemTitle}>{notification.title}</Text>
-        <Text style={styles.itemText}>{notification.body}</Text>
+        <NotificationBodyText
+          notification={notification}
+          style={styles.itemText}
+        />
         <Text style={styles.itemTime}>{timeAgo(notification.createdAt)}</Text>
       </View>
       {/* Web: hover swaps the unread dot for the dismiss X. The button stays
@@ -293,11 +373,11 @@ function NotificationItem({
             else onPress();
           }}
           onHoverIn={() => setHovered(true)}
-          hitSlop={4}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Dismiss notification"
         >
-          <Feather name="x" size={14} color={colors.textSecondary} />
+          <Feather name="x" size={17} color={colors.textSecondary} />
         </Pressable>
         {(touch || !hovered) && !notification.read && (
           <View style={[styles.unreadDot, touch && styles.unreadDotBeside]} />
@@ -420,8 +500,8 @@ const styles = themed(() => StyleSheet.create({
   // Fixed-size slot so the dot and the (possibly hidden) dismiss button
   // occupy the same spot without layout shift on web.
   itemRight: {
-    width: 24,
-    height: 24,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -434,12 +514,12 @@ const styles = themed(() => StyleSheet.create({
   },
   // Native shows dot AND X together — nudge the dot off the button.
   unreadDotBeside: {
-    left: -8,
-    top: 8,
+    left: -10,
+    top: 12,
   },
   dismiss: {
-    width: 24,
-    height: 24,
+    width: 32,
+    height: 32,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -449,5 +529,12 @@ const styles = themed(() => StyleSheet.create({
   },
   dismissHover: {
     backgroundColor: colors.surfaceLight,
+  },
+  bodyDanger: {
+    color: colors.danger,
+    fontFamily: fonts.semiBold,
+  },
+  bodyAccent: {
+    fontFamily: fonts.semiBold,
   },
 }));

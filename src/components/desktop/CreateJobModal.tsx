@@ -5,8 +5,10 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormInput } from '@/components/FormInput';
 import { MultiCombobox } from '@/components/desktop/Combobox';
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { JOB_SCOPES, JobScope, Worker } from '@/types';
+import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 
 export interface NewJobInput {
   name: string;
@@ -54,6 +56,8 @@ export function CreateJobModal({
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // For the duplicate-PO check (archived jobs included).
+  const jobs = useAppStore((s) => s.jobs);
 
   const reset = () => {
     setName('');
@@ -80,6 +84,10 @@ export function CreateJobModal({
     }
     if (!po.trim()) {
       setError('PO is required.');
+      return;
+    }
+    if (poTaken(po, jobs)) {
+      setError(PO_TAKEN_MESSAGE);
       return;
     }
     // Operator mode leaves the address to the Field Super; field mode offers

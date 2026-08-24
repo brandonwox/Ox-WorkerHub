@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { useMemo } from 'react';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
@@ -104,14 +104,12 @@ function notifyNowWorkRequest(get: () => AppState, card: WorkRequest): void {
   const state = get();
   const recipients = schedulerIds(state.workers);
   if (recipients.length === 0) return;
-  const jobName = card.jobId
-    ? jobDisplayNameById(card.jobId, state.jobs) || undefined
-    : undefined;
+  // Body: "Priority: Now" — the notification renderers color the "Now" red.
   get().pushNotification({
     recipientIds: recipients,
     type: 'work_request_now',
-    title: 'New Priority Work Request',
-    body: `${card.title}${jobName ? ` · ${jobName}` : ''} needs scheduling now.`,
+    title: workRequestNotificationTitle(state, card.jobId, card.title),
+    body: 'Priority: Now',
     data: { workRequestId: card.id },
   });
 }
@@ -148,10 +146,32 @@ function officeAudienceForCard(
   return [...ids];
 }
 
-/** " · Job name" suffix for notification bodies (empty when no job/name). */
-function jobSuffix(state: { jobs: Job[] }, jobId: string | undefined): string {
-  const name = jobId ? jobDisplayNameById(jobId, state.jobs) : '';
-  return name ? ` · ${name}` : '';
+/**
+ * "PO · <name>" notification title for work-request notifications (the PO is
+ * the office's handle for a job). Falls back to the job's display name when
+ * the job has no PO, and to `name` alone on a standalone request.
+ */
+function workRequestNotificationTitle(
+  state: { jobs: Job[] },
+  jobId: string | undefined,
+  name: string
+): string {
+  const job = jobId ? state.jobs.find((j) => j.id === jobId) : undefined;
+  const label =
+    job?.po?.trim() || (jobId ? jobDisplayNameById(jobId, state.jobs) : '');
+  return label ? `${label} · ${name}` : name;
+}
+
+/** "PO · <job name>" title for job-level notifications (name alone when no PO). */
+function jobNotificationTitle(
+  state: { jobs: Job[] },
+  jobId: string | undefined
+): string {
+  if (!jobId) return '';
+  const job = state.jobs.find((j) => j.id === jobId);
+  const name = jobDisplayNameById(jobId, state.jobs) || job?.name || '';
+  const po = job?.po?.trim();
+  return po && name ? `${po} · ${name}` : name || po || '';
 }
 
 /** Local calendar day as yyyy-MM-dd — the same key schedules/assignments use. */
@@ -206,11 +226,11 @@ function todaysInstallerAudienceForCard(
 }
 
 /**
- * Ping each installer whose today-schedule changed with a "Your schedule has
- * changed" toast. `detail` is the trailing clause (e.g. "has been taken off your
- * calendar today"), giving a body like "Front glazing — has been taken off…".
- * A no-op when nobody is affected. Callers gate on the change being for TODAY —
- * a change to any other day is intentionally silent.
+ * Ping each installer whose today-schedule changed. `detail` is the whole
+ * body — one short clause (e.g. "Taken off your calendar today"); the title
+ * identifies the card ("PO · name"). A no-op when nobody is affected. Callers
+ * gate on the change being for TODAY — a change to any other day is
+ * intentionally silent.
  */
 function notifyScheduleChange(
   get: () => AppState,
@@ -219,14 +239,11 @@ function notifyScheduleChange(
   detail: string
 ): void {
   if (installerIds.length === 0) return;
-  const jobName = card.jobId
-    ? jobDisplayNameById(card.jobId, get().jobs) || undefined
-    : undefined;
   get().pushNotification({
     recipientIds: installerIds,
     type: 'schedule_change',
-    title: 'Your schedule has changed',
-    body: `${card.title}${jobName ? ` · ${jobName}` : ''} ${detail}`,
+    title: workRequestNotificationTitle(get(), card.jobId, card.title),
+    body: detail,
     data: { workRequestId: card.id },
   });
 }
@@ -1684,8 +1701,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: recipients,
           type: 'job_needs_qbt',
-          title: 'New job needs a QBT jobcode',
-          body: `${created.name}${created.po ? ` · ${created.po}` : ''} has no QuickBooks Time jobcode yet.`,
+          title: created.po?.trim()
+            ? `${created.po.trim()} · ${created.name}`
+            : created.name,
+          body: 'Needs a QBT jobcode',
           data: { jobId: created.id },
         });
       }
@@ -1774,10 +1793,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: added,
           type: 'job_assigned',
-          title: 'Assigned to a job',
-          body: `You were assigned to ${updated.name}${
-            me ? ` by ${me.name}` : ''
-          }.`,
+          title: jobNotificationTitle(get(), updated.id) || updated.name,
+          body: "You've been assigned to this job",
           data: { jobId: updated.id },
         });
       }
@@ -1909,8 +1926,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: recipients,
           type: 'work_request_created',
-          title: 'New Work Request',
-          body: `${created.title}${jobSuffix(state, created.jobId)} — created by ${creator.name}.`,
+          title: workRequestNotificationTitle(state, created.jobId, created.title),
+          body: `Created by ${creator.name}`,
           data: { workRequestId: created.id },
         });
       }
@@ -1958,10 +1975,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             get,
             audience,
             updated,
-            `has changed priority to ${updated.priority}`
+            `Priority changed to ${updated.priority}`
           );
         } else if (contentChanged) {
-          notifyScheduleChange(get, audience, updated, 'has been updated');
+          notifyScheduleChange(get, audience, updated, 'Updated');
         }
       }
     }
@@ -2041,14 +2058,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: recipients,
           type: 'status_reported',
-          // A move back to 'Undefined' is an office reset, not a field report.
-          title:
+          title: workRequestNotificationTitle(state, updated.jobId, updated.title),
+          // A move back to 'Undefined' is an office reset, not a field
+          // report. "Reported <status>" bodies get their status word colored
+          // by the notification renderers.
+          body:
             updated.status === 'Undefined'
-              ? 'Work request status reset'
-              : `Work request reported ${updated.status}`,
-          body: `${updated.title}${jobSuffix(state, updated.jobId)}${
-            updated.statusNote ? ` — ${updated.statusNote}` : ''
-          }`,
+              ? 'Status reset'
+              : `Reported ${updated.status}${
+                  updated.statusNote ? ` — ${updated.statusNote}` : ''
+                }`,
           data: { workRequestId: updated.id },
         });
       }
@@ -2161,14 +2180,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         for (const id of foremenForCrew(state, crewId)) recipients.add(id);
       }
       if (recipients.size === 0) continue;
-      const jobName = card.jobId
-        ? jobDisplayNameById(card.jobId, state.jobs) || undefined
-        : undefined;
       get().pushNotification({
         recipientIds: [...recipients],
         type: 'status_update_needed',
-        title: 'A work request status needs updating',
-        body: `${card.title}${jobName ? ` · ${jobName}` : ''}`,
+        title: workRequestNotificationTitle(state, card.jobId, card.title),
+        body: 'Status needs updating',
         data: { workRequestId: cardId },
       });
     }
@@ -2310,7 +2326,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           get,
           installersOnActiveCrewForDate(state, crewId, date),
           card,
-          'has been added to your calendar today'
+          'Added to your calendar today'
         );
       }
     }
@@ -2323,8 +2339,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().pushNotification({
           recipientIds: recipients,
           type: 'work_request_scheduled',
-          title: 'Work request scheduled',
-          body: `${card.title}${jobSuffix(state, card.jobId)} — on the calendar for ${date}.`,
+          title: workRequestNotificationTitle(state, card.jobId, card.title),
+          body: `Scheduled for ${format(
+            parse(date, 'yyyy-MM-dd', new Date()),
+            'MMM d'
+          )}`,
           data: { workRequestId: card.id },
         });
       }
@@ -2351,7 +2370,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           get,
           installersOnActiveCrewForDate(state, removed.crewId, removed.date),
           card,
-          'has been taken off your calendar today'
+          'Taken off your calendar today'
         );
       }
     }
@@ -2849,12 +2868,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       recipients.delete(updated.workerId);
       if (recipients.size > 0) {
         const raiser = state.workers.find((w) => w.id === updated!.workerId);
+        // "PO · work request name" — the job alone when the issue predates
+        // per-work-request issues (or its card is gone).
+        const issueCard = updated.workRequestId
+          ? state.workRequests.find((c) => c.id === updated!.workRequestId)
+          : undefined;
         get().pushNotification({
           recipientIds: [...recipients],
           type: 'issue_raised',
-          title: 'New issue raised',
-          body: `${updated.description.trim()}${jobSuffix(state, updated.jobId)}${
-            raiser ? ` — by ${raiser.name}` : ''
+          title:
+            (issueCard
+              ? workRequestNotificationTitle(state, updated.jobId, issueCard.title)
+              : jobNotificationTitle(state, updated.jobId)) || 'New issue raised',
+          body: `${updated.description.trim()}${
+            raiser ? ` — ${raiser.name}` : ''
           }`,
           data: { jobId: updated.jobId, workRequestId: updated.workRequestId },
         });
@@ -2895,13 +2922,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         (wid) => wid !== me?.id
       );
       if (recipients.length > 0) {
+        const issueCard = updated.workRequestId
+          ? state.workRequests.find((c) => c.id === updated!.workRequestId)
+          : undefined;
+        const description = updated.description.trim();
         get().pushNotification({
           recipientIds: recipients,
           type: 'issue_resolved',
-          title: 'Issue resolved',
-          body: `${
-            updated.description.trim() || 'An issue'
-          }${jobSuffix(state, updated.jobId)}${me ? ` — by ${me.name}` : ''}`,
+          title:
+            (issueCard
+              ? workRequestNotificationTitle(state, updated.jobId, issueCard.title)
+              : jobNotificationTitle(state, updated.jobId)) || 'Issue resolved',
+          body: `Resolved${me ? ` by ${me.name}` : ''}${
+            description ? ` — ${description}` : ''
+          }`,
           data: { jobId: updated.jobId, workRequestId: updated.workRequestId },
         });
       }

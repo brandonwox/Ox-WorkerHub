@@ -17,6 +17,7 @@ import {
   useDragBoard,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
+import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, WorkRequest, ScheduleAssignment } from '@/types';
@@ -35,7 +36,7 @@ const BAR_H = 21;
 const BAR_TOP = 25;
 // The hovered day column widens to at least this, squeezing the other six, so
 // the chips inside it become readable even on a crowded board.
-const HOVER_COL_MIN = 150;
+const HOVER_COL_MIN = 180;
 
 interface Props {
   month: Date;
@@ -67,6 +68,11 @@ interface Props {
   canAssign?: boolean;
   /** Crew display name (a single letter) for the multi-crew tags on cards. */
   crewNameFor: (crewId: string) => string;
+  /**
+   * Blink this card's chips/bars ("Show in calendar"). The nonce keys the
+   * animation so repeating the same card replays it.
+   */
+  flashCard?: { id: string; nonce: string } | null;
 }
 
 /**
@@ -116,6 +122,7 @@ export function MonthCalendar({
   canUnassign = true,
   canAssign = true,
   crewNameFor,
+  flashCard,
 }: Props) {
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
@@ -259,6 +266,7 @@ export function MonthCalendar({
               onOpenCard={onOpenCard}
               canUnassign={canUnassign}
               hoveredCol={hoveredCol}
+              flashCard={flashCard}
             />
           ))}
         </ScrollView>
@@ -284,6 +292,7 @@ interface WeekRowProps {
   canUnassign: boolean;
   /** The weekday column the pointer is over anywhere on the calendar (0…6). */
   hoveredCol: number | null;
+  flashCard?: { id: string; nonce: string } | null;
 }
 
 /**
@@ -307,6 +316,7 @@ function WeekRow({
   onOpenCard,
   canUnassign,
   hoveredCol,
+  flashCard,
 }: WeekRowProps) {
   // Each column's measured x/width within the row. Columns are flex-sized
   // (the hovered one widens), so the bar overlay positions off these live
@@ -410,6 +420,7 @@ function WeekRow({
                 onOpenCard={onOpenCard}
                 canUnassign={canUnassign}
                 topPad={lanesOver(col) * LANE_H}
+                flashCard={flashCard}
               />
             ) : null}
           </View>
@@ -431,6 +442,7 @@ function WeekRow({
             onOpenCard={onOpenCard}
             onUnassign={onUnassign}
             canUnassign={canUnassign}
+            flashCard={flashCard}
           />
         );
       })}
@@ -448,6 +460,7 @@ interface SpanBarProps {
   onOpenCard: (workRequestId: string) => void;
   onUnassign: (assignmentId: string) => void;
   canUnassign: boolean;
+  flashCard?: { id: string; nonce: string } | null;
 }
 
 /**
@@ -466,6 +479,7 @@ function SpanBar({
   onOpenCard,
   onUnassign,
   canUnassign,
+  flashCard,
 }: SpanBarProps) {
   const board = useDragBoard();
   const { span } = seg;
@@ -494,6 +508,9 @@ function SpanBar({
           seg.continuesAfter && styles.barContinuesAfter,
         ]}
       >
+        {flashCard?.id === span.card.id && (
+          <FlashBorder key={flashCard.nonce} />
+        )}
         <View
           style={[
             styles.placedDot,
@@ -556,6 +573,7 @@ interface DayCellProps {
   canUnassign: boolean;
   /** Vertical space reserved for the week's bars covering this day. */
   topPad: number;
+  flashCard?: { id: string; nonce: string } | null;
 }
 
 /**
@@ -578,6 +596,7 @@ function DayCell({
   onOpenCard,
   canUnassign,
   topPad,
+  flashCard,
 }: DayCellProps) {
   const board = useDragBoard();
   const zoneId = `cal:${date}`;
@@ -592,6 +611,15 @@ function DayCell({
   const resizing = board.draggingKey?.startsWith('resize:') ?? false;
 
   const items = buildDayItems(assignments, workRequests);
+  // hoverIndex counts the day's chips EXCLUDING the dragged one (the drag
+  // layer skips it, matching the drop's remove-then-insert renumbering). The
+  // dragged chip still renders here (dimmed, in its old slot), so a raw
+  // `i + 1` slot count drew every line below it one chip too high — count
+  // line slots over the same filtered list instead.
+  let slot = 0;
+  const lineAfter = items.map((item) =>
+    board.draggingKey === `request:${item.card.id}` ? null : ++slot
+  );
 
   return (
     <View
@@ -649,6 +677,9 @@ function DayCell({
                 },
               ]}
             >
+              {flashCard?.id === item.card.id && (
+                <FlashBorder key={flashCard.nonce} />
+              )}
               <View
                 style={[
                   styles.placedDot,
@@ -703,7 +734,7 @@ function DayCell({
                 </DragSource>
               )}
             </DragSource>
-            {hoverIndex === i + 1 && !resizing && <DropLine />}
+            {hoverIndex === lineAfter[i] && !resizing && <DropLine />}
           </Fragment>
         ))}
       </View>

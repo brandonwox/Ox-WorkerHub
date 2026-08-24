@@ -226,7 +226,7 @@ export function MultiCombobox({
   return (
     <View>
       <Pressable
-        style={styles.tokenWrap}
+        style={[styles.tokenWrap, collapsed && styles.tokenWrapCollapsed]}
         onPress={() => {
           if (collapsed) return;
           setOpen(true);
@@ -339,6 +339,14 @@ const styles = themed(() => StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  // Collapsed (collapseOnSelect, something picked): just the chips, no input —
+  // so no input-field frame around them either.
+  tokenWrapCollapsed: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   token: {
     flexDirection: 'row',

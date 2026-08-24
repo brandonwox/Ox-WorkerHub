@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
@@ -26,6 +26,12 @@ export default function FieldSuperWorkRequestsScreen() {
     () => (me ? activeJobs(jobsForFieldSuper(allJobs, me.id)) : []),
     [allJobs, me]
   );
+  // Notification deep link: open this card's sidebar (`ow` is a nonce so
+  // re-clicking a notification for the same card re-opens it).
+  const { openWorkRequest, ow } = useLocalSearchParams<{
+    openWorkRequest?: string;
+    ow?: string;
+  }>();
 
   if (role !== 'field_super') return <AccessDenied />;
 
@@ -34,6 +40,10 @@ export default function FieldSuperWorkRequestsScreen() {
       jobs={jobs}
       showFalseStarts
       poSubtitles
+      openWorkRequestId={
+        typeof openWorkRequest === 'string' ? openWorkRequest : undefined
+      }
+      openWorkRequestNonce={typeof ow === 'string' ? ow : undefined}
       onViewCalendar={(date) =>
         // `hl` is a nonce so re-clicking the same date re-fires the highlight.
         router.push({

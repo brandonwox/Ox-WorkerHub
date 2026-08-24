@@ -18,7 +18,7 @@ import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
-import { Combobox } from '@/components/desktop/Combobox';
+import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import {
   CreateSubJobModal,
   NewSubJobInput,
@@ -40,14 +40,22 @@ import { StatusPill } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
-import { Job } from '@/types';
-import { editableCountDefs, formatCount, jobCounts } from '@/utils/jobCounts';
+import { Job, JOB_SCOPES, JobScope } from '@/types';
+import {
+  editableCountDefs,
+  formatCount,
+  JOB_COUNT_DEFS,
+  jobCounts,
+} from '@/utils/jobCounts';
 import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
+import { poTaken } from '@/utils/jobPo';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
+
+const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 
 /** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
 const defaultSectionFor = (job: Job | null): SectionKey =>
@@ -312,6 +320,31 @@ export function JobDashboardSidebar({
   const counts = jobCounts(job);
   const windowsAllowed = jobAllowsWindows(job);
   const editCounts = editableCountDefs(job);
+
+  // Edit-mode scopes editor. Dropping a scope also clears its now-hidden
+  // done/total counts (and the flashing material when Windows goes) so stale
+  // numbers don't keep displaying. Empty = legacy "not narrowed" (all allowed),
+  // same as the Operator's Edit-job modal.
+  const changeScopes = (vals: string[]) => {
+    const next = vals as JobScope[];
+    const nextScopes = next.length > 0 ? next : undefined;
+    const allows = (scope: JobScope) =>
+      nextScopes == null || nextScopes.includes(scope);
+    const clears: Partial<Job> = {};
+    for (const def of JOB_COUNT_DEFS) {
+      if (
+        !allows(def.scope) &&
+        (job[def.doneField] != null || job[def.totalField] != null)
+      ) {
+        clears[def.doneField] = undefined;
+        clears[def.totalField] = undefined;
+      }
+    }
+    if (!allows('Windows') && job.flashingMaterial) {
+      clears.flashingMaterial = undefined;
+    }
+    updateJob(job.id, { scopes: nextScopes, ...clears });
+  };
   // The pencil is the only top-right control (the old 3-dots menu is gone) —
   // sub-job managers and deleters need it even when nothing else is editable.
   const showEditPencil =
@@ -432,6 +465,11 @@ export function JobDashboardSidebar({
                     editMode ? colors.textOnAccent : colors.textSecondary
                   }
                 />
+                {/* Every edit already autosaved on blur/tap — the label just
+                    says what leaving edit mode means. */}
+                {editMode && (
+                  <Text style={styles.editButtonLabel}>Save changes</Text>
+                )}
               </Pressable>
             </View>
           )}
@@ -492,7 +530,16 @@ export function JobDashboardSidebar({
               <PoInput
                 key={`po-${job.id}`}
                 value={job.po ?? ''}
-                onCommit={(po) => updateJob(job.id, { po })}
+                onCommit={(po) => {
+                  if (poTaken(po, jobs, job.id)) {
+                    flash(
+                      'That PO is already used by another job — change discarded.',
+                      'warning'
+                    );
+                    return;
+                  }
+                  updateJob(job.id, { po });
+                }}
               />
             </View>
           ) : job.po ? (
@@ -602,6 +649,25 @@ export function JobDashboardSidebar({
                   <FlashingPhotoField job={job} editable />
                 </View>
               </>
+            )}
+            {/* Scopes — the trades this job covers. Changing them re-gates
+                the count editors below (and the flashing field) live. */}
+            {editable && (
+              <View style={styles.countPair}>
+                <Text style={styles.fieldLabel}>Scopes</Text>
+                <MultiCombobox
+                  key={`scopes-${job.id}`}
+                  values={job.scopes ?? []}
+                  options={SCOPE_OPTIONS}
+                  onChange={changeScopes}
+                  placeholder="Windows, Mirrors, Storefront…"
+                />
+                <Text style={styles.scopeHint}>
+                  Removing a scope also clears its done/total counts. No scopes
+                  selected means the job isn&apos;t narrowed — every scope (and
+                  count) stays available.
+                </Text>
+              </View>
             )}
             {/* One done/total editor per count pair the job's scopes cover.
                 The wrapper keeps the label/editor spacing of the parent's gap. */}
@@ -1483,6 +1549,9 @@ const styles = themed(() =>
       gap: spacing.sm,
     },
     optionsButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.pill,
@@ -1491,6 +1560,12 @@ const styles = themed(() =>
     editButtonActive: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
+      paddingHorizontal: spacing.md,
+    },
+    editButtonLabel: {
+      color: colors.textOnAccent,
+      fontFamily: fonts.semiBold,
+      fontSize: 13,
     },
     headerEditRow: {
       flexDirection: 'row',
@@ -1657,6 +1732,12 @@ const styles = themed(() =>
     },
     countPair: {
       gap: spacing.xs + 2,
+    },
+    scopeHint: {
+      color: colors.textTertiary,
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      lineHeight: 15,
     },
     fieldLabel: {
       color: colors.textSecondary,

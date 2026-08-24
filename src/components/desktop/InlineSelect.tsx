@@ -15,6 +15,8 @@ interface Props<T extends string> {
   options: SelectOption<T>[];
   onChange: (value: T) => void;
   minWidth?: number;
+  /** Muted trigger text shown while nothing is selected (empty value). */
+  placeholder?: string;
 }
 
 /** Compact dropdown used in desktop tables and forms. */
@@ -23,6 +25,7 @@ export function InlineSelect<T extends string>({
   options,
   onChange,
   minWidth = 150,
+  placeholder,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<View>(null);
@@ -34,7 +37,14 @@ export function InlineSelect<T extends string>({
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
         onPress={() => setOpen((o) => !o)}
       >
-        <Text style={styles.triggerText}>{current?.label ?? value}</Text>
+        <Text
+          style={[
+            styles.triggerText,
+            !current && !!placeholder && styles.triggerPlaceholder,
+          ]}
+        >
+          {current?.label ?? (value || placeholder || '')}
+        </Text>
         <Feather
           name={open ? 'chevron-up' : 'chevron-down'}
           size={15}
@@ -100,6 +110,9 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.medium,
     fontSize: 13,
+  },
+  triggerPlaceholder: {
+    color: colors.textTertiary,
   },
   menu: {
     backgroundColor: colors.surfaceLight,

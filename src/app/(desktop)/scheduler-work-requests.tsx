@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
 import { AccessDenied } from '@/components/desktop/AccessDenied';
@@ -14,8 +15,22 @@ export default function SchedulerWorkRequestsScreen() {
   const role = useCurrentRole();
   const allJobs = useAppStore((s) => s.jobs);
   const jobs = useMemo(() => activeJobs(allJobs), [allJobs]);
+  // Notification deep link: open this card's sidebar (`ow` is a nonce so
+  // re-clicking a notification for the same card re-opens it).
+  const { openWorkRequest, ow } = useLocalSearchParams<{
+    openWorkRequest?: string;
+    ow?: string;
+  }>();
 
   if (role !== 'scheduler') return <AccessDenied />;
 
-  return <WorkRequestsScreen jobs={jobs} />;
+  return (
+    <WorkRequestsScreen
+      jobs={jobs}
+      openWorkRequestId={
+        typeof openWorkRequest === 'string' ? openWorkRequest : undefined
+      }
+      openWorkRequestNonce={typeof ow === 'string' ? ow : undefined}
+    />
+  );
 }

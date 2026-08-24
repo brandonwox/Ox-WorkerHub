@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   DragSource,
   DropLine,
+  useDragBoard,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -45,6 +46,7 @@ export function DaySidebar({
   onClose,
 }: Props) {
   const zoneId = `sidebar:${date}`;
+  const board = useDragBoard();
   const { ref, hoverIndex } = useDropZone(zoneId, {
     type: 'day',
     surface: 'sidebar',
@@ -53,6 +55,14 @@ export function DaySidebar({
   });
 
   const items = buildDayItems(assignments, workRequests);
+  // hoverIndex counts the day's rows EXCLUDING the dragged one (the drag
+  // layer skips it, matching the drop's remove-then-insert renumbering) —
+  // count line slots over the same filtered list so the line matches the
+  // landing (see DayCell in MonthCalendar).
+  let slot = 0;
+  const lineAfter = items.map((item) =>
+    board.draggingKey === `request:${item.card.id}` ? null : ++slot
+  );
 
   return (
     <View style={styles.wrap} ref={ref} collapsable={false}>
@@ -127,7 +137,7 @@ export function DaySidebar({
                     ))}
                   </Text>
                 </DragSource>
-                {hoverIndex === i + 1 && <DropLine />}
+                {hoverIndex === lineAfter[i] && <DropLine />}
               </Fragment>
             ))}
           </>

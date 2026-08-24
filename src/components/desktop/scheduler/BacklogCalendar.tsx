@@ -10,7 +10,7 @@ import {
   startOfMonth,
   subMonths,
 } from 'date-fns';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { isReadyNow } from '@/components/desktop/scheduler/Backlog';
@@ -18,6 +18,7 @@ import {
   DragSource,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
+import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
@@ -37,6 +38,14 @@ interface Props {
   onOpenCard: (card: WorkRequest) => void;
   /** Collapse back to the Work Requests list. */
   onCollapse: () => void;
+  /**
+   * Jump the calendar to this day's month ("Show in calendar" for an
+   * unscheduled request). The nonce re-fires a repeat jump to the same date.
+   */
+  focusDate?: string | null;
+  focusNonce?: string;
+  /** Blink this card's chip; the nonce keys the animation for replays. */
+  flashCard?: { id: string; nonce: string } | null;
 }
 
 /**
@@ -48,15 +57,24 @@ interface Props {
  */
 // The hovered day column widens to at least this (same rule as the crew
 // calendar) so the requests inside it are readable.
-const HOVER_COL_MIN = 150;
+const HOVER_COL_MIN = 180;
 
 export function BacklogCalendar({
   cards,
   jobNameFor,
   onOpenCard,
   onCollapse,
+  focusDate,
+  focusNonce,
+  flashCard,
 }: Props) {
   const [month, setMonth] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!focusDate) return;
+    void focusNonce; // dep only — a repeat jump to the same date re-fires
+    setMonth(parseISO(focusDate));
+  }, [focusDate, focusNonce]);
   // The weekday column under the pointer — widens across every week row.
   // Position-tracked (not element hover) so it follows the COLUMN no matter
   // which request chip the mouse is over. No horizontal grid padding here.
@@ -179,6 +197,7 @@ export function BacklogCalendar({
                         cards={cardsByDate.get(dateStr) ?? []}
                         jobNameFor={jobNameFor}
                         onOpenCard={onOpenCard}
+                        flashCard={flashCard}
                       />
                     ) : null}
                   </View>
@@ -199,12 +218,14 @@ function BacklogDayCell({
   cards,
   jobNameFor,
   onOpenCard,
+  flashCard,
 }: {
   date: string;
   today: boolean;
   cards: WorkRequest[];
   jobNameFor: (card: WorkRequest) => string;
   onOpenCard: (card: WorkRequest) => void;
+  flashCard?: { id: string; nonce: string } | null;
 }) {
   const { ref, hovered } = useDropZone(`bcal:${date}`, {
     type: 'backlog-day',
@@ -243,6 +264,9 @@ function BacklogDayCell({
                 !ready && styles.requestNotReady,
               ]}
             >
+              {flashCard?.id === card.id && (
+                <FlashBorder key={flashCard.nonce} />
+              )}
               <View style={[styles.requestDot, { backgroundColor: accent }]} />
               <View style={styles.requestText}>
                 <Text style={styles.requestTitle} numberOfLines={1}>

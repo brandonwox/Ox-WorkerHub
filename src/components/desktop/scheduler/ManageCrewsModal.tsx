@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { FormInput } from '@/components/FormInput';
+import { InlineSelect } from '@/components/desktop/InlineSelect';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Worker } from '@/types';
@@ -40,6 +41,13 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
   // Hard constraint: the picker only ever lists installers.
   const installers = workers.filter((w) => w.role === 'installer');
+
+  // Options for the foreman dropdowns: the given crew members, by name.
+  const memberOptions = (ids: string[]) =>
+    ids
+      .map((id) => installers.find((w) => w.id === id))
+      .filter((w): w is Worker => w != null)
+      .map((w) => ({ value: w.id, label: w.name }));
 
   // The automatic (palette) color each crew currently reads as — the
   // fallback shown on the "Auto" swatch. Same composition as CalendarBoard.
@@ -162,18 +170,18 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
                       })
                     }
                   />
-                  <Text style={styles.fieldLabel}>Foreman (exactly one)</Text>
+                  <Text style={styles.fieldLabel}>Foreman</Text>
                   {crew.installerIds.length === 0 ? (
                     <Text style={styles.muted}>
                       Add members before picking a foreman.
                     </Text>
                   ) : (
-                    <ForemanChips
-                      installers={installers.filter((w) =>
-                        crew.installerIds.includes(w.id)
-                      )}
-                      foremanId={crew.foremanId}
-                      onPick={(id) => updateCrew(crew.id, { foremanId: id })}
+                    <InlineSelect
+                      value={crew.foremanId ?? ''}
+                      options={memberOptions(crew.installerIds)}
+                      onChange={(id) => updateCrew(crew.id, { foremanId: id })}
+                      minWidth={220}
+                      placeholder="Pick a foreman…"
                     />
                   )}
                   {!crew.foremanId && crew.installerIds.length > 0 && (
@@ -214,13 +222,13 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
               />
               {newCrewMembers.length > 0 && (
                 <>
-                  <Text style={styles.fieldLabel}>Foreman (exactly one)</Text>
-                  <ForemanChips
-                    installers={installers.filter((w) =>
-                      newCrewMembers.includes(w.id)
-                    )}
-                    foremanId={newCrewForeman ?? undefined}
-                    onPick={setNewCrewForeman}
+                  <Text style={styles.fieldLabel}>Foreman</Text>
+                  <InlineSelect
+                    value={newCrewForeman ?? ''}
+                    options={memberOptions(newCrewMembers)}
+                    onChange={setNewCrewForeman}
+                    minWidth={220}
+                    placeholder="Pick a foreman…"
                   />
                 </>
               )}
@@ -330,48 +338,6 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
         </View>
       </View>
     </Modal>
-  );
-}
-
-/**
- * Single-select foreman picker over a crew's members. Exactly one foreman per
- * permanent crew — picking a different member moves the tag.
- */
-function ForemanChips({
-  installers,
-  foremanId,
-  onPick,
-}: {
-  installers: Worker[];
-  foremanId?: string;
-  onPick: (id: string) => void;
-}) {
-  return (
-    <View style={styles.chips}>
-      {installers.map((w) => {
-        const active = foremanId === w.id;
-        return (
-          <Pressable
-            key={w.id}
-            style={({ pressed }) => [
-              styles.chip,
-              active && styles.chipActive,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => onPick(w.id)}
-          >
-            <Feather
-              name="star"
-              size={12}
-              color={active ? colors.primary : colors.textTertiary}
-            />
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {w.name}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }
 

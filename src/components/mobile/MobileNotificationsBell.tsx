@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotificationList } from '@/components/notifications/NotificationList';
 import { useUnreadNotificationCount } from '@/store/useAppStore';
@@ -17,6 +17,12 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 export function MobileNotificationsBell() {
   const unread = useUnreadNotificationCount();
   const [open, setOpen] = useState(false);
+  // The sheet lives in a bare RN Modal — a separate native root with no
+  // SafeAreaProvider inside it, where SafeAreaView resolves the top inset to
+  // 0 and the header rides under the iOS status bar / Dynamic Island. The
+  // hook reads the inset from the app's provider instead (same trick as the
+  // work request sheet).
+  const insets = useSafeAreaInsets();
 
   return (
     <>
@@ -41,7 +47,12 @@ export function MobileNotificationsBell() {
         animationType="slide"
         onRequestClose={() => setOpen(false)}
       >
-        <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingTop: insets.top, paddingBottom: insets.bottom },
+          ]}
+        >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Notifications</Text>
             <Pressable onPress={() => setOpen(false)} hitSlop={8}>
@@ -49,7 +60,7 @@ export function MobileNotificationsBell() {
             </Pressable>
           </View>
           <NotificationList onNavigate={() => setOpen(false)} />
-        </SafeAreaView>
+        </View>
       </Modal>
     </>
   );

@@ -11,9 +11,11 @@ import {
 
 import { MultiCombobox } from '@/components/desktop/Combobox';
 import { FormInput } from '@/components/FormInput';
+import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { JOB_SCOPES, Job, JobScope } from '@/types';
 import { subJobTypeSingular } from '@/utils/jobName';
+import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 
 export interface NewSubJobInput {
   name: string;
@@ -52,6 +54,8 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
   const [scopes, setScopes] = useState<JobScope[] | null>(null);
   const [flashing, setFlashing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // For the duplicate-PO check (archived jobs included).
+  const jobs = useAppStore((s) => s.jobs);
 
   // Autofill from the parent until the worker edits a field.
   const effectiveLocation = location ?? parentJob?.location ?? '';
@@ -94,6 +98,10 @@ export function CreateSubJobModal({ parentJob, onClose, onSubmit }: Props) {
     }
     if (!po.trim()) {
       setError('PO is required.');
+      return;
+    }
+    if (poTaken(po, jobs)) {
+      setError(PO_TAKEN_MESSAGE);
       return;
     }
     onSubmit({

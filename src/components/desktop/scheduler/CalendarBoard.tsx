@@ -61,6 +61,14 @@ interface Props {
   openCardId?: string;
   /** Changes on every jump so re-clicking the same notification re-opens it. */
   openCardNonce?: string;
+  /**
+   * Reveal this work request on the board ("Show in calendar" from the quick
+   * view): jump to the month it's scheduled in — or, when unscheduled, expand
+   * the Work Requests calendar on its target month — and blink its chip.
+   */
+  showCardId?: string;
+  /** Changes on every reveal so repeating the same card re-fires it. */
+  showCardNonce?: string;
 }
 
 /**
@@ -73,6 +81,8 @@ export function CalendarBoard({
   highlightNonce,
   openCardId,
   openCardNonce,
+  showCardId,
+  showCardNonce,
 }: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
@@ -116,6 +126,13 @@ export function CalendarBoard({
   const [month, setMonth] = useState(() => new Date());
   // The day currently flashing from a "View on calendar" jump (clears itself).
   const [flashDate, setFlashDate] = useState<string | null>(null);
+  // The card whose chip is blinking from a "Show in calendar" reveal, and the
+  // month the pool calendar should jump to for an unscheduled one.
+  const [flashCard, setFlashCard] = useState<{
+    id: string;
+    nonce: string;
+  } | null>(null);
+  const [backlogFocusDate, setBacklogFocusDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!highlightDate) return;
@@ -135,6 +152,56 @@ export function CalendarBoard({
       setViewingId(openCardId);
     }
   }, [openCardId, openCardNonce]);
+
+  // "Show in calendar": get the card visibly on the board, then blink its
+  // chip. Scheduled → the crew calendar on its (next) scheduled month, pool
+  // calendar collapsed out of the way. Unscheduled → the pool's expanded
+  // calendar on the card's target month. Either way the quick view closes —
+  // it would cover the reveal.
+  useEffect(() => {
+    if (!showCardId || !showCardNonce) return;
+    const s = useAppStore.getState();
+    const card = s.workRequests.find((c) => c.id === showCardId);
+    if (!card) return;
+    setViewingId(null);
+    setViewingJobId(null);
+    setDayFocus(null);
+    const dates = [
+      ...new Set(
+        s.assignments
+          .filter((a) => a.workRequestId === showCardId)
+          .map((a) => a.date)
+      ),
+    ].sort();
+    if (dates.length > 0) {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const target = dates.find((d) => d >= today) ?? dates[dates.length - 1];
+      setMonth(parseISO(target));
+      toggleBacklogExpanded(false);
+      // A hidden crew's chips don't render — un-hide the card's crews so the
+      // reveal actually has something to blink.
+      const cardCrewIds = new Set(
+        s.assignments
+          .filter((a) => a.workRequestId === showCardId)
+          .map((a) => a.crewId)
+      );
+      setHiddenCrewIds((prev) => {
+        const next = [...prev].filter((id) => !cardCrewIds.has(id));
+        return next.length === prev.size ? prev : new Set(next);
+      });
+    } else {
+      const target = card.date || format(new Date(), 'yyyy-MM-dd');
+      setBacklogFocusDate(target);
+      toggleBacklogExpanded(true);
+    }
+    setFlashCard({ id: showCardId, nonce: showCardNonce });
+    // Long enough for the blink + fade; then the overlay unmounts.
+    const timer = setTimeout(() => setFlashCard(null), 4000);
+    return () => clearTimeout(timer);
+    // toggleBacklogExpanded is stable-in-behavior; re-running on it would
+    // re-fire the reveal on unrelated renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCardId, showCardNonce]);
 
   // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
   // Work Requests container visibly grows leftward across the board.
@@ -565,6 +632,7 @@ export function CalendarBoard({
             canUnassign={canAssign}
             canAssign={canAssign}
             crewNameFor={crewTagFor}
+            flashCard={flashCard}
           />
         </Animated.View>
 
@@ -594,6 +662,9 @@ export function CalendarBoard({
               jobNameFor={jobNameFor}
               onOpenCard={(card) => setViewingId(card.id)}
               onCollapse={() => toggleBacklogExpanded(false)}
+              focusDate={backlogFocusDate}
+              focusNonce={showCardNonce}
+              flashCard={flashCard}
             />
           ) : (
             <Backlog

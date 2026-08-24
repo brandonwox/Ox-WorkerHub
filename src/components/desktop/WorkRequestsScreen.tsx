@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { endOfWeek, format, startOfWeek } from 'date-fns';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
@@ -13,7 +13,6 @@ import {
   ScheduleFilter,
 } from '@/components/desktop/WorkRequestFilters';
 import { WorkRequestRow } from '@/components/desktop/WorkRequestRow';
-import { JobPhotosModal } from '@/components/desktop/JobPhotosModal';
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
@@ -47,6 +46,13 @@ interface WorkRequestsScreenProps {
    * matches job names either way.
    */
   poSubtitles?: boolean;
+  /**
+   * Open this work request's sidebar on arrival — notification deep links
+   * (the pages read it from the `openWorkRequest` URL param).
+   */
+  openWorkRequestId?: string;
+  /** Changes on every deep-link click so the same card re-opens. */
+  openWorkRequestNonce?: string;
 }
 
 /** Desktop work requests workspace: every work request in scope, its calendar status, and creation. */
@@ -55,6 +61,8 @@ export function WorkRequestsScreen({
   showFalseStarts = false,
   onViewCalendar,
   poSubtitles = false,
+  openWorkRequestId,
+  openWorkRequestNonce,
 }: WorkRequestsScreenProps) {
   const allWorkRequests = useAppStore((s) => s.workRequests);
   const assignments = useAppStore((s) => s.assignments);
@@ -70,7 +78,6 @@ export function WorkRequestsScreen({
   // A work request's parent-job link opens the job dashboard ON TOP of the work request
   // sidebar; its back arrow returns here.
   const [openJobId, setOpenJobId] = useState<string | null>(null);
-  const [photosJob, setPhotosJob] = useState<Job | null>(null);
 
   const openCreate = () => {
     setViewingId(null);
@@ -87,6 +94,21 @@ export function WorkRequestsScreen({
     setOpenJobId(null);
     setViewingId(null);
   };
+
+  // Notification deep link: open the card's sidebar once it exists in the
+  // store (mirrors CalendarBoard's openCardId effect). The nonce is a dep so
+  // re-clicking the same notification re-opens a closed sidebar.
+  useEffect(() => {
+    if (!openWorkRequestId) return;
+    void openWorkRequestNonce;
+    if (
+      useAppStore.getState().workRequests.some((c) => c.id === openWorkRequestId)
+    ) {
+      setCreateOpen(false);
+      setOpenJobId(null);
+      setViewingId(openWorkRequestId);
+    }
+  }, [openWorkRequestId, openWorkRequestNonce]);
 
   // Filters / sort (all stack).
   const [search, setSearch] = useState('');
@@ -322,31 +344,12 @@ export function WorkRequestsScreen({
           <Text style={styles.emptyText}>No work requests match these filters.</Text>
         ) : groups ? (
           <View style={styles.groupStack}>
-            {groups.map((group) => {
-              const groupJob =
-                group.key === '__none'
-                  ? undefined
-                  : jobs.find((j) => j.id === group.key);
-              return (
+            {groups.map((group) => (
               <View key={group.key} style={styles.group}>
-                <View style={styles.groupHeaderRow}>
-                  <Text style={styles.groupHeader}>
-                    {group.name}{' '}
-                    <Text style={styles.groupCount}>· {group.cards.length}</Text>
-                  </Text>
-                  {groupJob && (
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.picsButton,
-                        pressed && styles.pressed,
-                      ]}
-                      onPress={() => setPhotosJob(groupJob)}
-                    >
-                      <Feather name="image" size={13} color={colors.primary} />
-                      <Text style={styles.picsButtonText}>Pics</Text>
-                    </Pressable>
-                  )}
-                </View>
+                <Text style={styles.groupHeader}>
+                  {group.name}{' '}
+                  <Text style={styles.groupCount}>· {group.cards.length}</Text>
+                </Text>
                 <View style={styles.cardStack}>
                   {group.cards.map((card) => {
                     const date = scheduledDateById.get(card.id);
@@ -368,8 +371,7 @@ export function WorkRequestsScreen({
                   })}
                 </View>
               </View>
-              );
-            })}
+            ))}
           </View>
         ) : (
           <View style={styles.cardStack}>
@@ -426,8 +428,6 @@ export function WorkRequestsScreen({
         quickViewJobs={jobs}
         onOpenJob={setOpenJobId}
       />
-
-      <JobPhotosModal job={photosJob} onClose={() => setPhotosJob(null)} />
     </View>
   );
 }
@@ -518,29 +518,10 @@ const styles = themed(() => StyleSheet.create({
   group: {
     gap: spacing.sm,
   },
-  groupHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
   groupHeader: {
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 15,
-  },
-  picsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primaryDim,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 3,
-  },
-  picsButtonText: {
-    color: colors.primary,
-    fontFamily: fonts.semiBold,
-    fontSize: 12,
   },
   groupCount: {
     color: colors.textTertiary,

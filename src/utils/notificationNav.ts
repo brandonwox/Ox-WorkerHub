@@ -13,10 +13,14 @@ export interface NotificationTarget {
  * notification row and toast routes through this — one map, no per-surface
  * special cases.
  *
- *  - Work-request notifications open the universal work request page.
- *    Exception: the scheduler's "Now" ping keeps its richer jump — the
- *    calendar with that card's quick view open (`oc`/`oj` are nonces so
- *    re-clicking a notification for the same target re-opens it).
+ *  - Work-request notifications: on the scheduler's and field super's WEB
+ *    console they open the role's work requests page with `openWorkRequest`
+ *    popping that card's right sidebar (never the full-screen page — that's
+ *    the mobile sheet). Exception: the scheduler's "Now" ping keeps its
+ *    richer jump — the calendar with that card's quick-view POPUP open.
+ *    Everything else (native, roles without a work requests page) opens the
+ *    universal work request page. (`oc`/`oj`/`ow` are nonces so re-clicking
+ *    a notification for the same target re-opens it.)
  *  - Job notifications open the job: the mobile job details page on native,
  *    or the role's jobs page on web with `openJob` popping the job's
  *    dashboard sidebar (the Finance Manager's jobs page has no sidebar, so
@@ -43,6 +47,19 @@ export function notificationTarget(
     };
   }
   if (workRequestId) {
+    if (Platform.OS === 'web') {
+      const workRequestsPage: Partial<Record<AppRole, string>> = {
+        scheduler: '/scheduler-work-requests',
+        field_super: '/field-super-work-requests',
+      };
+      const pathname = role ? workRequestsPage[role] : undefined;
+      if (pathname) {
+        return {
+          pathname,
+          params: { openWorkRequest: workRequestId, ow: nonce },
+        };
+      }
+    }
     return { pathname: '/work-request/[id]', params: { id: workRequestId } };
   }
   if (jobId) {

@@ -21,6 +21,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
 import { editableCountDefs, JOB_COUNT_DEFS } from '@/utils/jobCounts';
+import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
@@ -152,7 +153,16 @@ export function FieldSuperJobsMobile() {
                 onToggle={() =>
                   setExpandedId((id) => (id === job.id ? null : job.id))
                 }
-                onSave={(changes) => updateJob(job.id, changes)}
+                onSave={(changes) => {
+                  if (changes.po && poTaken(changes.po, jobs, job.id)) {
+                    flash(
+                      'That PO is already used by another job — change discarded.',
+                      'warning'
+                    );
+                    return;
+                  }
+                  updateJob(job.id, changes);
+                }}
               />
             ))
           )}
@@ -195,6 +205,8 @@ function CreateJobSheet({
   const [location, setLocation] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // For the duplicate-PO check (archived jobs included).
+  const allJobs = useAppStore((s) => s.jobs);
 
   const close = () => {
     setName('');
@@ -219,6 +231,10 @@ function CreateJobSheet({
     }
     if (!po.trim()) {
       setError('PO is required.');
+      return;
+    }
+    if (poTaken(po, allJobs)) {
+      setError(PO_TAKEN_MESSAGE);
       return;
     }
     onSubmit({

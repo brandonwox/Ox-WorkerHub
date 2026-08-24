@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { format, parse } from 'date-fns';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -204,6 +205,7 @@ export function WorkRequestQuickView({
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
   const workers = useAppStore((s) => s.workers);
   const role = useCurrentRole();
+  const router = useRouter();
   // Office roles get the status history + reset controls (installers use the
   // mobile work request view, not this one, but gate anyway).
   const officeRole =
@@ -360,7 +362,8 @@ export function WorkRequestQuickView({
         );
   const jobOptions = pickableJobs.map((j) => ({
     value: j.id,
-    label: j.po ? `PO ${j.po}` : jobDisplayName(j, jobs),
+    // The bare PO — its shape already says "PO" without the label.
+    label: j.po ? j.po : jobDisplayName(j, jobs),
     keywords: [jobDisplayName(j, jobs)],
   }));
   // A card can't be created until the parent job has a jobsite address — and
@@ -881,6 +884,31 @@ export function WorkRequestQuickView({
       {/* Header action icons, Google-Calendar style. A draft has nothing to
           delete — create mode shows only the X. */}
       <View style={styles.headerActions}>
+        {/* Scheduler: reveal this card on the calendar page (jumps to its
+            month — the pool calendar for an unscheduled card — and blinks
+            its chip). Closes this popup; it would cover the reveal. */}
+        {!creating && role === 'scheduler' && (
+          <Pressable
+            onPress={() => {
+              router.push({
+                pathname: '/scheduler-calendar',
+                params: {
+                  showCard: workRequest.id,
+                  // Nonce so re-showing the same card re-fires the reveal.
+                  sc: Date.now().toString(),
+                },
+              });
+              onClose();
+            }}
+            style={({ pressed, hovered }: PressState) => [
+              styles.iconButton,
+              (hovered || pressed) && styles.iconButtonHover,
+            ]}
+          >
+            <Feather name="calendar" size={16} color={colors.textSecondary} />
+            <Text style={styles.showCalendarText}>Show in calendar</Text>
+          </Pressable>
+        )}
         {!creating && (
           <Pressable
             onPress={remove}
@@ -2081,6 +2109,11 @@ const styles = themed(() => StyleSheet.create({
   },
   deleteArmedText: {
     color: colors.textOnAccent,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  showCalendarText: {
+    color: colors.textSecondary,
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
