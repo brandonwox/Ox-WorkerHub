@@ -25,6 +25,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import {
+  PhotoTagsMenu,
+  usePhotoTagSuggestions,
+} from '@/components/photos/PhotoTagsMenu';
 import { DisplayPhoto } from '@/components/photos/useJobPhotos';
 import { VideoPage } from '@/components/photos/VideoPage';
 import { ZoomableImage } from '@/components/photos/ZoomableImage';
@@ -45,10 +49,15 @@ interface Props {
   onClose: () => void;
 }
 
+/** RN's Pressable state on web also carries `hovered` (react-native-web). */
+type PressState = { pressed: boolean; hovered?: boolean };
+
 /**
- * Full-screen photo browser: swipe between a job's photos; each shows who took
- * it, when, and its note. The photographer can edit their note; they (and Field
- * Supers / the Operator) can delete.
+ * Full-screen photo browser: swipe between a job's photos (on web, big
+ * left/right arrows and the arrow keys step through the same set — exactly
+ * the list the opening section showed, filtered or not); each shows who took
+ * it, when, its note, and its tags. The photographer can edit their note;
+ * anyone can edit the tags; they (and Field Supers / the Operator) can delete.
  */
 export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   const { width, height } = useWindowDimensions();
@@ -58,11 +67,13 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   const uploadedPhotos = useAppStore((s) => s.jobPhotos);
   const pendingPhotos = useAppStore((s) => s.pendingPhotos);
   const setJobPhotoNote = useAppStore((s) => s.setJobPhotoNote);
+  const setJobPhotoTags = useAppStore((s) => s.setJobPhotoTags);
   const deleteJobPhoto = useAppStore((s) => s.deleteJobPhoto);
   const router = useRouter();
 
   const [index, setIndex] = useState(initialIndex ?? 0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [tagsMenuOpen, setTagsMenuOpen] = useState(false);
   // Metadata bars; a single tap on the photo toggles them.
   const [detailsVisible, setDetailsVisible] = useState(true);
   // True while the current photo is pinch-zoomed in — locks the pager so a
@@ -96,6 +107,7 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
       setConfirmingDelete(false);
       setDetailsVisible(true);
       setPhotoZoomed(false);
+      setTagsMenuOpen(false);
     }
   }
 
@@ -122,6 +134,45 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
   }, [initialIndex, livePhotos.length, index, onClose]);
 
   const photo = livePhotos[index] as DisplayPhoto | undefined;
+  const tagSuggestions = usePhotoTagSuggestions(photo?.jobId);
+
+  // Step to a neighbouring photo — the web arrows and arrow keys. Clamped to
+  // the set; the pager scrolls to match.
+  const canGoPrev = index > 0;
+  const canGoNext = index < livePhotos.length - 1;
+  const goTo = (next: number) => {
+    if (next < 0 || next > livePhotos.length - 1 || next === index) return;
+    setIndex(next);
+    setConfirmingDelete(false);
+    listRef.current?.scrollToIndex({ index: next, animated: true });
+  };
+
+  // Web: left/right arrow keys step, Escape closes — unless a text input has
+  // focus (the note or a tag being typed).
+  const open = initialIndex != null;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !open) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as { tagName?: string } | null;
+      const typing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+      if (typing) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goTo(index - 1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goTo(index + 1);
+      } else if (e.key === 'Escape' && !tagsMenuOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // goTo closes over index/livePhotos; re-bind when either changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, index, livePhotos.length, tagsMenuOpen, onClose]);
+
   const photographer = useMemo(
     () => workers.find((w) => w.id === photo?.workerId),
     [workers, photo]
@@ -240,6 +291,40 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                 }
               />
 
+              {/* Web: always-visible left/right arrows (the phone swipes). */}
+              {Platform.OS === 'web' && livePhotos.length > 1 && (
+                <>
+                  <Pressable
+                    style={({ pressed, hovered }: PressState) => [
+                      styles.arrow,
+                      styles.arrowLeft,
+                      (hovered || pressed) && canGoPrev && styles.arrowHover,
+                      !canGoPrev && styles.arrowDisabled,
+                    ]}
+                    disabled={!canGoPrev}
+                    onPress={() => goTo(index - 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous photo"
+                  >
+                    <Feather name="chevron-left" size={30} color={colors.textPrimary} />
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed, hovered }: PressState) => [
+                      styles.arrow,
+                      styles.arrowRight,
+                      (hovered || pressed) && canGoNext && styles.arrowHover,
+                      !canGoNext && styles.arrowDisabled,
+                    ]}
+                    disabled={!canGoNext}
+                    onPress={() => goTo(index + 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next photo"
+                  >
+                    <Feather name="chevron-right" size={30} color={colors.textPrimary} />
+                  </Pressable>
+                </>
+              )}
+
               {/* Top bar: position + close. */}
               {detailsVisible && (
                 <View style={styles.topBar}>
@@ -325,6 +410,29 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                     </Pressable>
                   )}
 
+                  {/* Custom tags — anyone may edit them. */}
+                  <View style={styles.tagsRow}>
+                    {(photo.tags ?? []).map((tag) => (
+                      <View key={tag.toLowerCase()} style={styles.tagChip}>
+                        <Text style={styles.tagChipText}>#{tag}</Text>
+                      </View>
+                    ))}
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.tagEditButton,
+                        pressed && styles.tagEditPressed,
+                      ]}
+                      onPress={() => setTagsMenuOpen(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit tags"
+                    >
+                      <Feather name="hash" size={12} color={colors.textSecondary} />
+                      <Text style={styles.tagEditText}>
+                        {(photo.tags ?? []).length > 0 ? 'Edit tags' : 'Add tags'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
                   {isOwn ? (
                     <NoteInput
                       key={photo.id}
@@ -335,6 +443,18 @@ export function PhotoViewerModal({ photos, initialIndex, onClose }: Props) {
                     <Text style={styles.noteText}>{photo.note}</Text>
                   ) : null}
                 </View>
+              )}
+
+              {photo && (
+                <PhotoTagsMenu
+                  visible={tagsMenuOpen}
+                  title="Photo tags"
+                  hint="Pick any that apply, or type a new one."
+                  tags={photo.tags ?? []}
+                  suggestions={tagSuggestions}
+                  onChange={(tags) => setJobPhotoTags(photo.id, tags)}
+                  onClose={() => setTagsMenuOpen(false)}
+                />
               )}
             </View>
           </Animated.View>
@@ -438,6 +558,69 @@ const styles = themed(() => StyleSheet.create({
     backgroundColor: colors.overlay,
     borderRadius: radii.pill,
     padding: spacing.sm,
+  },
+  // Web step arrows: big discs, vertically centred, over the photo.
+  arrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -28,
+    width: 56,
+    height: 56,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  arrowLeft: {
+    left: spacing.lg,
+  },
+  arrowRight: {
+    right: spacing.lg,
+  },
+  arrowHover: {
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+  },
+  arrowDisabled: {
+    opacity: 0.25,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+  },
+  tagChip: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+  },
+  tagChipText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  tagEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 2,
+  },
+  tagEditPressed: {
+    backgroundColor: colors.surfaceLight,
+  },
+  tagEditText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
   },
   bottomBar: {
     position: 'absolute',

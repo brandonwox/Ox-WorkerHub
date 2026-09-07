@@ -18,8 +18,6 @@ import { buildCrewColorMap, CREW_COLOR_CHOICES } from '@/utils/crewColors';
 
 /** Permanent crew names are a single letter — they tag calendar chips. */
 const CREW_NAME_RE = /^[A-Za-z]$/;
-/** Daily crew names are freer: anything up to this many characters. */
-const DAILY_NAME_MAX = 20;
 
 interface Props {
   visible: boolean;
@@ -71,7 +69,6 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   const [newCrewMembers, setNewCrewMembers] = useState<string[]>([]);
   const [newCrewForeman, setNewCrewForeman] = useState<string | null>(null);
   const [newCrewColor, setNewCrewColor] = useState<string | undefined>();
-  const [newDailyName, setNewDailyName] = useState('');
   const [newDailyMembers, setNewDailyMembers] = useState<string[]>([]);
   const [newDailyColor, setNewDailyColor] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
@@ -101,17 +98,16 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   };
 
   const createDailyCrew = () => {
-    const name = newDailyName.trim();
-    if (name.length === 0 || name.length > DAILY_NAME_MAX) {
-      setError(`Daily crew names can be 1–${DAILY_NAME_MAX} characters.`);
+    // No typed name — the crew is named after its members ("Brandon W &
+    // Timothy B"), so it needs at least one.
+    if (newDailyMembers.length === 0) {
+      setError('Add at least one installer to the daily crew.');
       return;
     }
     addDailyCrew({
-      name,
       installerIds: newDailyMembers,
       color: newDailyColor,
     });
-    setNewDailyName('');
     setNewDailyMembers([]);
     setNewDailyColor(undefined);
     setError(null);
@@ -286,14 +282,12 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
             )}
 
             <View style={styles.formBlock}>
-              <FormInput
-                label={`New daily crew name (up to ${DAILY_NAME_MAX} characters)`}
-                value={newDailyName}
-                onChangeText={setNewDailyName}
-                placeholder="Punch list"
-                maxLength={DAILY_NAME_MAX}
-              />
+              {/* No name input — the crew is named after its members
+                  ("Brandon W & Timothy B") automatically. */}
               <Text style={styles.fieldLabel}>Members (installers only)</Text>
+              <Text style={styles.muted}>
+                The crew is named after its members automatically.
+              </Text>
               <MemberEditor
                 installers={installers}
                 selected={newDailyMembers}

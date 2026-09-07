@@ -34,6 +34,8 @@ export function newWorkRequestPayload(input: NewWorkRequestInput, jobs: Job[]) {
     readiness: input.readiness,
     materials: input.materials,
     flashingMaterial: input.flashingMaterial,
+    deliveryCountTotal: input.deliveryCountTotal,
+    windowsCasements: input.windowsCasements,
     pickupRequired: input.pickupRequired,
     pickupLocation: input.pickupLocation,
     notes: input.notes,

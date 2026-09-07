@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { format, parse } from 'date-fns';
+import { format, parse, parseISO } from 'date-fns';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +23,7 @@ import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
+import { WorkRequestOfficeFields } from '@/components/mobile/WorkRequestOfficeFields';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import { PhotoViewerModal } from '@/components/photos/PhotoViewerModal';
@@ -35,7 +36,10 @@ import {
   statusNeedsNote,
 } from '@/components/StatusChangeModal';
 import { workRequestStatusColors } from '@/components/StatusPill';
-import { CountEditModal } from '@/components/jobsite/CountEditModal';
+import {
+  CountEditModal,
+  EditableCount,
+} from '@/components/jobsite/CountEditModal';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import {
   useAppStore,
@@ -43,9 +47,15 @@ import {
   useCurrentWorker,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { SELECTABLE_WORK_REQUEST_STATUSES, WorkRequestStatus } from '@/types';
-import { formatCount, JobCount, jobCounts } from '@/utils/jobCounts';
+import {
+  Job,
+  SELECTABLE_WORK_REQUEST_STATUSES,
+  WorkRequestStatus,
+  WorkRequestStatusLogEntry,
+} from '@/types';
+import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
 import { workRequestPoLabel } from '@/utils/workRequestJobs';
 
@@ -62,6 +72,10 @@ export default function JobDetailsScreen() {
   const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
   const setWorkRequestTaskDone = useAppStore((s) => s.setWorkRequestTaskDone);
   const updateWorkRequestNotes = useAppStore((s) => s.updateWorkRequestNotes);
+  const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
+  const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
+  const assignments = useAppStore((s) => s.assignments);
+  const flash = useAppStore((s) => s.flash);
   const updateJob = useAppStore((s) => s.updateJob);
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const addJobIssue = useAppStore((s) => s.addJobIssue);
@@ -98,30 +112,73 @@ export default function JobDetailsScreen() {
   const [notes, setNotes] = useState(job?.fieldNotes ?? '');
   const [picking, setPicking] = useState(false);
   // The parent JOB's scope counts ("Window Count 0/100") — tapping one opens
-  // the done-number popup for the roles that update progress.
-  const [editingCount, setEditingCount] = useState<JobCount | null>(null);
+  // the done-number popup for the roles that update progress. The work
+  // request's own delivery count (Delivery scope) edits through the same
+  // popup; its doneField routes the save to the card instead of the job.
+  const [editingCount, setEditingCount] = useState<EditableCount | null>(null);
   const me = useCurrentWorker();
   const counts = jobCounts(parentJob);
+  const deliveryCount: EditableCount | null =
+    job?.scopes?.includes('Delivery') && job.deliveryCountTotal != null
+      ? {
+          doneField: 'deliveryCountDone',
+          label: 'Delivery Count',
+          done: job.deliveryCountDone ?? 0,
+          total: job.deliveryCountTotal,
+        }
+      : null;
   const canEditCounts =
-    parentJob != null &&
-    (role === 'installer' || role === 'field_super' || role === 'operator');
+    role === 'installer' || role === 'field_super' || role === 'operator';
   const [viewer, setViewer] = useState<{
     photos: DisplayPhoto[];
     index: number;
   } | null>(null);
   const statusWrapRef = useRef<View>(null);
   const insets = useSafeAreaInsets();
+  // Field Supers edit the office fields from the phone too (web quick view
+  // parity): the pencil in the top row toggles the editor below the header.
+  const canEditOffice = role === 'field_super';
+  const [editMode, setEditMode] = useState(false);
+  const [statusLogOpen, setStatusLogOpen] = useState(false);
+  // Two-tap confirms for the destructive edit-mode actions.
+  const [armed, setArmed] = useState<'reset' | 'delete' | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (armTimer.current) clearTimeout(armTimer.current);
+    },
+    []
+  );
+  // The day(s) this card sits on the calendar, sorted (empty = unscheduled).
+  const scheduledDates = useMemo(
+    () =>
+      [
+        ...new Set(
+          assignments
+            .filter((a) => a.workRequestId === job?.id)
+            .map((a) => a.date)
+        ),
+      ].sort(),
+    [assignments, job?.id]
+  );
   // Swipe-down-to-close (native): the sheet follows a downward drag that
   // starts while the content is scrolled to the top; past the threshold it
   // slides off and closes, otherwise it springs back. The x button stays.
   const sheetY = useRef(new Animated.Value(0)).current;
   const scrollOffset = useRef(0);
+  // While any popup opened FROM this sheet is up (the count wheel, the status
+  // menu, the maps menu, the status-note popup, the photo viewer), the drag
+  // must not arm: React Native routes a popup's touches through this
+  // component's responder capture too, so a downward scroll on the count
+  // wheel used to slide the whole sheet closed.
+  const overlayOpenRef = useRef(false);
   const dismissPan = useRef(
     PanResponder.create({
       // Capture phase so the drag wins over the ScrollView's own bounce when
       // already at the top. Taps never trip the movement threshold.
       onMoveShouldSetPanResponderCapture: (_evt, g) =>
         Platform.OS !== 'web' &&
+        !overlayOpenRef.current &&
         scrollOffset.current <= 0 &&
         g.dy > 8 &&
         Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
@@ -147,6 +204,12 @@ export default function JobDetailsScreen() {
       },
     })
   ).current;
+  overlayOpenRef.current =
+    statusMenuOpen ||
+    mapsOpen ||
+    pendingNoteStatus != null ||
+    editingCount != null ||
+    viewer != null;
   // Installers must attach at least one photo to a task before checking it
   // off; office roles (and the dev switcher's other views) are not gated.
   const requireTaskPhotos = me?.role === 'installer';
@@ -216,6 +279,73 @@ export default function JobDetailsScreen() {
     photoHintTimer.current = setTimeout(() => setPhotoHintTaskId(null), 4000);
   };
 
+  const arm = (what: 'reset' | 'delete') => {
+    setArmed(what);
+    if (armTimer.current) clearTimeout(armTimer.current);
+    armTimer.current = setTimeout(() => setArmed(null), 4000);
+  };
+
+  // How the priority reads: "Now · Jul 11", "This week · Jul 11 – Jul 18",
+  // or just the range for "Set dates" (the web quick view's rule).
+  const cardPriority = effectivePriority(job);
+  const priorityDisplay = !job.priority
+    ? 'Not set'
+    : cardPriority.range
+      ? cardPriority.raw === 'Set dates' && !cardPriority.escalated
+        ? cardPriority.range
+        : `${cardPriority.label} · ${cardPriority.range}`
+      : job.priority;
+
+  // "On calendar": the scheduled day (or the run of days), as a tappable
+  // link that jumps the viewer's calendar tab to that day and rings it.
+  const fmtDay = (d: string) => format(parseISO(d), 'EEE, MMM d');
+  const scheduledLabel =
+    scheduledDates.length === 0
+      ? null
+      : scheduledDates.length === 1
+        ? fmtDay(scheduledDates[0])
+        : `${fmtDay(scheduledDates[0])} – ${fmtDay(
+            scheduledDates[scheduledDates.length - 1]
+          )}`;
+  // Field Supers have a Calendar tab; the Scheduler's calendar IS their home
+  // tab. Installers (agenda only) get the label without the link.
+  const canViewCalendar =
+    Platform.OS !== 'web' && (role === 'field_super' || role === 'scheduler');
+  const viewOnCalendar = () => {
+    if (scheduledDates.length === 0) return;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const target =
+      scheduledDates.find((d) => d >= today) ??
+      scheduledDates[scheduledDates.length - 1];
+    // Pop the detail stack first so the tabs are what's showing.
+    if (router.canDismiss()) router.dismissAll();
+    router.navigate({
+      pathname: role === 'scheduler' ? '/' : '/calendar',
+      // `hl` is a nonce so re-tapping the same date re-fires the highlight.
+      params: { highlight: target, hl: Date.now().toString() },
+    });
+  };
+
+  // The status history, newest first. A card whose current status predates
+  // the log still shows one row synthesized from the last-change columns.
+  const statusLogEntries: WorkRequestStatusLogEntry[] = (
+    job.statusLog && job.statusLog.length > 0
+      ? [...job.statusLog]
+      : job.status !== 'Undefined' && job.statusChangedAt
+        ? [
+            {
+              id: 'pre-log',
+              status: job.status,
+              note: job.statusNote,
+              at: job.statusChangedAt,
+              byId: job.statusChangedById,
+            },
+          ]
+        : []
+  ).reverse();
+  const workerName = (wid?: string) =>
+    (wid && workers.find((w) => w.id === wid)?.name) || 'Unknown';
+
   // Capture photos FOR one task: the in-app camera on native, the image picker
   // on web. Photos carry the task id (and the work request/job links as usual).
   const takeTaskPhotos = async (taskId: string) => {
@@ -284,6 +414,27 @@ export default function JobDetailsScreen() {
             >
               <Feather name="home" size={22} color={colors.textPrimary} />
             </Pressable>
+            {canEditOffice && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.editButton,
+                  editMode && styles.editButtonActive,
+                  pressed && styles.closePressed,
+                ]}
+                hitSlop={8}
+                onPress={() => {
+                  setEditMode((on) => !on);
+                  setArmed(null);
+                }}
+                accessibilityLabel={editMode ? 'Done editing' : 'Edit work request'}
+              >
+                <Feather
+                  name={editMode ? 'check' : 'edit-2'}
+                  size={16}
+                  color={editMode ? colors.textOnAccent : colors.textPrimary}
+                />
+              </Pressable>
+            )}
           </View>
           <View ref={statusWrapRef} style={styles.statusWrap}>
             <Pressable
@@ -375,6 +526,153 @@ export default function JobDetailsScreen() {
           <Text style={styles.title}>{job.title}</Text>
         </View>
 
+        {/* Edit mode (Field Supers): the office fields — the same editor the
+            create sheet uses, autosaving straight to the card — then the
+            status log, a reset to Undefined, and delete. */}
+        {canEditOffice && editMode && (
+          <View style={styles.editBlock}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoIcon}>
+                <Feather name="edit-2" size={18} color={colors.textSecondary} />
+              </View>
+              <View style={styles.infoText}>
+                <Text style={styles.infoLabel}>Edit work request</Text>
+                <Text style={styles.notesCaption}>
+                  Changes save as you go. The linked job is fixed once a request
+                  exists.
+                </Text>
+              </View>
+            </View>
+            <WorkRequestOfficeFields
+              card={job}
+              parentJob={parentJob}
+              creating={false}
+              onChange={(patch) => updateWorkRequest(job.id, patch)}
+            />
+
+            <View style={styles.editDivider} />
+
+            {/* Status log — every field report on this card, newest first. */}
+            <Pressable
+              style={({ pressed }) => [styles.editActionRow, pressed && styles.countPressed]}
+              onPress={() => setStatusLogOpen((o) => !o)}
+            >
+              <Feather name="list" size={18} color={colors.textSecondary} />
+              <Text style={styles.editActionText}>Status log</Text>
+              <Feather
+                name={statusLogOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+            {statusLogOpen &&
+              (statusLogEntries.length === 0 ? (
+                <Text style={styles.statusLogEmpty}>No status changes yet.</Text>
+              ) : (
+                statusLogEntries.map((entry) => {
+                  const entryPalette =
+                    workRequestStatusColors[entry.status] ??
+                    workRequestStatusColors.Undefined;
+                  return (
+                    <View key={entry.id} style={styles.statusLogRow}>
+                      <View
+                        style={[styles.statusDot, { backgroundColor: entryPalette.fg }]}
+                      />
+                      <View style={styles.statusLogBody}>
+                        <Text style={styles.statusLogTitle}>
+                          {entry.status === 'Undefined'
+                            ? 'Reset to Undefined'
+                            : entry.status}{' '}
+                          <Text style={styles.statusLogMeta}>
+                            · {workerName(entry.byId)} ·{' '}
+                            {format(parseISO(entry.at), 'MMM d, h:mm a')}
+                          </Text>
+                        </Text>
+                        {entry.note ? (
+                          <Text style={styles.statusLogNote}>{entry.note}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })
+              ))}
+
+            {/* Reset to Undefined — the office clears a reported status so
+                installers report it fresh. Logged like any other change. */}
+            {job.status !== 'Undefined' && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.editActionRow,
+                  armed === 'reset' && styles.editActionRowArmed,
+                  pressed && styles.countPressed,
+                ]}
+                onPress={() => {
+                  if (armed === 'reset') {
+                    setArmed(null);
+                    setWorkRequestStatus(job.id, 'Undefined');
+                    flash('Status reset — installers report it fresh from here.', 'success');
+                  } else {
+                    arm('reset');
+                  }
+                }}
+              >
+                <Feather
+                  name="rotate-ccw"
+                  size={18}
+                  color={armed === 'reset' ? colors.textOnAccent : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.editActionText,
+                    armed === 'reset' && styles.editActionTextArmed,
+                  ]}
+                >
+                  {armed === 'reset'
+                    ? 'Tap again to reset the status to Undefined'
+                    : 'Reset status to Undefined'}
+                </Text>
+              </Pressable>
+            )}
+
+            {/* Delete — two-tap; the card and its calendar assignments go. */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.editActionRow,
+                armed === 'delete' && styles.editActionRowDanger,
+                pressed && styles.countPressed,
+              ]}
+              onPress={() => {
+                if (armed === 'delete') {
+                  setArmed(null);
+                  const title = job.title;
+                  deleteWorkRequest(job.id);
+                  flash(`Work request "${title}" deleted`, 'success');
+                  router.back();
+                } else {
+                  arm('delete');
+                }
+              }}
+            >
+              <Feather
+                name="trash-2"
+                size={18}
+                color={armed === 'delete' ? colors.textOnAccent : colors.danger}
+              />
+              <Text
+                style={[
+                  styles.editActionText,
+                  styles.editActionTextDanger,
+                  armed === 'delete' && styles.editActionTextArmed,
+                ]}
+              >
+                {armed === 'delete'
+                  ? 'Tap again to delete this work request'
+                  : 'Delete this work request…'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
         <View style={styles.section}>
           {/* Tapping the address opens the maps menu (Apple/Google/Waze/copy). */}
           <Pressable
@@ -394,6 +692,7 @@ export default function JobDetailsScreen() {
               <InfoRow icon="user" label="Field Super" value={fieldSuperLabel} />
             </Pressable>
           )}
+          <InfoRow icon="flag" label="Priority" value={priorityDisplay} />
           <InfoRow
             icon="calendar"
             label="Date"
@@ -402,6 +701,30 @@ export default function JobDetailsScreen() {
               'EEEE, MMMM d, yyyy'
             )}
           />
+          {/* The scheduled day(s). Field Supers / Schedulers tap through to
+              their calendar with the day ringed. */}
+          {scheduledLabel ? (
+            <Pressable
+              style={({ pressed }) => [pressed && styles.countPressed]}
+              disabled={!canViewCalendar}
+              onPress={viewOnCalendar}
+            >
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Feather name="check-circle" size={18} color={colors.success} />
+                </View>
+                <View style={styles.infoText}>
+                  <Text style={styles.infoLabel}>On calendar</Text>
+                  <Text style={styles.infoValue}>{scheduledLabel}</Text>
+                  {canViewCalendar && (
+                    <Text style={styles.viewCalendarLink}>View on calendar →</Text>
+                  )}
+                </View>
+              </View>
+            </Pressable>
+          ) : (
+            <InfoRow icon="clock" label="On calendar" value="Not scheduled yet" />
+          )}
           {timeWindow ? (
             <InfoRow
               icon="clock"
@@ -440,6 +763,27 @@ export default function JobDetailsScreen() {
               />
             )
           )}
+          {/* The card's OWN delivery count (Delivery scope) — same tap-to-
+              update as the job counts, saved onto the work request. */}
+          {deliveryCount &&
+            (canEditCounts ? (
+              <Pressable
+                style={({ pressed }) => [pressed && styles.countPressed]}
+                onPress={() => setEditingCount(deliveryCount)}
+              >
+                <InfoRow
+                  icon="box"
+                  label={deliveryCount.label}
+                  value={`${deliveryCount.done}/${deliveryCount.total}`}
+                />
+              </Pressable>
+            ) : (
+              <InfoRow
+                icon="box"
+                label={deliveryCount.label}
+                value={`${deliveryCount.done}/${deliveryCount.total}`}
+              />
+            ))}
         </View>
 
         <View style={styles.section}>
@@ -838,7 +1182,13 @@ export default function JobDetailsScreen() {
         count={editingCount}
         onClose={() => setEditingCount(null)}
         onSave={(doneField, done) => {
-          if (parentJob) updateJob(parentJob.id, { [doneField]: done });
+          // The delivery count lives on the work request itself; every other
+          // count writes back to the parent job's fields.
+          if (doneField === 'deliveryCountDone') {
+            updateWorkRequest(job.id, { deliveryCountDone: done });
+          } else if (parentJob) {
+            updateJob(parentJob.id, { [doneField]: done } as Partial<Job>);
+          }
         }}
       />
 
@@ -929,6 +1279,98 @@ const styles = themed(() => StyleSheet.create({
   },
   closePressed: {
     opacity: 0.6,
+  },
+  editButton: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  editBlock: {
+    gap: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
+  editDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  editActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  editActionRowArmed: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  editActionRowDanger: {
+    backgroundColor: colors.danger,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  editActionText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  editActionTextDanger: {
+    color: colors.danger,
+  },
+  editActionTextArmed: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.semiBold,
+  },
+  statusLogEmpty: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  statusLogRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingLeft: spacing.xs,
+  },
+  statusLogBody: {
+    flex: 1,
+    gap: 2,
+  },
+  statusLogTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  statusLogMeta: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  statusLogNote: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  viewCalendarLink: {
+    color: colors.primary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    marginTop: 2,
   },
   header: {
     gap: 2,

@@ -39,8 +39,10 @@ interface Props {
 
 /**
  * One field issue: who raised it and when, its description, its photo gallery,
- * and the actions the viewer's role allows (creator edit/delete, photo
- * capture, Field Super / installer resolve).
+ * and the actions the viewer's role allows. The creator and the office roles
+ * (Field Super, Scheduler, Operator) edit the description and delete; Field
+ * Supers, Schedulers, the Operator, and installers resolve/reopen; anyone
+ * with `editable` adds photos. RLS matches (20260906180000).
  */
 export function IssueCard({
   issue,
@@ -72,8 +74,13 @@ export function IssueCard({
 
   const resolved = issue.status === 'resolved';
   const isCreator = me?.id === issue.workerId;
-  // Field Supers and installers both resolve/reopen issues (RLS matches).
-  const canResolve = role === 'field_super' || role === 'installer';
+  // The office cleans up after the field: Field Supers, Schedulers, and the
+  // Operator edit/delete any issue, not just their own (RLS matches).
+  const officeRole =
+    role === 'field_super' || role === 'scheduler' || role === 'operator';
+  const canEdit = editable && (isCreator || officeRole);
+  // Office roles and installers resolve/reopen issues (RLS matches).
+  const canResolve = officeRole || role === 'installer';
   // Issues sit collapsed (one description line + a chevron) until opened. A
   // brand-new issue starts expanded so its creator can describe it right away.
   const [expanded, setExpanded] = useState(
@@ -83,7 +90,7 @@ export function IssueCard({
   const collapse = () => {
     // Collapsing unmounts the description editor before its onBlur can fire —
     // commit any unsaved edit so the draft isn't silently dropped.
-    if (editable && isCreator && description !== issue.description) {
+    if (canEdit && description !== issue.description) {
       updateJobIssueDescription(issue.id, description);
     }
     setConfirmingDelete(false);
@@ -192,7 +199,7 @@ export function IssueCard({
           </Pressable>
         ) : null}
 
-        {editable && isCreator && (
+        {canEdit && (
           <Pressable
             style={[
               styles.deleteButton,
@@ -216,7 +223,7 @@ export function IssueCard({
         )}
       </View>
 
-      {editable && isCreator ? (
+      {canEdit ? (
         <TextInput
           style={styles.descriptionInput}
           value={description}

@@ -22,8 +22,11 @@ import {
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import { JobTodosSection } from '@/components/jobsite/JobTodosSection';
 import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
+import { CreateSubJobSheet } from '@/components/mobile/CreateSubJobSheet';
+import { CreateWorkRequestSheet } from '@/components/mobile/CreateWorkRequestSheet';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
 import {
   PhotoScopeFilterChips,
@@ -44,8 +47,9 @@ import {
 } from '@/theme';
 import { Job } from '@/types';
 import { formatCount, jobCounts } from '@/utils/jobCounts';
+import { isTodoPhoto } from '@/utils/jobTodos';
 
-type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
+type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs' | 'todos';
 
 /** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
 const defaultSectionFor = (job?: Job): SectionKey =>
@@ -74,10 +78,22 @@ export default function JobSiteScreen() {
   const addJobIssue = useAppStore((s) => s.addJobIssue);
   const me = useCurrentWorker();
   const assignFieldSuperToJob = useAppStore((s) => s.assignFieldSuperToJob);
+  const addSubJob = useAppStore((s) => s.addSubJob);
   const flash = useAppStore((s) => s.flash);
+  // Sub-job creation from the phone — Field Supers only (installers open
+  // this page too). Web's equivalent lives in the job sidebar.
+  const canManageSubJobs = me?.role === 'field_super';
+  const [subJobSheetOpen, setSubJobSheetOpen] = useState(false);
+  // Work request creation from the phone, pre-linked to this job (Field
+  // Supers) — web's equivalent is the job sidebar's "+ Work Request".
+  const canCreateWorkRequests = me?.role === 'field_super';
+  const [workRequestSheetOpen, setWorkRequestSheetOpen] = useState(false);
   const photos = useJobPhotos(job?.id);
+  // The Pictures wall (and cover picker) leave out photos taken for a TO-DO —
+  // those live only inside their TO-DO row.
+  const wallPhotos = useMemo(() => photos.filter((p) => !isTodoPhoto(p)), [photos]);
   // Pictures filters: by work-request scope, plus SGD videos.
-  const photoFilter = usePhotoScopeFilter(photos);
+  const photoFilter = usePhotoScopeFilter(wallPhotos);
 
   // This job's issues from every work request, newest first; split by status below.
   const issues = useMemo(
@@ -156,10 +172,12 @@ export default function JobSiteScreen() {
   // arrive newest-first), else a placeholder.
   const coverPhoto = useMemo(() => {
     const chosen = job?.coverPhotoId
-      ? photos.find((p) => p.id === job.coverPhotoId)
+      ? wallPhotos.find((p) => p.id === job.coverPhotoId)
       : undefined;
-    return chosen ?? (photos.length ? photos[photos.length - 1] : undefined);
-  }, [job?.coverPhotoId, photos]);
+    return (
+      chosen ?? (wallPhotos.length ? wallPhotos[wallPhotos.length - 1] : undefined)
+    );
+  }, [job?.coverPhotoId, wallPhotos]);
 
   const close = () => {
     if (router.canGoBack()) router.back();
@@ -278,7 +296,29 @@ export default function JobSiteScreen() {
       tint: colors.success,
       dim: colors.successDim,
     },
+    // TO-DOs — the Field Super's own check-off list; installers never see it.
+    ...(me?.role === 'field_super'
+      ? [
+          {
+            key: 'todos' as const,
+            label: 'TO-DOs',
+            sub: `${(job.todos ?? []).filter((t) => !t.done).length} Open`,
+            icon: 'check-square' as const,
+            tint: colors.primary,
+            dim: colors.primaryDim,
+          },
+        ]
+      : []),
   ];
+
+  // The card strip wraps by count so labels never break mid-word on a phone:
+  // up to 3 cards share one row; 4 snap to a 2×2 grid; 5 go 3 + 2.
+  const cardBasis = (index: number): `${number}%` => {
+    const total = sectionCards.length;
+    if (total <= 3) return '30%';
+    if (total === 4) return '45%';
+    return index < 3 ? '30%' : '45%';
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -312,9 +352,9 @@ export default function JobSiteScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.coverWrap,
-            pressed && photos.length > 0 && styles.pressed,
+            pressed && wallPhotos.length > 0 && styles.pressed,
           ]}
-          disabled={photos.length === 0}
+          disabled={wallPhotos.length === 0}
           onPress={() => setCoverModal('view')}
         >
           {coverPhoto ? (
@@ -429,11 +469,12 @@ export default function JobSiteScreen() {
         {/* Section cards — every card stays visible; the active one is
             highlighted with an accent border and its section shows below. */}
         <View style={styles.cardsRow}>
-          {sectionCards.map((card) => (
+          {sectionCards.map((card, index) => (
             <Pressable
               key={card.key}
               style={({ pressed }) => [
                 styles.sectionCard,
+                { flexBasis: cardBasis(index) },
                 card.key === section && styles.sectionCardActive,
                 pressed && styles.pressed,
               ]}
@@ -442,8 +483,12 @@ export default function JobSiteScreen() {
               <View style={[styles.sectionIcon, { backgroundColor: card.dim }]}>
                 <Feather name={card.icon} size={17} color={card.tint} />
               </View>
-              <Text style={styles.sectionLabel}>{card.label}</Text>
-              <Text style={styles.sectionSub}>{card.sub}</Text>
+              <Text style={styles.sectionLabel} numberOfLines={1}>
+                {card.label}
+              </Text>
+              <Text style={styles.sectionSub} numberOfLines={1}>
+                {card.sub}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -529,7 +574,21 @@ export default function JobSiteScreen() {
 
         {section === 'work requests' && (
           <View style={styles.issuesSection}>
-            <Text style={styles.sectionHeader}>Work Requests</Text>
+            <View style={styles.issuesHeaderRow}>
+              <Text style={styles.sectionHeader}>Work Requests</Text>
+              {canCreateWorkRequests && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.addIssueButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setWorkRequestSheetOpen(true)}
+                >
+                  <Feather name="plus" size={13} color={colors.primary} />
+                  <Text style={styles.addIssueText}>Work Request</Text>
+                </Pressable>
+              )}
+            </View>
             {jobWorkRequests.length === 0 ? (
               <Text style={styles.emptyText}>No work requests yet.</Text>
             ) : (
@@ -576,9 +635,36 @@ export default function JobSiteScreen() {
         {/* Sub-Jobs — a section card like the others. Names render PLAIN here
             (no parent prefix inside the parent's own page); rows open each
             sub-job's page. Managed (created/toggled) from the web console. */}
+        {section === 'todos' && me?.role === 'field_super' && (
+          <JobTodosSection
+            job={job}
+            photos={photos}
+            onPhotoPress={(photo, all) =>
+              setViewer({
+                photos: all,
+                index: all.findIndex((p) => p.id === photo.id),
+              })
+            }
+          />
+        )}
+
         {section === 'subjobs' && hasSubJobsSection && (
           <View style={styles.issuesSection}>
-            <Text style={styles.sectionHeader}>Sub-Jobs</Text>
+            <View style={styles.issuesHeaderRow}>
+              <Text style={styles.sectionHeader}>Sub-Jobs</Text>
+              {canManageSubJobs && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.addIssueButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setSubJobSheetOpen(true)}
+                >
+                  <Feather name="plus" size={13} color={colors.primary} />
+                  <Text style={styles.addIssueText}>New sub-job</Text>
+                </Pressable>
+              )}
+            </View>
             {/* Search once the list is long enough to warrant it (name only). */}
             {subJobs.length > 3 && (
               <View style={styles.searchRow}>
@@ -673,6 +759,31 @@ export default function JobSiteScreen() {
         />
       </ScrollView>
 
+      {/* Sub-job creation (Field Supers). Same rules as the web modal: parent
+          name + saved type prefix the typed piece, PO auto-fills from the
+          parent's, address/scopes/flashing inherit and stay editable. */}
+      {canManageSubJobs && (
+        <CreateSubJobSheet
+          parentJob={subJobSheetOpen ? job : null}
+          onClose={() => setSubJobSheetOpen(false)}
+          onSubmit={(input) => {
+            const created = addSubJob({ parentJobId: job.id, ...input });
+            if (created) {
+              flash(`Sub-job "${job.name} ${created.name}" created`, 'success');
+            }
+          }}
+        />
+      )}
+
+      {/* Work request creation (Field Supers), pre-linked to this job. */}
+      {canCreateWorkRequests && (
+        <CreateWorkRequestSheet
+          visible={workRequestSheetOpen}
+          initialJobId={job.id}
+          onClose={() => setWorkRequestSheetOpen(false)}
+        />
+      )}
+
       {/* Floating capture bar: icon-only camera (native) + upload, centered. */}
       <View
         style={[styles.actionBar, { bottom: insets.bottom + spacing.lg }]}
@@ -761,7 +872,7 @@ export default function JobSiteScreen() {
             ) : (
               <ScrollView style={styles.pickScroll}>
                 <View style={styles.pickGrid}>
-                  {photos.map((photo) => (
+                  {wallPhotos.map((photo) => (
                     <Pressable
                       key={photo.id}
                       style={styles.pickCell}
@@ -991,10 +1102,14 @@ const styles = themed(() => StyleSheet.create({
   },
   cardsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
   },
   sectionCard: {
-    flex: 1,
+    // Width comes from the per-card flexBasis (see cardBasis); grow fills the
+    // row out, never shrink below the basis.
+    flexGrow: 1,
+    flexShrink: 0,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,

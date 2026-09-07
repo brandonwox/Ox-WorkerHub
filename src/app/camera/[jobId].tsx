@@ -29,6 +29,10 @@ import {
   ULTRA_WIDE_LENS,
 } from '@/components/CameraZoomControl';
 import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
+import {
+  PhotoTagsMenu,
+  usePhotoTagSuggestions,
+} from '@/components/photos/PhotoTagsMenu';
 import { VideoPage } from '@/components/photos/VideoPage';
 import { ZoomableImage } from '@/components/photos/ZoomableImage';
 import { compressJobPhoto } from '@/lib/photoCapture';
@@ -74,6 +78,7 @@ export default function JobCameraScreen() {
   const deleteJobPhoto = useAppStore((s) => s.deleteJobPhoto);
   const setJobPhotoSgd = useAppStore((s) => s.setJobPhotoSgd);
   const setJobPhotoType = useAppStore((s) => s.setJobPhotoType);
+  const setJobPhotoTags = useAppStore((s) => s.setJobPhotoTags);
 
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -90,7 +95,13 @@ export default function JobCameraScreen() {
   // Every shot taken this session (oldest first); the last one is the
   // thumbnail. Deleting the latest falls back to the one before it.
   const [shots, setShots] = useState<
-    { id: string; uri: string; isVideo?: boolean; photoType?: JobPhotoType }[]
+    {
+      id: string;
+      uri: string;
+      isVideo?: boolean;
+      photoType?: JobPhotoType;
+      tags?: string[];
+    }[]
   >([]);
   const [note, setNote] = useState('');
   // Tapping the thumbnail expands the session's shots into a swipeable pager
@@ -110,6 +121,13 @@ export default function JobCameraScreen() {
   // control), every new capture is tagged with this type.
   const [defaultType, setDefaultType] = useState<JobPhotoType | null>(null);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+  // Custom tags for the session: every new capture gets these. The tag menu
+  // edits either the session default ('session') or one shot (its index).
+  const [defaultTags, setDefaultTags] = useState<string[]>([]);
+  const [tagsMenuTarget, setTagsMenuTarget] = useState<
+    'session' | number | null
+  >(null);
+  const tagSuggestions = usePhotoTagSuggestions(jobId);
   // "Were any SGD videos taken?" popup shown on leaving a Windows-scope work
   // request's camera when this session recorded videos.
   const [sgdPopupOpen, setSgdPopupOpen] = useState(false);
@@ -120,8 +138,10 @@ export default function JobCameraScreen() {
   const workRequest = workRequests.find((c) => c.id === workRequestId);
   // The task this session's photos attach to (opened from a task's camera
   // button) — its text is shown in the top bar so the taker knows the target.
+  // A work request task, or (opened from the job page) one of the job's TO-DOs.
   const task = taskId
-    ? workRequest?.tasks?.find((t) => t.id === taskId)
+    ? (workRequest?.tasks?.find((t) => t.id === taskId) ??
+      job?.todos?.find((t) => t.id === taskId))
     : undefined;
   // The SGD question only applies to videos taken FOR a Windows-scope work request.
   const windowsWorkRequest = !!workRequest?.scopes?.includes('Windows');
@@ -188,9 +208,15 @@ export default function JobCameraScreen() {
           stored.jobPhotos.find((p) => p.id === photoId)?.url ??
           compressed;
         if (defaultType) setJobPhotoType(photoId, defaultType);
+        if (defaultTags.length > 0) setJobPhotoTags(photoId, defaultTags);
         setShots((prev) => [
           ...prev,
-          { id: photoId, uri, photoType: defaultType ?? undefined },
+          {
+            id: photoId,
+            uri,
+            photoType: defaultType ?? undefined,
+            tags: defaultTags.length > 0 ? defaultTags : undefined,
+          },
         ]);
         setNote('');
       }
@@ -230,6 +256,7 @@ export default function JobCameraScreen() {
           stored.jobPhotos.find((p) => p.id === photoId)?.url ??
           video.uri;
         if (defaultType) setJobPhotoType(photoId, defaultType);
+        if (defaultTags.length > 0) setJobPhotoTags(photoId, defaultTags);
         setShots((prev) => [
           ...prev,
           {
@@ -237,6 +264,7 @@ export default function JobCameraScreen() {
             uri,
             isVideo: true,
             photoType: defaultType ?? undefined,
+            tags: defaultTags.length > 0 ? defaultTags : undefined,
           },
         ]);
         setNote('');
@@ -391,6 +419,18 @@ export default function JobCameraScreen() {
     );
   };
 
+  // Replace the custom tags on the shot at `index` (store + session list).
+  const setShotTags = (index: number, tags: string[]) => {
+    const shot = shots[index];
+    if (!shot) return;
+    setJobPhotoTags(shot.id, tags);
+    setShots((prev) =>
+      prev.map((s, i) =>
+        i === index ? { ...s, tags: tags.length > 0 ? tags : undefined } : s
+      )
+    );
+  };
+
   // Zoom only applies to the back camera; the front lens stays at 1x.
   const zoomProps =
     facing === 'back'
@@ -476,6 +516,38 @@ export default function JobCameraScreen() {
                 )}
               </Pressable>
             )}
+            {/* Session tags: every new shot gets these custom tags. */}
+            <Pressable
+              style={[
+                styles.typeButton,
+                defaultTags.length > 0 && styles.typeButtonActive,
+              ]}
+              onPress={() => setTagsMenuTarget('session')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={
+                defaultTags.length > 0
+                  ? `Auto tags: ${defaultTags.join(', ')}`
+                  : 'Set auto tags'
+              }
+            >
+              <Feather
+                name="hash"
+                size={16}
+                color={
+                  defaultTags.length > 0
+                    ? colors.textOnAccent
+                    : colors.textPrimary
+                }
+              />
+              {defaultTags.length > 0 && (
+                <Text style={styles.typeButtonText} numberOfLines={1}>
+                  {defaultTags.length === 1
+                    ? defaultTags[0]
+                    : `${defaultTags[0]} +${defaultTags.length - 1}`}
+                </Text>
+              )}
+            </Pressable>
           </View>
         </View>
 
@@ -660,6 +732,49 @@ export default function JobCameraScreen() {
               </View>
 
               <View style={styles.previewBottomBar}>
+                {/* This shot's custom tags; the first chip opens the picker. */}
+                {previewIndex != null && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <View style={styles.typeChipRow}>
+                      <Pressable
+                        style={[styles.typeChip, styles.tagsChip]}
+                        onPress={() => setTagsMenuTarget(previewIndex)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit this shot's tags"
+                      >
+                        <Feather
+                          name="hash"
+                          size={12}
+                          color={colors.textPrimary}
+                        />
+                        <Text style={styles.typeChipText}>
+                          {(shots[previewIndex]?.tags ?? []).length > 0
+                            ? 'Tags'
+                            : 'Add tags'}
+                        </Text>
+                      </Pressable>
+                      {(shots[previewIndex]?.tags ?? []).map((tag) => (
+                        <View
+                          key={tag.toLowerCase()}
+                          style={[styles.typeChip, styles.typeChipSelected]}
+                        >
+                          <Text
+                            style={[
+                              styles.typeChipText,
+                              styles.typeChipTextSelected,
+                            ]}
+                          >
+                            #{tag}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                )}
                 {/* What the shot shows — tap to tag, tap again to clear. */}
                 {typeOptions.length > 0 && previewIndex != null && (
                   <ScrollView
@@ -753,6 +868,32 @@ export default function JobCameraScreen() {
           </View>
         </GestureHandlerRootView>
       </Modal>
+
+      {/* Custom tags picker — the session default, or one shot's tags. */}
+      <PhotoTagsMenu
+        visible={tagsMenuTarget !== null}
+        title={tagsMenuTarget === 'session' ? 'Auto tags' : 'Photo tags'}
+        hint={
+          tagsMenuTarget === 'session'
+            ? 'New shots get these tags automatically.'
+            : 'Pick any that apply, or type a new one.'
+        }
+        tags={
+          tagsMenuTarget === 'session'
+            ? defaultTags
+            : typeof tagsMenuTarget === 'number'
+              ? (shots[tagsMenuTarget]?.tags ?? [])
+              : []
+        }
+        suggestions={tagSuggestions}
+        onChange={(tags) => {
+          if (tagsMenuTarget === 'session') setDefaultTags(tags);
+          else if (typeof tagsMenuTarget === 'number') {
+            setShotTags(tagsMenuTarget, tags);
+          }
+        }}
+        onClose={() => setTagsMenuTarget(null)}
+      />
 
       {/* Session auto-type menu (the tag button under the flip control). */}
       <Modal
@@ -1100,6 +1241,11 @@ const styles = themed(() => StyleSheet.create({
   typeChipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  tagsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   typeChipText: {
     color: colors.textPrimary,

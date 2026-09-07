@@ -51,6 +51,7 @@ import {
   TimesheetLog,
   Worker,
 } from '@/types';
+import { dailyCrewAutoName } from '@/utils/dailyCrewName';
 import { CountTotalField } from '@/utils/jobCounts';
 import { jobDisplayNameById } from '@/utils/jobName';
 import { hoursBetween } from '@/utils/time';
@@ -286,6 +287,7 @@ const INSTALLER_VISIBLE_FIELDS: (keyof WorkRequest)[] = [
   'readiness',
   'flashingMaterial',
   'materials',
+  'deliveryCountTotal',
   'notes',
 ];
 
@@ -400,6 +402,8 @@ const OUTBOX_EXECUTORS = {
     backend.updateJobPhotoSgd(p.id, p.sgdVideo),
   updateJobPhotoType: (p: { id: string; photoType?: JobPhotoType }) =>
     backend.updateJobPhotoType(p.id, p.photoType),
+  updateJobPhotoTags: (p: { id: string; tags: string[] }) =>
+    backend.updateJobPhotoTags(p.id, p.tags),
   deleteJobPhoto: (p: { id: string; storagePath: string }) =>
     backend.deleteJobPhoto(p.id, p.storagePath),
   insertJobDocument: (p: JobDocument) => backend.insertJobDocument(p),
@@ -1001,9 +1005,20 @@ interface AppState {
    * 'Undefined' pings the assigned crew's FOREMAN ("A work request status
    * needs updating"), daily until it's set. Runs in any signed-in session on
    * a timer; the card's `undefinedReminderDate` stamp keeps it to one
-   * reminder per card per day across sessions.
+   * reminder per card per day across sessions. The moment ANY status is
+   * reported the card leaves the sweep; an office reset to 'Undefined' clears
+   * the stamp so the reminder starts over promptly. Also prunes the viewer's
+   * own stale reminders (see pruneStaleStatusReminders).
    */
   sweepUndefinedStatusReminders: () => void;
+  /**
+   * Drop the signed-in worker's "Status needs updating" notifications whose
+   * card has since been given a status (or was deleted) — the reminder is
+   * moot once the field reported. Notification rows are recipient-owned (RLS),
+   * so each session tidies its own; runs with the sweep, on data refreshes, on
+   * arrival of a new notification, and right after a status change.
+   */
+  pruneStaleStatusReminders: () => void;
 
   // --- Crews & scheduling (Scheduler) ---
   /** Create a permanent crew. Non-installer ids are dropped. Returns the record. */
@@ -1014,7 +1029,10 @@ interface AppState {
    * Create an ad-hoc daily crew (overrides members' permanent crews on days
    * it has work). Non-installer ids are dropped.
    */
-  addDailyCrew: (crew: Omit<DailyCrew, 'id'> & { id?: string }) => DailyCrew;
+  /** `name` is ignored if passed — daily crews are auto-named from their members. */
+  addDailyCrew: (
+    crew: Omit<DailyCrew, 'id' | 'name'> & { id?: string; name?: string }
+  ) => DailyCrew;
   updateDailyCrew: (id: string, changes: Partial<DailyCrew>) => void;
   removeDailyCrew: (id: string) => void;
   /** Place a Work Request on a crew for a date. Idempotent on (work request, crew, date). */
@@ -1075,6 +1093,8 @@ interface AppState {
   setJobPhotoSgd: (id: string, sgdVideo: boolean) => void;
   /** Set/clear a photo's type (pending or uploaded). Owner-only in the UI. */
   setJobPhotoType: (id: string, photoType: JobPhotoType | undefined) => void;
+  /** Replace a photo's custom tags (pending or uploaded). Anyone may tag. */
+  setJobPhotoTags: (id: string, tags: string[]) => void;
   /** Delete a photo — a queued one locally, an uploaded one from the backend too. */
   deleteJobPhoto: (id: string) => void;
   /** Re-queue failed uploads and kick the queue (also fired by the retry timer). */
@@ -1529,6 +1549,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
       ],
     }));
+    // Fresh cards may have gained a status since a reminder went out.
+    get().pruneStaleStatusReminders();
     // Keep the offline cache tracking the server (raw fetched state — queued
     // local edits are re-applied by the outbox replay, not the cache).
     const me = get().authWorker;
@@ -2054,6 +2076,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           statusNote: note?.trim() || undefined,
           statusChangedAt: changedAt,
           statusChangedById: me?.id,
+          // An office reset back to 'Undefined' wants a fresh report — drop
+          // the "already reminded today" stamp so the next sweep re-pings the
+          // foreman instead of waiting for tomorrow.
+          ...(status === 'Undefined' ? { undefinedReminderDate: undefined } : {}),
           // Every change — including a reset to 'Undefined' — appends to the
           // permanent status log the office reviews from the quick view.
           statusLog: [
@@ -2071,6 +2097,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     }));
     if (backendActive(get()) && updated) write('updateWorkRequest', updated);
+    // A reported status makes any outstanding reminder for this card moot.
+    get().pruneStaleStatusReminders();
     // Ping the office (schedulers + the job's Field Supers, minus the
     // reporter) about the field report — only on an actual change, so
     // re-saving the same status/note stays silent.
@@ -2174,6 +2202,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   sweepUndefinedStatusReminders: () => {
+    get().pruneStaleStatusReminders();
     const state = get();
     const now = new Date();
     const today = todayStr();
@@ -2216,6 +2245,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         data: { workRequestId: cardId },
       });
     }
+  },
+
+  pruneStaleStatusReminders: () => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return;
+    const stale = state.notifications.filter((n) => {
+      if (n.recipientId !== me.id || n.type !== 'status_update_needed') {
+        return false;
+      }
+      const cardId = n.data?.workRequestId;
+      if (typeof cardId !== 'string') return false;
+      const card = state.workRequests.find((c) => c.id === cardId);
+      // Card gone, or no longer waiting on a status → the reminder is moot.
+      return !card || card.status !== 'Undefined';
+    });
+    for (const n of stale) get().dismissNotification(n.id);
   },
 
   addCrew: (crew) => {
@@ -2290,10 +2336,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   addDailyCrew: (crew) => {
     const state = get();
     const isBackend = backendActive(state);
+    const installerIds = onlyInstallerIds(state.workers, crew.installerIds);
     const created: DailyCrew = {
       ...crew,
       id: crew.id ?? (isBackend ? uuid() : `dc-${nextDailyCrewId++}`),
-      installerIds: onlyInstallerIds(state.workers, crew.installerIds),
+      installerIds,
+      // Daily crews are named after their members ("Brandon W & Timothy B") —
+      // never by hand.
+      name: dailyCrewAutoName(installerIds, state.workers),
     };
     set({ dailyCrews: sortDailyCrews([...state.dailyCrews, created]) });
     if (isBackend) write('insertDailyCrew', created);
@@ -2306,12 +2356,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       dailyCrews: sortDailyCrews(
         state.dailyCrews.map((crew) => {
           if (crew.id !== id) return crew;
+          const installerIds = changes.installerIds
+            ? onlyInstallerIds(state.workers, changes.installerIds)
+            : crew.installerIds;
           updated = {
             ...crew,
             ...changes,
-            installerIds: changes.installerIds
-              ? onlyInstallerIds(state.workers, changes.installerIds)
-              : crew.installerIds,
+            installerIds,
+            // A member change regenerates the auto-name (this also migrates
+            // legacy hand-typed names the first time their roster changes).
+            ...(changes.installerIds
+              ? { name: dailyCrewAutoName(installerIds, state.workers) }
+              : {}),
           };
           return updated;
         })
@@ -2704,6 +2760,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  setJobPhotoTags: (id, tags) => {
+    // Mirrors setJobPhotoType: a still-pending photo carries the tags along
+    // in the queue; an uploaded one writes through the outbox.
+    const next = tags.length > 0 ? tags : undefined;
+    if (get().pendingPhotos.some((p) => p.id === id)) {
+      set((s) => ({
+        pendingPhotos: s.pendingPhotos.map((p) =>
+          p.id === id ? { ...p, tags: next } : p
+        ),
+      }));
+      persistPendingPhotos(get().pendingPhotos);
+      return;
+    }
+    let found = false;
+    set((s) => ({
+      jobPhotos: s.jobPhotos.map((p) => {
+        if (p.id !== id) return p;
+        found = true;
+        return { ...p, tags: next };
+      }),
+    }));
+    if (backendActive(get()) && found) {
+      write(
+        'updateJobPhotoTags',
+        { id, tags },
+        { map: 'photoNote', id },
+        { silent: true }
+      );
+    }
+  },
+
   deleteJobPhoto: (id) => {
     const state = get();
     const pending = state.pendingPhotos.find((p) => p.id === id);
@@ -3082,12 +3169,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ notifications: [...created, ...state.notifications] });
   },
 
-  receiveNotification: (notification) =>
+  receiveNotification: (notification) => {
     set((state) =>
       state.notifications.some((n) => n.id === notification.id)
         ? {}
         : { notifications: [notification, ...state.notifications] }
-    ),
+    );
+    // A reminder that races a status report (another session's sweep fired
+    // just before the field answered) is moot on arrival.
+    if (notification.type === 'status_update_needed') {
+      get().pruneStaleStatusReminders();
+    }
+  },
 
   markNotificationRead: (id) => {
     set((state) => ({
@@ -3297,6 +3390,7 @@ async function processPhotoQueue(): Promise<void> {
           isVideo: current.isVideo,
           sgdVideo: current.sgdVideo,
           photoType: current.photoType,
+          tags: current.tags,
         };
         await backend.insertJobPhoto(photo);
         useAppStore.setState((s) => ({

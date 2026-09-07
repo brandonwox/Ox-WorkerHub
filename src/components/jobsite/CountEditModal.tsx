@@ -14,14 +14,27 @@ import {
 } from 'react-native';
 
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
-import { JobCount } from '@/utils/jobCounts';
+
+/**
+ * Any displayable done/total pair — a job's JobCount fits, and so does a
+ * work request's own delivery count (`doneField: 'deliveryCountDone'`). The
+ * caller's onSave routes the write by the field name.
+ */
+export interface EditableCount {
+  /** The field the done number writes back to (job or work request). */
+  doneField: string;
+  /** e.g. "Window Count". */
+  label: string;
+  done: number;
+  total: number;
+}
 
 interface Props {
   /** The count being edited, or null when the popup is closed. */
-  count: JobCount | null;
+  count: EditableCount | null;
   onClose: () => void;
   /** Commit the new done number for the count's field. */
-  onSave: (doneField: JobCount['doneField'], done: number) => void;
+  onSave: (doneField: string, done: number) => void;
 }
 
 /** Wheel row height (also the snap interval). */

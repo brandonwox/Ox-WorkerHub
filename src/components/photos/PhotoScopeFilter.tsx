@@ -9,19 +9,25 @@ import { JOB_SCOPES, JobScope } from '@/types';
 
 /**
  * A Pictures-section filter choice: everything, one scope, Completion Photos,
- * or SGD videos.
+ * SGD videos, or one custom tag (`tag:<name>`).
  */
 export type PhotoScopeFilterValue =
   | 'all'
   | 'sgd-videos'
   | 'completion-photos'
-  | JobScope;
+  | JobScope
+  | `tag:${string}`;
+
+const TAG_PREFIX = 'tag:';
+const tagOf = (value: string): string | null =>
+  value.startsWith(TAG_PREFIX) ? value.slice(TAG_PREFIX.length) : null;
 
 /**
  * Scope filtering for a Pictures section: each photo is bucketed by its work
  * request's scopes (a photo not taken from a work request only shows under
- * "All"), plus a "Completion Photos" bucket for photos tagged with that type
- * and an "SGD Videos" bucket for tagged videos. Returns the selected filter,
+ * "All"), plus a "Completion Photos" bucket for photos tagged with that type,
+ * an "SGD Videos" bucket for tagged videos, and one bucket per custom tag
+ * present on these photos (most-used first). Returns the selected filter,
  * the photos passing it, and the options worth offering — only buckets that
  * actually have photos appear, and the whole control hides when there is
  * nothing to filter by.
@@ -41,9 +47,17 @@ export function usePhotoScopeFilter(photos: DisplayPhoto[]): {
     const present = new Set<JobScope>();
     let anySgd = false;
     let anyCompletion = false;
+    // Custom tags present, by (case-insensitive) key → display spelling + count.
+    const tagDisplay = new Map<string, string>();
+    const tagCount = new Map<string, number>();
     for (const photo of photos) {
       if (photo.sgdVideo) anySgd = true;
       if (photo.photoType === 'Completion Photos') anyCompletion = true;
+      for (const tag of photo.tags ?? []) {
+        const key = tag.toLowerCase();
+        if (!tagDisplay.has(key)) tagDisplay.set(key, tag);
+        tagCount.set(key, (tagCount.get(key) ?? 0) + 1);
+      }
       if (!photo.workRequestId) continue;
       const scopes =
         workRequests.find((c) => c.id === photo.workRequestId)?.scopes ?? [];
@@ -52,11 +66,18 @@ export function usePhotoScopeFilter(photos: DisplayPhoto[]): {
     }
     const opts: PhotoScopeFilterValue[] = [];
     // A lone "All" + one option is still useful; zero options isn't.
-    if (present.size > 0 || anySgd || anyCompletion) {
+    if (present.size > 0 || anySgd || anyCompletion || tagDisplay.size > 0) {
       opts.push('all');
       for (const scope of JOB_SCOPES) if (present.has(scope)) opts.push(scope);
       if (anyCompletion) opts.push('completion-photos');
       if (anySgd) opts.push('sgd-videos');
+      const tagKeys = [...tagDisplay.keys()].sort((a, b) => {
+        const diff = (tagCount.get(b) ?? 0) - (tagCount.get(a) ?? 0);
+        return diff !== 0 ? diff : a.localeCompare(b);
+      });
+      for (const key of tagKeys) {
+        opts.push(`${TAG_PREFIX}${tagDisplay.get(key) as string}`);
+      }
     }
     return { options: opts, byId: scopeMap };
   }, [photos, workRequests]);
@@ -70,7 +91,14 @@ export function usePhotoScopeFilter(photos: DisplayPhoto[]): {
     if (active === 'completion-photos') {
       return photos.filter((p) => p.photoType === 'Completion Photos');
     }
-    return photos.filter((p) => byId.get(p.id)?.includes(active));
+    const tag = tagOf(active);
+    if (tag != null) {
+      const key = tag.toLowerCase();
+      return photos.filter((p) =>
+        (p.tags ?? []).some((t) => t.toLowerCase() === key)
+      );
+    }
+    return photos.filter((p) => byId.get(p.id)?.includes(active as JobScope));
   }, [photos, active, byId]);
 
   return { filter: active, setFilter, options, filtered };
@@ -84,7 +112,9 @@ const labelFor = (value: PhotoScopeFilterValue): string =>
       ? 'SGD Videos'
       : value === 'completion-photos'
         ? 'Completion Photos'
-        : value;
+        : tagOf(value) != null
+          ? `#${tagOf(value)}`
+          : value;
 
 /**
  * The filter control for {@link usePhotoScopeFilter}: a single dropdown-style

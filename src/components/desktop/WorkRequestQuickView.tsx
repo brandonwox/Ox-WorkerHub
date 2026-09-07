@@ -58,6 +58,13 @@ import {
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow, formatTime, parseTimeInput } from '@/utils/time';
 import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
+import {
+  CASEMENT_TASK_PREFIX,
+  DELIVERY_AUTO_TASKS,
+  casementTaskText,
+  withAutoTasks,
+  withoutAutoTasks,
+} from '@/utils/workRequestAutoTasks';
 
 const SCOPE_OPTIONS = WORK_REQUEST_SCOPES.map((s) => ({ value: s, label: s }));
 const READINESS_OPTIONS = READINESS_PRESETS.map((r) => ({ value: r, label: r }));
@@ -91,6 +98,10 @@ export interface NewWorkRequestInput {
   materials?: string;
   /** Per-card Window Opening Flashing Material (defaults to the parent Job's). */
   flashingMaterial?: string;
+  /** Delivery count total — required (and only set) with the 'Delivery' scope. */
+  deliveryCountTotal?: number;
+  /** "Are any of the Windows Casements?" — only set with the 'Windows' scope. */
+  windowsCasements?: boolean;
   notes?: string;
   /** Required Yes/No answer; true also requires {@link pickupLocation}. */
   pickupRequired: boolean;
@@ -121,6 +132,7 @@ type EditField =
   | 'priority'
   | 'flashing'
   | 'materials'
+  | 'delivery-total'
   | 'pickup-location'
   | 'notes'
   | 'new-task'
@@ -412,9 +424,15 @@ export function WorkRequestQuickView({
   // scopes allow window work at all.
   const windowsAllowed = jobAllowsWindows(parentJob);
   const includesWindows = windowsAllowed && scopes.includes('Windows');
+  const includesDelivery = scopes.includes('Delivery');
   const scopeOptions = windowsAllowed
     ? SCOPE_OPTIONS
     : SCOPE_OPTIONS.filter((o) => o.value !== 'Windows');
+  // The responsible Field Super's name (first-assigned on the parent job) —
+  // injected into the auto-added casement cranks task.
+  const fieldSuperName = workers.find(
+    (w) => w.id === (parentJob?.fieldSuperIds ?? [])[0]
+  )?.name;
   const timeWindow = formatJobWindow(workRequest.startTime, workRequest.endTime);
   // The status history, newest first. A card whose current status predates
   // the log still shows one row synthesized from the last-change columns.
@@ -559,11 +577,73 @@ export function WorkRequestQuickView({
       return;
     }
     const next = vals as JobScope[];
+    // Delivery scope injects its two check tasks on select and pulls the
+    // not-yet-done ones back out (plus the counts) on deselect; dropping
+    // Windows likewise pulls the casement cranks task.
+    const addedDelivery =
+      next.includes('Delivery') && !scopes.includes('Delivery');
+    const removedDelivery =
+      !next.includes('Delivery') && scopes.includes('Delivery');
+    const removedWindows =
+      !next.includes('Windows') && scopes.includes('Windows');
+    let nextTasks = tasks;
+    if (addedDelivery) {
+      nextTasks = withAutoTasks(nextTasks, DELIVERY_AUTO_TASKS, uuid);
+    }
+    if (removedDelivery) {
+      nextTasks = withoutAutoTasks(nextTasks, (text) =>
+        DELIVERY_AUTO_TASKS.includes(text)
+      );
+    }
+    if (removedWindows && workRequest.windowsCasements) {
+      nextTasks = withoutAutoTasks(nextTasks, (text) =>
+        text.startsWith(CASEMENT_TASK_PREFIX)
+      );
+    }
     applyChange({
       scopes: next,
-      // Flashing material only means anything with the Windows scope.
-      ...(next.includes('Windows') ? {} : { flashingMaterial: undefined }),
+      ...(nextTasks !== tasks ? { tasks: nextTasks } : {}),
+      // Flashing material (and the casements answer) only mean anything with
+      // the Windows scope.
+      ...(next.includes('Windows')
+        ? {}
+        : { flashingMaterial: undefined, windowsCasements: undefined }),
+      ...(removedDelivery
+        ? { deliveryCountTotal: undefined, deliveryCountDone: undefined }
+        : {}),
     });
+  };
+
+  // "Are any of the Windows Casements?" — checking adds the gather-cranks
+  // task (Field Super's name injected); unchecking removes it unless an
+  // installer already checked it off.
+  const changeCasements = (checked: boolean) => {
+    if (checked === (workRequest.windowsCasements ?? false)) return;
+    applyChange({
+      windowsCasements: checked,
+      tasks: checked
+        ? withAutoTasks(tasks, [casementTaskText(fieldSuperName)], uuid)
+        : withoutAutoTasks(tasks, (text) =>
+            text.startsWith(CASEMENT_TASK_PREFIX)
+          ),
+    });
+  };
+
+  // Delivery count TOTAL (office-set; installers update the done number from
+  // their phone). Blank keeps the current value — create mode still requires
+  // one before the card can be made.
+  const commitDeliveryTotal = () => {
+    setEditing(null);
+    const t = draft.trim();
+    if (!t) return;
+    const parsed = Number(t);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      flash('Enter a whole number for the delivery count.', 'warning');
+      return;
+    }
+    if (parsed !== workRequest.deliveryCountTotal) {
+      applyChange({ deliveryCountTotal: parsed });
+    }
   };
 
   const commitTask = (index: number) => {
@@ -862,6 +942,10 @@ export function WorkRequestQuickView({
       setCreateError('Specify where the pickup is.');
       return;
     }
+    if (scopes.includes('Delivery') && workRequest.deliveryCountTotal == null) {
+      setCreateError('Set the delivery count for the Delivery scope.');
+      return;
+    }
     onCreate({
       jobId: parentJob?.id,
       jobIds: workRequest.jobIds,
@@ -881,6 +965,12 @@ export function WorkRequestQuickView({
       flashingMaterial: includesWindows
         ? (workRequest.flashingMaterial ?? parentJob?.flashingMaterial)?.trim() ||
           undefined
+        : undefined,
+      deliveryCountTotal: scopes.includes('Delivery')
+        ? workRequest.deliveryCountTotal
+        : undefined,
+      windowsCasements: includesWindows
+        ? workRequest.windowsCasements
         : undefined,
       pickupRequired: workRequest.pickupRequired,
       pickupLocation: workRequest.pickupRequired
@@ -1754,6 +1844,78 @@ export function WorkRequestQuickView({
           </Row>
         )}
 
+        {/* Windows scope only: checking adds the gather-casement-cranks task
+            (the responsible Field Super's name injected). */}
+        {includesWindows && (
+          <Row icon="wind" label="Are any of the Windows Casements?">
+            <Pressable
+              style={({ pressed, hovered }: PressState) => [
+                styles.casementCheck,
+                (hovered || pressed) && styles.editableHover,
+              ]}
+              onPress={() => changeCasements(!workRequest.windowsCasements)}
+            >
+              <Feather
+                name={workRequest.windowsCasements ? 'check-square' : 'square'}
+                size={16}
+                color={
+                  workRequest.windowsCasements
+                    ? colors.primary
+                    : colors.textSecondary
+                }
+              />
+              <Text style={styles.valueText}>
+                {workRequest.windowsCasements
+                  ? 'Yes — casement cranks task added'
+                  : 'No'}
+              </Text>
+            </Pressable>
+          </Row>
+        )}
+
+        {/* Delivery scope only: the card's own delivery count. The office
+            sets the total; installers update the done number from their
+            phone (like the job scope counts). */}
+        {includesDelivery && (
+          <Row icon="box" label="Delivery count">
+            {editing === 'delivery-total' ? (
+              <TextInput
+                style={styles.textEditor}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitDeliveryTotal}
+                placeholder="How many pieces are being delivered?"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="number-pad"
+                autoFocus
+              />
+            ) : (
+              <Editable
+                onPress={() =>
+                  startEdit(
+                    'delivery-total',
+                    workRequest.deliveryCountTotal != null
+                      ? String(workRequest.deliveryCountTotal)
+                      : ''
+                  )
+                }
+              >
+                <Text
+                  style={
+                    workRequest.deliveryCountTotal != null
+                      ? styles.valueText
+                      : styles.placeholderText
+                  }
+                >
+                  {workRequest.deliveryCountTotal != null
+                    ? `${workRequest.deliveryCountDone ?? 0}/${workRequest.deliveryCountTotal}`
+                    : 'Set the delivery count…'}
+                </Text>
+              </Editable>
+            )}
+          </Row>
+        )}
+
         {/* Materials needed */}
         <Row icon="package" label="Materials needed">
           {editing === 'materials' ? (
@@ -2340,6 +2502,16 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     paddingLeft: spacing.sm,
+    paddingVertical: 3,
+  },
+  casementCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    alignSelf: 'flex-start',
+    borderRadius: radii.sm,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.md,
     paddingVertical: 3,
   },
   placeholderText: {

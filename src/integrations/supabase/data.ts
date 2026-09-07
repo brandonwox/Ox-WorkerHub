@@ -55,6 +55,8 @@ interface JobRow {
   parent_job_id: string | null;
   has_sub_jobs: boolean | null;
   sub_job_type: string | null;
+  /** jsonb list of TO-DOs (same shape as work request tasks); [] when none. */
+  todos: WorkRequestTask[] | null;
   window_count_done: number | null;
   window_count_total: number | null;
   sgd_count_done: number | null;
@@ -105,6 +107,9 @@ interface WorkRequestRow {
   field_notes: string | null;
   pickup_required: boolean | null;
   pickup_location: string | null;
+  delivery_count_total: number | null;
+  delivery_count_done: number | null;
+  windows_casements: boolean | null;
   status_note: string | null;
   status_changed_at: string | null;
   status_changed_by: string | null;
@@ -173,6 +178,8 @@ interface JobPhotoRow {
   is_video: boolean | null;
   sgd_video: boolean | null;
   photo_type: string | null;
+  /** Custom tags; '{}' when none (rows read before the migration: null). */
+  tags: string[] | null;
 }
 
 interface JobIssueRow {
@@ -235,6 +242,7 @@ function rowToJob(r: JobRow): Job {
     parentJobId: r.parent_job_id ?? undefined,
     hasSubJobs: r.has_sub_jobs ?? undefined,
     subJobType: r.sub_job_type ?? undefined,
+    todos: normalizeTasks(r.todos ?? null),
     windowCountDone: r.window_count_done ?? undefined,
     windowCountTotal: r.window_count_total ?? undefined,
     sgdCountDone: r.sgd_count_done ?? undefined,
@@ -322,6 +330,9 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     fieldNotes: r.field_notes ?? undefined,
     pickupRequired: r.pickup_required ?? undefined,
     pickupLocation: r.pickup_location ?? undefined,
+    deliveryCountTotal: r.delivery_count_total ?? undefined,
+    deliveryCountDone: r.delivery_count_done ?? undefined,
+    windowsCasements: r.windows_casements ?? undefined,
     details: {
       generalContractor: r.details?.generalContractor ?? '',
       managerName: r.details?.managerName ?? '',
@@ -374,6 +385,7 @@ function rowToJobPhoto(r: JobPhotoRow): JobPhoto {
     isVideo: r.is_video || undefined,
     sgdVideo: r.sgd_video || undefined,
     photoType: (r.photo_type as JobPhotoType | null) ?? undefined,
+    tags: r.tags && r.tags.length > 0 ? r.tags : undefined,
   };
 }
 
@@ -593,6 +605,7 @@ function jobToRow(job: Job) {
     parent_job_id: job.parentJobId ?? null,
     has_sub_jobs: job.hasSubJobs ?? false,
     sub_job_type: job.subJobType ?? null,
+    todos: job.todos ?? [],
     window_count_done: job.windowCountDone ?? null,
     window_count_total: job.windowCountTotal ?? null,
     sgd_count_done: job.sgdCountDone ?? null,
@@ -741,6 +754,9 @@ function workRequestToRow(card: WorkRequest) {
     field_notes: card.fieldNotes ?? null,
     pickup_required: card.pickupRequired ?? null,
     pickup_location: card.pickupLocation ?? null,
+    delivery_count_total: card.deliveryCountTotal ?? null,
+    delivery_count_done: card.deliveryCountDone ?? null,
+    windows_casements: card.windowsCasements ?? null,
     details: card.details,
   };
 }
@@ -1025,7 +1041,23 @@ export async function insertJobPhoto(photo: JobPhoto): Promise<void> {
         is_video: photo.isVideo ?? false,
         sgd_video: photo.sgdVideo ?? false,
         photo_type: photo.photoType ?? null,
+        tags: photo.tags ?? [],
       })
+    ).error
+  );
+}
+
+/** Replace an uploaded photo's custom tags (anyone may, per the tags-only guard). */
+export async function updateJobPhotoTags(
+  id: string,
+  tags: string[]
+): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('job_photos')
+        .update({ tags })
+        .eq('id', id)
     ).error
   );
 }

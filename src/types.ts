@@ -196,7 +196,17 @@ export interface Job {
    * work requests. Unset (legacy jobs) means "not narrowed" — every scope allowed.
    */
   scopes?: JobScope[];
+  /**
+   * The job's TO-DOs — a Field-Super-only check-off list on the job details
+   * page (parents and sub-jobs alike), same shape as a work request's tasks
+   * so photos and issues link to a TO-DO by id the same way. Installers never
+   * see it. Absent/empty = no TO-DOs.
+   */
+  todos?: JobTodo[];
 }
+
+/** One job TO-DO — structurally a {@link WorkRequestTask}. */
+export type JobTodo = WorkRequestTask;
 
 /**
  * Status of a unit of work (a Work Request) as the crew reports it from the
@@ -295,6 +305,9 @@ export type JobScope =
   | 'Screens'
   | "IGU's"
   | 'Storefront'
+  // Work-request-only: checking a hardware delivery (auto-adds its two check
+  // tasks and requires a delivery count on the card).
+  | 'Delivery'
   // Work-request-only catch-all for niche one-off work.
   | 'Other'
   // Retired as a scope (2026-08): no longer selectable anywhere, but kept in
@@ -312,8 +325,8 @@ export const JOB_SCOPES: JobScope[] = [
   'Storefront',
 ];
 
-/** Scopes selectable on a WORK REQUEST: every job scope plus 'Other'. */
-export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Other'];
+/** Scopes selectable on a WORK REQUEST: every job scope plus 'Delivery' and 'Other'. */
+export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Delivery', 'Other'];
 
 /**
  * What a job photo/video shows — picked by the taker in the camera (a session
@@ -485,6 +498,20 @@ export interface WorkRequest {
    * meaningful when the 'Windows' scope is selected.
    */
   flashingMaterial?: string;
+  /**
+   * Delivery count total, set by the office as soon as the 'Delivery' scope is
+   * selected (required to create a Delivery-scope card). Cleared when the
+   * scope is removed. Only meaningful with the 'Delivery' scope.
+   */
+  deliveryCountTotal?: number;
+  /** Delivery count done number — installers update it from their phone. */
+  deliveryCountDone?: number;
+  /**
+   * "Are any of the Windows Casements?" — asked while the 'Windows' scope is
+   * selected. Checking it auto-adds the gather-casement-cranks task. Cleared
+   * (with its task) when the Windows scope is removed.
+   */
+  windowsCasements?: boolean;
   /** Task-specific / additional materials needed (free text, optional). Field-Super-authored. */
   materials?: string;
   /**
@@ -552,7 +579,12 @@ export interface Crew {
  */
 export interface DailyCrew {
   id: string;
-  /** Up to 20 characters (unlike permanent crews' single letter). */
+  /**
+   * Auto-generated from the members' names — "Brandon W & Timothy B" (first
+   * name + last initial, joined with " & "). Regenerated whenever the member
+   * list changes; never typed by hand. (Crews created before auto-naming keep
+   * their typed name until their members next change.)
+   */
   name: string;
   /** Members — installers only. */
   installerIds: string[];
@@ -656,6 +688,12 @@ export interface JobPhoto {
   sgdVideo?: boolean;
   /** What the photo shows (Window, SGD, …) — see {@link JobPhotoType}. */
   photoType?: JobPhotoType;
+  /**
+   * Custom tags ("before", "damage", …) — several per photo, picked or typed
+   * in the camera and editable from the viewer by anyone. Suggestions are
+   * company-wide (every tag on any photo). Absent/empty = untagged.
+   */
+  tags?: string[];
 }
 
 /** Upload lifecycle of a photo that hasn't reached the backend yet. */
@@ -687,6 +725,8 @@ export interface PendingJobPhoto {
   sgdVideo?: boolean;
   /** Photo type picked before the upload landed (rides along). */
   photoType?: JobPhotoType;
+  /** Custom tags picked before the upload landed (ride along). */
+  tags?: string[];
 }
 
 // --- Job issues ---------------------------------------------------------------

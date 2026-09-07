@@ -44,6 +44,7 @@ import {
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
+import { dailyCrewInitials } from '@/utils/dailyCrewName';
 import { buildDayItems } from '@/utils/daySchedule';
 import { activeJobs, activeWorkRequests } from '@/utils/jobArchive';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
@@ -95,6 +96,7 @@ export function CalendarBoard({
 }: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
+  const workers = useAppStore((s) => s.workers);
   const assignments = useAppStore((s) => s.assignments);
   const allWorkRequests = useAppStore((s) => s.workRequests);
   const jobs = useAppStore((s) => s.jobs);
@@ -273,6 +275,15 @@ export function CalendarBoard({
   const crewTagFor = (crewId: string) => {
     const name = allCrews.find((c) => c.id === crewId)?.name ?? '?';
     return name.replace(/^crew\s+/i, '');
+  };
+
+  // The calendar chips' hover crew line is tight — a DAILY crew shows as its
+  // members' initials ("BW & TB") instead of the full auto-name ("Brandon W &
+  // Timothy B"). Permanent crews keep their letter.
+  const crewHoverTagFor = (crewId: string) => {
+    const daily = dailyCrews.find((c) => c.id === crewId);
+    if (daily) return dailyCrewInitials(daily.installerIds, workers, daily.name);
+    return crewTagFor(crewId);
   };
 
   // Distinct, stable color per crew for tinting cards and chips (a crew's
@@ -685,7 +696,7 @@ export function CalendarBoard({
             }}
             canUnassign={canAssign}
             canAssign={canAssign}
-            crewNameFor={crewTagFor}
+            crewNameFor={crewHoverTagFor}
             jobNameFor={jobNameFor}
             // The main calendar's hover-＋ is a Scheduler tool (Field Supers
             // share this board read-only — they create from the pool calendar).

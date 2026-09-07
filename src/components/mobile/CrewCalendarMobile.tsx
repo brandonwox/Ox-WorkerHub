@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { format, isToday } from 'date-fns';
+import { format, isToday, isValid, parseISO } from 'date-fns';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -27,6 +27,13 @@ import { comparePriority } from '@/utils/priorityRange';
 interface Props {
   /** Scheduler gets assign/unassign controls; the Field Super views read-only. */
   canAssign: boolean;
+  /**
+   * Jump to this day (yyyy-MM-dd) and ring it for a moment — a work request's
+   * "View on calendar". `highlightNonce` changes on every jump so the same
+   * day can be revealed twice in a row.
+   */
+  highlightDate?: string;
+  highlightNonce?: string;
 }
 
 /**
@@ -35,7 +42,11 @@ interface Props {
  * backlog work request on a crew for the selected day (tap "Assign") and pull one
  * off (tap the ×) — the phone counterpart of the desktop drag-drop board.
  */
-export function CrewCalendarMobile({ canAssign }: Props) {
+export function CrewCalendarMobile({
+  canAssign,
+  highlightDate,
+  highlightNonce,
+}: Props) {
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
   const assignments = useAppStore((s) => s.assignments);
@@ -52,6 +63,19 @@ export function CrewCalendarMobile({ canAssign }: Props) {
 
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [assignTarget, setAssignTarget] = useState<Crew | DailyCrew | null>(null);
+  // The day ringed by a "View on calendar" jump (clears itself after a beat).
+  const [flashDate, setFlashDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!highlightDate) return;
+    void highlightNonce; // dep only — a repeat jump to the same date re-fires
+    const day = parseISO(highlightDate);
+    if (!isValid(day)) return;
+    setSelectedDate(day);
+    setFlashDate(highlightDate);
+    const timer = setTimeout(() => setFlashDate(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlightDate, highlightNonce]);
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -112,6 +136,7 @@ export function CrewCalendarMobile({ canAssign }: Props) {
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           markedDates={markedDates}
+          highlightDate={flashDate}
         />
 
         <Text style={styles.dayLabel}>{dayLabel}</Text>

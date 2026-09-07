@@ -17,6 +17,7 @@ import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingMaterialBanner } from '@/components/jobsite/FlashingMaterialBanner';
 import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
+import { JobTodosSection } from '@/components/jobsite/JobTodosSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
 import {
@@ -50,10 +51,11 @@ import {
 import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
 import { poTaken } from '@/utils/jobPo';
 import { jobAllowsWindows } from '@/utils/jobScopes';
+import { isTodoPhoto } from '@/utils/jobTodos';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
-type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs';
+type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs' | 'todos';
 
 const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
 
@@ -149,8 +151,11 @@ export function JobDashboardSidebar({
   const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const flash = useAppStore((s) => s.flash);
   const photos = useJobPhotos(job?.id);
+  // The Pictures wall (and cover picker) leave out photos taken for a TO-DO —
+  // those live only inside their TO-DO row.
+  const wallPhotos = useMemo(() => photos.filter((p) => !isTodoPhoto(p)), [photos]);
   // Pictures filters: by work-request scope, plus SGD videos.
-  const photoFilter = usePhotoScopeFilter(photos);
+  const photoFilter = usePhotoScopeFilter(wallPhotos);
 
   const [viewingCardId, setViewingCardId] = useState<string | null>(null);
   // "+ Work Request": the creation popup, pre-linked to this job (rendered
@@ -279,10 +284,12 @@ export function JobDashboardSidebar({
   // arrive newest-first), else a placeholder — same rule as mobile.
   const coverPhoto = useMemo(() => {
     const chosen = job?.coverPhotoId
-      ? photos.find((p) => p.id === job.coverPhotoId)
+      ? wallPhotos.find((p) => p.id === job.coverPhotoId)
       : undefined;
-    return chosen ?? (photos.length ? photos[photos.length - 1] : undefined);
-  }, [job?.coverPhotoId, photos]);
+    return (
+      chosen ?? (wallPhotos.length ? wallPhotos[wallPhotos.length - 1] : undefined)
+    );
+  }, [job?.coverPhotoId, wallPhotos]);
 
   if (!job) return null;
 
@@ -421,6 +428,19 @@ export function JobDashboardSidebar({
       tint: colors.success,
       dim: colors.successDim,
     },
+    // TO-DOs — the Field Super's own check-off list; no other role sees it.
+    ...(me?.role === 'field_super'
+      ? [
+          {
+            key: 'todos' as const,
+            label: 'TO-DOs',
+            sub: `${(job.todos ?? []).filter((t) => !t.done).length} Open`,
+            icon: 'check-square' as const,
+            tint: colors.primary,
+            dim: colors.primaryDim,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -495,9 +515,9 @@ export function JobDashboardSidebar({
         <Pressable
           style={({ pressed }) => [
             styles.coverWrap,
-            pressed && photos.length > 0 && styles.pressed,
+            pressed && wallPhotos.length > 0 && styles.pressed,
           ]}
-          disabled={photos.length === 0}
+          disabled={wallPhotos.length === 0}
           onPress={() => setCoverModal('view')}
         >
           {coverPhoto ? (
@@ -1008,6 +1028,10 @@ export function JobDashboardSidebar({
         {/* Sub-Jobs — a section card like the others (never on sub-jobs
             themselves; one level only). Names render PLAIN here — no parent
             prefix inside the parent's own page. */}
+        {section === 'todos' && me?.role === 'field_super' && (
+          <JobTodosSection job={job} photos={photos} onPhotoPress={openPhoto} />
+        )}
+
         {section === 'subjobs' && hasSubJobsSection && (
           <View style={styles.section}>
             <View style={styles.picturesHeader}>
@@ -1218,7 +1242,7 @@ export function JobDashboardSidebar({
             ) : (
               <ScrollView style={styles.pickScroll}>
                 <View style={styles.pickGrid}>
-                  {photos.map((photo) => (
+                  {wallPhotos.map((photo) => (
                     <Pressable
                       key={photo.id}
                       style={styles.pickCell}

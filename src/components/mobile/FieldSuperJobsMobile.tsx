@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -9,31 +9,32 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FieldSuperPicker } from '@/components/desktop/FieldSuperPicker';
 import { FormInput } from '@/components/FormInput';
+import { ArchivedJobsMobile } from '@/components/mobile/ArchivedJobsMobile';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
-import {
-  CountTotalField,
-  editableCountDefs,
-  JOB_COUNT_DEFS,
-} from '@/utils/jobCounts';
+import { CountTotalField, JOB_COUNT_DEFS } from '@/utils/jobCounts';
+import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
 import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
-import { jobAllowsWindows } from '@/utils/jobScopes';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
- * The Field Super's jobs on the phone. Mirrors the desktop page's scope: tap
- * a job to open its details page; the chevron expands an inline editor for
- * the job's details — jobsite address, PO, flashing material, assigned Field
- * Supers, and scope counts.
+ * The Field Super's jobs on the phone. Mirrors the desktop page's scope: a
+ * name/PO/address search over the list; tap a job to open its details page;
+ * the chevron expands an inline editor for the job's details — name, PO,
+ * jobsite address, builder, scopes, assigned Field Supers, flashing material,
+ * and scope counts — plus the "This job has Sub-Jobs" toggle and (for
+ * assigned supers) Archive. Archived jobs collapse into an Archived section
+ * at the bottom, where they can be restored or permanently deleted.
  */
 export function FieldSuperJobsMobile() {
   const me = useCurrentWorker();
@@ -43,17 +44,20 @@ export function FieldSuperJobsMobile() {
   const assignments = useAppStore((s) => s.assignments);
   const updateJob = useAppStore((s) => s.updateJob);
   const addJob = useAppStore((s) => s.addJob);
+  const archiveJob = useAppStore((s) => s.archiveJob);
   const flash = useAppStore((s) => s.flash);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [query, setQuery] = useState('');
   // "All jobs" widens the list from assigned-only to EVERY job — each row
   // then shows its assigned supers. Unassigned jobs are fully editable too
   // (helping out needs no assignment); the details page still offers
   // "Assign myself" to take responsibility for one.
   const [showAll, setShowAll] = useState(false);
 
-  // Sub-jobs stay out of this office list — they're managed from the web job
-  // details sidebar (their work requests still show on the Work Requests tab).
+  // Sub-jobs stay out of this office list — they live inside their parent's
+  // Sub-Jobs section on the job page, which is also where new ones are
+  // created (their work requests still show on the Work Requests tab).
   const myJobs = useMemo(
     () =>
       activeJobs(
@@ -61,6 +65,18 @@ export function FieldSuperJobsMobile() {
       ).filter((job) => !job.parentJobId),
     [jobs, me, showAll]
   );
+
+  // Same search as the web page: name, PO, or address.
+  const visibleJobs = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return myJobs;
+    return myJobs.filter(
+      (job) =>
+        job.name.toLowerCase().includes(q) ||
+        (job.po ?? '').toLowerCase().includes(q) ||
+        (job.location ?? '').toLowerCase().includes(q)
+    );
+  }, [myJobs, query]);
 
   const superNamesFor = (job: Job) =>
     (job.fieldSuperIds ?? [])
@@ -73,6 +89,16 @@ export function FieldSuperJobsMobile() {
     () => workers.filter((w) => w.role === 'field_super'),
     [workers]
   );
+
+  // Every builder ever applied to a job — the editor's Builder suggestions.
+  const builderOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const j of jobs) {
+      const b = j.builder?.trim();
+      if (b) seen.add(b);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
 
   const scheduledIds = useMemo(
     () => new Set(assignments.map((a) => a.workRequestId)),
@@ -125,11 +151,33 @@ export function FieldSuperJobsMobile() {
           </View>
         </View>
         <Text style={styles.hint}>
-          Tap a job to open it. Use the arrow to edit its details — address,
-          PO, flashing material, and assigned supers.
+          Tap a job to open it. Use the arrow to edit its details — name, PO,
+          address, builder, scopes, flashing material, and assigned supers.
         </Text>
 
-        <ScrollView contentContainerStyle={styles.listContent}>
+        <View style={styles.searchWrap}>
+          <Feather name="search" size={15} color={colors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search jobs by name, PO, or address…"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <Feather name="x" size={15} color={colors.textTertiary} />
+            </Pressable>
+          )}
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+        >
           {myJobs.length === 0 ? (
             <View style={styles.empty}>
               <Feather name="briefcase" size={32} color={colors.textTertiary} />
@@ -140,8 +188,16 @@ export function FieldSuperJobsMobile() {
                   : 'Jobs you’re assigned to show up here — turn on "All jobs" to browse every job and assign yourself.'}
               </Text>
             </View>
+          ) : visibleJobs.length === 0 ? (
+            <View style={styles.empty}>
+              <Feather name="search" size={32} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>No jobs match</Text>
+              <Text style={styles.emptySubtitle}>
+                Nothing matches “{query.trim()}”.
+              </Text>
+            </View>
           ) : (
-            myJobs.map((job) => (
+            visibleJobs.map((job) => (
               <JobRow
                 key={job.id}
                 job={job}
@@ -153,6 +209,11 @@ export function FieldSuperJobsMobile() {
                     : undefined
                 }
                 fieldSuperRoster={fieldSuperRoster}
+                builderOptions={builderOptions}
+                // Archiving stays with the supers assigned to the job (the
+                // web page's rule; RLS gates the eventual permanent delete
+                // the same way). Everything else is open to any super.
+                canArchive={!!me && (job.fieldSuperIds ?? []).includes(me.id)}
                 expanded={expandedId === job.id}
                 onToggle={() =>
                   setExpandedId((id) => (id === job.id ? null : job.id))
@@ -163,13 +224,21 @@ export function FieldSuperJobsMobile() {
                       'That PO is already used by another job — change discarded.',
                       'warning'
                     );
-                    return;
+                    return false;
                   }
                   updateJob(job.id, changes);
+                  return true;
+                }}
+                onArchive={() => {
+                  archiveJob(job.id);
+                  flash(`Job "${job.name}" archived`, 'success');
+                  setExpandedId(null);
                 }}
               />
             ))
           )}
+
+          <ArchivedJobsMobile showAll={showAll} />
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -414,14 +483,21 @@ const parseCount = (text: string): number | undefined => {
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 };
 
+/** Order-insensitive equality of two scope lists. */
+const sameScopes = (a: JobScope[], b: JobScope[]) =>
+  a.length === b.length && a.every((s) => b.includes(s));
+
 function JobRow({
   job,
   counts,
   supersLine,
   fieldSuperRoster,
+  builderOptions,
+  canArchive,
   expanded,
   onToggle,
   onSave,
+  onArchive,
 }: {
   job: Job;
   counts: { total: number; scheduled: number };
@@ -429,21 +505,35 @@ function JobRow({
   supersLine?: string;
   /** Every field super on the roster — the assignment picker's options. */
   fieldSuperRoster: Worker[];
+  /** Every builder already on some job — the Builder field's suggestions. */
+  builderOptions: string[];
+  /** Whether the Archive row shows (assigned supers only). */
+  canArchive: boolean;
   expanded: boolean;
   onToggle: () => void;
-  onSave: (changes: Partial<Job>) => void;
+  /** Returns whether the save went through (false = rejected, e.g. PO taken). */
+  onSave: (changes: Partial<Job>) => boolean;
+  onArchive: () => void;
 }) {
   const router = useRouter();
+  const updateJob = useAppStore((s) => s.updateJob);
+  const [name, setName] = useState(job.name);
   const [location, setLocation] = useState(job.location);
   const [po, setPo] = useState(job.po ?? '');
+  const [builder, setBuilder] = useState(job.builder ?? '');
+  const [scopes, setScopes] = useState<JobScope[]>(job.scopes ?? []);
   const [fieldSuperIds, setFieldSuperIds] = useState<string[]>(
     job.fieldSuperIds ?? []
   );
   const [flashing, setFlashing] = useState(job.flashingMaterial ?? '');
-  const windowsAllowed = jobAllowsWindows(job);
-  // The count pairs this job's scopes cover — each edits done/total as text
-  // (blank = unset), keyed by the done/total field names.
-  const countDefs = editableCountDefs(job);
+  // The count pairs the DRAFT scopes cover — rows appear/disappear as chips
+  // are toggled, before saving. Empty = legacy "not narrowed" (every pair).
+  const countDefs =
+    scopes.length === 0
+      ? JOB_COUNT_DEFS
+      : JOB_COUNT_DEFS.filter((def) => scopes.includes(def.scope));
+  // Flashing follows the draft scopes the same way (jobAllowsWindows' rule).
+  const windowsAllowed = scopes.length === 0 || scopes.includes('Windows');
   const [countText, setCountText] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const def of JOB_COUNT_DEFS) {
@@ -453,22 +543,60 @@ function JobRow({
     return init;
   });
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Sub-job type picking (enabling "This job has Sub-Jobs" requires a type).
+  const [subJobTypePicking, setSubJobTypePicking] = useState(false);
+  const [customSubJobType, setCustomSubJobType] = useState('');
+  // Two-tap confirms: hiding the Sub-Jobs section and archiving the job.
+  const [armed, setArmed] = useState<'hide-subjobs' | 'archive' | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (armTimer.current) clearTimeout(armTimer.current);
+    },
+    []
+  );
+  const arm = (what: 'hide-subjobs' | 'archive') => {
+    setArmed(what);
+    if (armTimer.current) clearTimeout(armTimer.current);
+    armTimer.current = setTimeout(() => setArmed(null), 4000);
+  };
+  const disarm = () => {
+    setArmed(null);
+    if (armTimer.current) clearTimeout(armTimer.current);
+  };
+
+  const touch = () => {
+    setSaved(false);
+    setError(null);
+  };
 
   const setCount = (field: string, text: string) => {
     setCountText((prev) => ({ ...prev, [field]: text }));
-    setSaved(false);
+    touch();
+  };
+
+  const toggleScope = (scope: JobScope) => {
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
+    );
+    touch();
   };
 
   // Order-insensitive: toggling a super off and back on isn't a change.
   const supersChanged =
     fieldSuperIds.length !== (job.fieldSuperIds ?? []).length ||
     fieldSuperIds.some((id) => !(job.fieldSuperIds ?? []).includes(id));
+  const scopesChanged = !sameScopes(scopes, job.scopes ?? []);
 
   const dirty =
+    name.trim() !== job.name ||
     location.trim() !== job.location ||
     po.trim() !== (job.po ?? '') ||
+    builder.trim() !== (job.builder ?? '') ||
+    scopesChanged ||
     supersChanged ||
-    flashing.trim() !== (job.flashingMaterial ?? '') ||
+    (windowsAllowed && flashing.trim() !== (job.flashingMaterial ?? '')) ||
     countDefs.some(
       (def) =>
         parseCount(countText[def.doneField]) !== job[def.doneField] ||
@@ -476,29 +604,89 @@ function JobRow({
     );
 
   const save = () => {
+    if (!name.trim()) {
+      setError('Job name is required.');
+      return;
+    }
     const countChanges: Partial<Job> = {};
     for (const def of countDefs) {
       countChanges[def.doneField] = parseCount(countText[def.doneField]);
       countChanges[def.totalField] = parseCount(countText[def.totalField]);
     }
-    onSave({
+    // Dropping a scope also clears its now-hidden done/total counts (and the
+    // flashing material when Windows goes) so stale numbers don't keep
+    // displaying — the same rule as the web sidebar's scopes editor.
+    const clears: Partial<Job> = {};
+    if (scopesChanged) {
+      for (const def of JOB_COUNT_DEFS) {
+        if (
+          !countDefs.includes(def) &&
+          (job[def.doneField] != null || job[def.totalField] != null)
+        ) {
+          clears[def.doneField] = undefined;
+          clears[def.totalField] = undefined;
+        }
+      }
+    }
+    const ok = onSave({
+      name: name.trim(),
       location: location.trim(),
       po: po.trim() || undefined,
-      flashingMaterial: flashing.trim(),
+      builder: builder.trim() || undefined,
+      // Empty = legacy "not narrowed" (all scopes allowed).
+      scopes: scopes.length > 0 ? scopes : undefined,
+      flashingMaterial: windowsAllowed ? flashing.trim() : undefined,
       // Assignments only when actually changed — updateJob writes the
       // job_field_supers join table exactly when this key is present.
       ...(supersChanged ? { fieldSuperIds } : {}),
       ...countChanges,
+      ...clears,
     });
-    setSaved(true);
+    if (ok) {
+      setSaved(true);
+      // Local drafts for fields the save may have normalized away.
+      if (!windowsAllowed) setFlashing('');
+      setCountText((prev) => {
+        const next = { ...prev };
+        for (const def of JOB_COUNT_DEFS) {
+          if (!countDefs.includes(def) && scopesChanged) {
+            next[def.doneField] = '';
+            next[def.totalField] = '';
+          }
+        }
+        return next;
+      });
+    }
   };
 
+  // Picking a type is what enables "This job has Sub-Jobs" — the two persist
+  // together (immediately, like the web sidebar), and sub-job creation
+  // prefixes the singular form ("Lot 159").
+  const chooseSubJobType = (type: string) => {
+    updateJob(job.id, { hasSubJobs: true, subJobType: type });
+    setSubJobTypePicking(false);
+    setCustomSubJobType('');
+  };
+
+  // Builder suggestions: existing builders matching what's typed (hidden once
+  // the typed value IS one of them, or when nothing's typed and the list is
+  // long — the chips are a shortcut, not a directory).
+  const builderQuery = builder.trim().toLowerCase();
+  const builderSuggestions = builderOptions.filter(
+    (b) =>
+      b.toLowerCase() !== builderQuery &&
+      (builderQuery ? b.toLowerCase().includes(builderQuery) : true)
+  );
+  const showBuilderSuggestions =
+    builderSuggestions.length > 0 && (builderQuery.length > 0 || builderOptions.length <= 6);
+
   const archived = job.status === 'Finished';
+  const isParent = !job.parentJobId;
 
   return (
     <View style={[styles.card, archived && styles.cardArchived]}>
       {/* Tapping the row opens the job's details page; the chevron alone
-          expands the inline address/flashing editor. */}
+          expands the inline editor. */}
       <View style={styles.cardHeader}>
         <Pressable
           style={({ pressed }) => [
@@ -547,24 +735,103 @@ function JobRow({
       {expanded && (
         <View style={styles.cardBody}>
           <FormInput
-            label="Jobsite address"
-            value={location}
+            label="Job name"
+            value={name}
             onChangeText={(text) => {
-              setLocation(text);
-              setSaved(false);
+              setName(text);
+              touch();
             }}
-            placeholder="Street, city"
+            placeholder="Job name"
+            autoCapitalize="words"
           />
           <FormInput
             label="PO"
             value={po}
             onChangeText={(text) => {
               setPo(text);
-              setSaved(false);
+              touch();
             }}
             placeholder="e.g. 4501"
             autoCapitalize="none"
           />
+          <FormInput
+            label="Jobsite address"
+            value={location}
+            onChangeText={(text) => {
+              setLocation(text);
+              touch();
+            }}
+            placeholder="Street, city"
+          />
+          {/* Builder — free text, with tappable suggestions drawn from the
+              builders already on other jobs (the phone's stand-in for the
+              web's searchable dropdown). */}
+          <View style={styles.supersField}>
+            <FormInput
+              label="Builder"
+              value={builder}
+              onChangeText={(text) => {
+                setBuilder(text);
+                touch();
+              }}
+              placeholder="The builder/GC this job is for"
+              autoCapitalize="words"
+            />
+            {showBuilderSuggestions && (
+              <View style={styles.suggestionChips}>
+                {builderSuggestions.slice(0, 8).map((b) => (
+                  <Pressable
+                    key={b}
+                    style={({ pressed }) => [
+                      styles.suggestionChip,
+                      pressed && styles.saveDim,
+                    ]}
+                    onPress={() => {
+                      setBuilder(b);
+                      touch();
+                    }}
+                  >
+                    <Text style={styles.suggestionChipText}>{b}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+          {/* Scopes — the trades this job covers. Toggling a chip re-gates the
+              count rows and the flashing field below live; the change (and
+              any cleared counts) lands on Save. */}
+          <View style={styles.supersField}>
+            <Text style={styles.supersLabel}>Scopes</Text>
+            <View style={styles.editScopeChips}>
+              {JOB_SCOPES.map((scope) => {
+                const active = scopes.includes(scope);
+                return (
+                  <Pressable
+                    key={scope}
+                    style={[
+                      styles.editScopeChip,
+                      active && styles.editScopeChipOn,
+                    ]}
+                    onPress={() => toggleScope(scope)}
+                  >
+                    <Text
+                      style={[
+                        styles.editScopeChipText,
+                        active && styles.editScopeChipTextOn,
+                      ]}
+                    >
+                      {scope}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.fieldHint}>
+              Removing a scope also clears its done/total counts. No scopes
+              selected means the job isn&apos;t narrowed — every scope (and
+              count) stays available.
+            </Text>
+          </View>
           {/* Assigned Field Supers. A sub-job inherits its parent's supers
               (store + DB trigger) — but sub-jobs never appear in this list. */}
           <View style={styles.supersField}>
@@ -578,11 +845,11 @@ function JobRow({
                     ? ids.filter((x) => x !== id)
                     : [...ids, id]
                 );
-                setSaved(false);
+                touch();
               }}
             />
           </View>
-          {/* Hidden entirely for jobs whose scopes exclude window work. */}
+          {/* Hidden entirely while the draft scopes exclude window work. */}
           {windowsAllowed && (
             <>
               <FormInput
@@ -590,14 +857,14 @@ function JobRow({
                 value={flashing}
                 onChangeText={(text) => {
                   setFlashing(text);
-                  setSaved(false);
+                  touch();
                 }}
                 placeholder="e.g. regular rainbuster"
               />
               <FlashingPhotoField job={job} editable />
             </>
           )}
-          {/* One done/total row per count pair the job's scopes cover. */}
+          {/* One done/total row per count pair the draft scopes cover. */}
           {countDefs.map((def) => (
             <View key={def.doneField} style={styles.countRow}>
               <View style={styles.countCol}>
@@ -620,6 +887,7 @@ function JobRow({
               </View>
             </View>
           ))}
+          {error ? <Text style={styles.sheetError}>{error}</Text> : null}
           <Pressable
             style={({ pressed }) => [
               styles.saveButton,
@@ -632,6 +900,148 @@ function JobRow({
               {saved && !dirty ? 'Saved ✓' : 'Save'}
             </Text>
           </Pressable>
+
+          {/* "This job has Sub-Jobs" — parents only. Enabling requires choosing
+              what the sub-jobs are called (it drives sub-job naming: "Lot
+              159"); the choice commits immediately, like the web sidebar.
+              Turning it off is a two-tap confirm and only hides the section —
+              the sub-jobs themselves are kept. */}
+          {isParent && (
+            <View style={styles.optionBlock}>
+              <View style={styles.editDivider} />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  pressed && styles.saveDim,
+                ]}
+                onPress={() => {
+                  if (job.hasSubJobs) {
+                    if (armed === 'hide-subjobs') {
+                      disarm();
+                      updateJob(job.id, { hasSubJobs: false });
+                    } else {
+                      arm('hide-subjobs');
+                    }
+                  } else {
+                    setSubJobTypePicking((on) => !on);
+                  }
+                }}
+              >
+                <Feather
+                  name={job.hasSubJobs ? 'check-square' : 'square'}
+                  size={18}
+                  color={job.hasSubJobs ? colors.primary : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.optionRowText,
+                    armed === 'hide-subjobs' && styles.optionRowWarn,
+                  ]}
+                >
+                  {armed === 'hide-subjobs'
+                    ? 'Tap again to hide the Sub-Jobs section (sub-jobs are kept)'
+                    : 'This job has Sub-Jobs'}
+                </Text>
+              </Pressable>
+              {(subJobTypePicking || job.hasSubJobs) && (
+                <View style={styles.subJobTypeBlock}>
+                  <Text style={styles.fieldHint}>
+                    {job.hasSubJobs
+                      ? 'What the sub-jobs are called — used when naming new ones:'
+                      : 'What are the sub-jobs called? Choosing one turns the section on.'}
+                  </Text>
+                  <View style={styles.editScopeChips}>
+                    {[
+                      ...SUB_JOB_TYPE_PRESETS,
+                      // A saved custom term renders as its own (active) chip.
+                      ...(job.subJobType &&
+                      !(SUB_JOB_TYPE_PRESETS as readonly string[]).includes(
+                        job.subJobType
+                      )
+                        ? [job.subJobType]
+                        : []),
+                    ].map((type) => {
+                      const active = job.hasSubJobs && job.subJobType === type;
+                      return (
+                        <Pressable
+                          key={type}
+                          style={[
+                            styles.editScopeChip,
+                            active && styles.editScopeChipOn,
+                          ]}
+                          onPress={() => chooseSubJobType(type)}
+                        >
+                          <Text
+                            style={[
+                              styles.editScopeChipText,
+                              active && styles.editScopeChipTextOn,
+                            ]}
+                          >
+                            {type}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <TextInput
+                    style={styles.customTypeInput}
+                    value={customSubJobType}
+                    onChangeText={setCustomSubJobType}
+                    placeholder="Custom term — tap Done to use it"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      const t = customSubJobType.trim();
+                      if (t) chooseSubJobType(t);
+                    }}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Archive — the "delete" action, two-tap confirmed. Recoverable
+              from the Archived section below the list; permanent deletion
+              lives only there. Sub-jobs archive with their parent. */}
+          {canArchive && (
+            <View style={styles.optionBlock}>
+              <View style={styles.editDivider} />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.optionRow,
+                  armed === 'archive' && styles.archiveRowArmed,
+                  pressed && styles.saveDim,
+                ]}
+                onPress={() => {
+                  if (armed === 'archive') {
+                    disarm();
+                    onArchive();
+                  } else {
+                    arm('archive');
+                  }
+                }}
+              >
+                <Feather
+                  name="archive"
+                  size={18}
+                  color={
+                    armed === 'archive' ? colors.textOnAccent : colors.danger
+                  }
+                />
+                <Text
+                  style={[
+                    styles.optionRowText,
+                    styles.optionRowDanger,
+                    armed === 'archive' && styles.optionRowArmedText,
+                  ]}
+                >
+                  {armed === 'archive'
+                    ? 'Tap again to archive this job'
+                    : 'Archive this Job…'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -913,6 +1323,122 @@ const styles = themed(() => StyleSheet.create({
   sheetSubmitText: {
     color: colors.textOnAccent,
     fontFamily: fonts.bold,
+    fontSize: 14,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  fieldHint: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  suggestionChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  suggestionChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 1,
+  },
+  suggestionChipText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  editScopeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  editScopeChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  editScopeChipOn: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary,
+  },
+  editScopeChipText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  editScopeChipTextOn: {
+    color: colors.primary,
+  },
+  optionBlock: {
+    gap: spacing.md,
+  },
+  editDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  optionRowText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  optionRowWarn: {
+    color: colors.textSecondary,
+  },
+  optionRowDanger: {
+    color: colors.danger,
+  },
+  archiveRowArmed: {
+    backgroundColor: colors.danger,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  optionRowArmedText: {
+    color: colors.textOnAccent,
+    fontFamily: fonts.semiBold,
+  },
+  subJobTypeBlock: {
+    gap: spacing.sm,
+  },
+  customTypeInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
     fontSize: 14,
   },
   empty: {

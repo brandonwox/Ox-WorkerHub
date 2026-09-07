@@ -27,6 +27,8 @@ export interface DisplayPhoto {
   isVideo?: boolean;
   sgdVideo?: boolean;
   photoType?: JobPhotoType;
+  /** Custom tags (see JobPhoto.tags). */
+  tags?: string[];
 }
 
 function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
@@ -43,6 +45,7 @@ function uploadedToDisplay(p: JobPhoto): DisplayPhoto {
     isVideo: p.isVideo,
     sgdVideo: p.sgdVideo,
     photoType: p.photoType,
+    tags: p.tags,
   };
 }
 
@@ -61,6 +64,7 @@ function pendingToDisplay(p: PendingJobPhoto): DisplayPhoto {
     isVideo: p.isVideo,
     sgdVideo: p.sgdVideo,
     photoType: p.photoType,
+    tags: p.tags,
   };
 }
 
