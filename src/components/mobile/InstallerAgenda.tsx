@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddTimecardSheet } from '@/components/AddTimecardSheet';
 import { ClockControls } from '@/components/ClockControls';
 import { ClockEntrySheet, ClockEntryMode } from '@/components/ClockEntrySheet';
+import { CrewStatusLine } from '@/components/mobile/CrewStatusLine';
 import { WorkRequestCard } from '@/components/WorkRequestCard';
 import { Toast } from '@/components/Toast';
 import { WeekRibbon } from '@/components/WeekRibbon';
@@ -122,6 +123,14 @@ export function InstallerAgenda() {
           {dayWorkRequests.length === 1 ? 'work request' : 'work requests'}
         </Text>
       )}
+      {/* Who I'm working with on the selected day (tap for the roster). */}
+      {currentUserId ? (
+        <CrewStatusLine
+          installerId={currentUserId}
+          date={format(selectedDate, 'yyyy-MM-dd')}
+          dateLabel={dayLabel}
+        />
+      ) : null}
 
       <FlatList
         data={dayWorkRequests}

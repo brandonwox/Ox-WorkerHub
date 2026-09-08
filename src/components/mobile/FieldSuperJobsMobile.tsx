@@ -20,7 +20,7 @@ import { ArchivedJobsMobile } from '@/components/mobile/ArchivedJobsMobile';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { jobsForFieldSuper, useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
-import { Job, JOB_SCOPES, JobScope, Worker } from '@/types';
+import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
 import { CountTotalField, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
@@ -518,6 +518,7 @@ function JobRow({
   const router = useRouter();
   const updateJob = useAppStore((s) => s.updateJob);
   const [name, setName] = useState(job.name);
+  const [status, setStatus] = useState<JobStatus>(job.status);
   const [location, setLocation] = useState(job.location);
   const [po, setPo] = useState(job.po ?? '');
   const [builder, setBuilder] = useState(job.builder ?? '');
@@ -591,6 +592,7 @@ function JobRow({
 
   const dirty =
     name.trim() !== job.name ||
+    status !== job.status ||
     location.trim() !== job.location ||
     po.trim() !== (job.po ?? '') ||
     builder.trim() !== (job.builder ?? '') ||
@@ -630,6 +632,7 @@ function JobRow({
     }
     const ok = onSave({
       name: name.trim(),
+      status,
       location: location.trim(),
       po: po.trim() || undefined,
       builder: builder.trim() || undefined,
@@ -754,6 +757,41 @@ function JobRow({
             placeholder="e.g. 4501"
             autoCapitalize="none"
           />
+          {/* Status — Active / Finished. Saving Finished emails accounts
+              receivable (DB trigger fires when the row lands). */}
+          <View style={styles.supersField}>
+            <Text style={styles.supersLabel}>Status</Text>
+            <View style={styles.editScopeChips}>
+              {(['Active', 'Finished'] as JobStatus[]).map((option) => {
+                const active = status === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={[styles.editScopeChip, active && styles.editScopeChipOn]}
+                    onPress={() => {
+                      setStatus(option);
+                      touch();
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.editScopeChipText,
+                        active && styles.editScopeChipTextOn,
+                      ]}
+                    >
+                      {option}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {status === 'Finished' && job.status !== 'Finished' && (
+              <Text style={styles.fieldHint}>
+                Saving as Finished emails accounts receivable that this job is
+                ready for billing.
+              </Text>
+            )}
+          </View>
           <FormInput
             label="Jobsite address"
             value={location}

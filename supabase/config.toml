@@ -398,6 +398,16 @@ deno_version = 2
 [functions.invite-worker]
 verify_jwt = false
 
+# job-finished-email is called by a DATABASE trigger (pg_net), which carries
+# no user JWT — it authenticates with the x-webhook-secret header instead.
+[functions.job-finished-email]
+verify_jwt = false
+
+# push-notification is likewise called by a DATABASE trigger (pg_net) and
+# authenticates with the x-webhook-secret header.
+[functions.push-notification]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

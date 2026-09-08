@@ -13,7 +13,9 @@ import {
   ScheduleFilter,
 } from '@/components/desktop/WorkRequestFilters';
 import { WorkRequestRow } from '@/components/desktop/WorkRequestRow';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore,
+  useCurrentWorker,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
@@ -77,6 +79,8 @@ export function WorkRequestsScreen({
   // A work request's parent-job link opens the job dashboard ON TOP of the work request
   // sidebar; its back arrow returns here.
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const me = useCurrentWorker();
+  const openJob = jobs.find((j) => j.id === openJobId) ?? null;
 
   const openCreate = () => {
     setViewingId(null);
@@ -413,16 +417,21 @@ export function WorkRequestsScreen({
       {/* The work request's parent-job link opens the job dashboard over the
           work request sidebar (rendered after = stacked on top); back returns. */}
       <JobDashboardSidebar
-        job={jobs.find((j) => j.id === openJobId) ?? null}
+        job={openJob}
         onClose={closeSidebar}
         onBack={() => setOpenJobId(null)}
         // Only the Scheduler and Field Supers render this screen — both get
-        // full job-details editing, manage sub-jobs, delete jobs, and create
-        // work requests (RLS matches).
+        // full job-details editing, manage sub-jobs, and create work requests.
+        // Archiving follows the jobs pages' rule: Schedulers always; a Field
+        // Super only on jobs they're assigned to (RLS's delete rule matches).
         editable
         canCreateWorkRequests
         canManageSubJobs
-        canDelete
+        canDelete={
+          me?.role === 'scheduler' ||
+          (me?.role === 'field_super' &&
+            !!openJob?.fieldSuperIds?.includes(me.id))
+        }
         quickViewJobs={jobs}
         onOpenJob={setOpenJobId}
       />

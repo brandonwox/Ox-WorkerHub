@@ -20,6 +20,7 @@ import { JobDocumentsSection } from '@/components/jobsite/JobDocumentsSection';
 import { JobTodosSection } from '@/components/jobsite/JobTodosSection';
 import { LayoutPlanBanner } from '@/components/jobsite/LayoutPlanBanner';
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
+import { InlineSelect } from '@/components/desktop/InlineSelect';
 import {
   CreateSubJobModal,
   NewSubJobInput,
@@ -41,7 +42,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
-import { Job, JOB_SCOPES, JobScope } from '@/types';
+import { Job, JOB_SCOPES, JobScope, JobStatus } from '@/types';
 import {
   editableCountDefs,
   formatCount,
@@ -58,6 +59,10 @@ import { workRequestLinksJob } from '@/utils/workRequestJobs';
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs' | 'todos';
 
 const SCOPE_OPTIONS = JOB_SCOPES.map((s) => ({ value: s, label: s }));
+const JOB_STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Finished', label: 'Finished' },
+];
 
 /** The section open by default: Sub-Jobs on a parent that has them, else Issues. */
 const defaultSectionFor = (job: Job | null): SectionKey =>
@@ -670,6 +675,26 @@ export function JobDashboardSidebar({
                     key={`addr-${job.id}`}
                     value={job.location ?? ''}
                     onCommit={(location) => updateJob(job.id, { location })}
+                  />
+                </View>
+                {/* Status — Active / Finished, parents and sub-jobs alike.
+                    Finishing emails accounts receivable (DB trigger). */}
+                <View style={styles.countPair}>
+                  <Text style={styles.fieldLabel}>Status</Text>
+                  <InlineSelect
+                    value={job.status}
+                    options={JOB_STATUS_OPTIONS}
+                    onChange={(status) => {
+                      if (status === job.status) return;
+                      updateJob(job.id, { status });
+                      flash(
+                        status === 'Finished'
+                          ? `"${job.name}" marked Finished — accounts receivable will be emailed.`
+                          : `"${job.name}" reopened as Active.`,
+                        'success'
+                      );
+                    }}
+                    minWidth={160}
                   />
                 </View>
               </>

@@ -263,7 +263,10 @@ export default function FieldSuperJobsScreen() {
         // Deleting a job stays with the supers assigned to it (RLS matches);
         // everything else is open to any super helping out.
         canDelete={meAssigned}
-        quickViewJobs={myJobs}
+        // Every active job (not just assigned ones) — so "+ Work Request" from
+        // an unassigned job's sidebar (All jobs on) can pre-link that job,
+        // matching the phone's create sheet.
+        quickViewJobs={allJobs}
         onOpenJob={setSelectedJobId}
       />
     </View>

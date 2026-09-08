@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { unregisterPushToken } from '@/lib/pushNotifications';
 import { signOut } from '@/integrations/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -26,6 +27,9 @@ export function AuthControl({ variant = 'card' }: Props) {
   const setAuthWorker = useAppStore((s) => s.setAuthWorker);
 
   const handleSignOut = async () => {
+    // Drop this phone's push registration while the session can still delete
+    // its own row (push_tokens is RLS-owned by the worker).
+    await unregisterPushToken();
     await signOut();
     setAuthWorker(null);
   };

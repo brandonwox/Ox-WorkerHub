@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, useCurrentWorker } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { archivedJobs } from '@/utils/jobArchive';
 import { jobDisplayName } from '@/utils/jobName';
@@ -15,8 +15,13 @@ import { jobDisplayName } from '@/utils/jobName';
  * old destructive delete, behind its own two-tap confirmation. Sub-jobs
  * archived WITH their parent don't get their own row (the parent's covers the
  * family); a sub-job archived alone does.
+ *
+ * Restore is open to anyone who sees the section; permanent delete follows
+ * the jobs_delete RLS rule — the Operator and Schedulers on any job, a Field
+ * Super only on jobs they're assigned to.
  */
 export function ArchivedJobsSection() {
+  const me = useCurrentWorker();
   const jobs = useAppStore((s) => s.jobs);
   const restoreJob = useAppStore((s) => s.restoreJob);
   const removeJob = useAppStore((s) => s.removeJob);
@@ -72,6 +77,11 @@ export function ArchivedJobsSection() {
             (j) => j.parentJobId === job.id && j.archivedAt
           ).length;
           const armed = armedId === job.id;
+          const canDelete =
+            me?.role === 'operator' ||
+            me?.role === 'scheduler' ||
+            (me?.role === 'field_super' &&
+              !!job.fieldSuperIds?.includes(me.id));
           return (
             <View key={job.id} style={styles.row}>
               <View style={styles.rowText}>
@@ -105,33 +115,35 @@ export function ArchivedJobsSection() {
                 <Feather name="rotate-ccw" size={13} color={colors.primary} />
                 <Text style={styles.restoreText}>Restore</Text>
               </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.deleteButton,
-                  armed && styles.deleteButtonArmed,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => {
-                  if (!armed) {
-                    armDelete(job.id);
-                    return;
-                  }
-                  setArmedId(null);
-                  removeJob(job.id);
-                  flash(`Job "${job.name}" permanently deleted`, 'success');
-                }}
-              >
-                <Feather
-                  name="trash-2"
-                  size={13}
-                  color={armed ? colors.textOnAccent : colors.danger}
-                />
-                <Text
-                  style={[styles.deleteText, armed && styles.deleteTextArmed]}
+              {canDelete && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteButton,
+                    armed && styles.deleteButtonArmed,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    if (!armed) {
+                      armDelete(job.id);
+                      return;
+                    }
+                    setArmedId(null);
+                    removeJob(job.id);
+                    flash(`Job "${job.name}" permanently deleted`, 'success');
+                  }}
                 >
-                  {armed ? 'Tap again to delete forever' : 'Delete'}
-                </Text>
-              </Pressable>
+                  <Feather
+                    name="trash-2"
+                    size={13}
+                    color={armed ? colors.textOnAccent : colors.danger}
+                  />
+                  <Text
+                    style={[styles.deleteText, armed && styles.deleteTextArmed]}
+                  >
+                    {armed ? 'Tap again to delete forever' : 'Delete'}
+                  </Text>
+                </Pressable>
+              )}
             </View>
           );
         })}

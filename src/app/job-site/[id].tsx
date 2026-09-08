@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   Modal,
@@ -88,6 +88,16 @@ export default function JobSiteScreen() {
   // Supers) — web's equivalent is the job sidebar's "+ Work Request".
   const canCreateWorkRequests = me?.role === 'field_super';
   const [workRequestSheetOpen, setWorkRequestSheetOpen] = useState(false);
+  // Field Supers set the job's status here too (parents AND sub-jobs — the
+  // Jobs tab editor only lists parents). Two-tap confirm; marking Finished
+  // emails accounts receivable via the DB trigger.
+  const canSetStatus = me?.role === 'field_super';
+  const [statusArmed, setStatusArmed] = useState(false);
+  useEffect(() => {
+    if (!statusArmed) return;
+    const timer = setTimeout(() => setStatusArmed(false), 4000);
+    return () => clearTimeout(timer);
+  }, [statusArmed]);
   const photos = useJobPhotos(job?.id);
   // The Pictures wall (and cover picker) leave out photos taken for a TO-DO —
   // those live only inside their TO-DO row.
@@ -445,6 +455,48 @@ export default function JobSiteScreen() {
                 </Text>
               </Pressable>
             )}
+          {/* Status toggle (Field Supers): Active ⇄ Finished, two-tap. */}
+          {canSetStatus && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.assignSelfButton,
+                statusArmed && styles.statusToggleArmed,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => {
+                if (!statusArmed) {
+                  setStatusArmed(true);
+                  return;
+                }
+                setStatusArmed(false);
+                const next = job.status === 'Finished' ? 'Active' : 'Finished';
+                updateJob(job.id, { status: next });
+                flash(
+                  next === 'Finished'
+                    ? 'Marked Finished — accounts receivable will be emailed.'
+                    : 'Reopened as Active.',
+                  'success'
+                );
+              }}
+            >
+              <Feather
+                name={job.status === 'Finished' ? 'rotate-ccw' : 'check-circle'}
+                size={14}
+                color={statusArmed ? colors.textOnAccent : colors.primary}
+              />
+              <Text
+                style={[styles.assignSelfText, statusArmed && styles.statusToggleArmedText]}
+              >
+                {statusArmed
+                  ? job.status === 'Finished'
+                    ? 'Tap again to reopen this job'
+                    : 'Tap again to mark finished (emails accounts receivable)'
+                  : job.status === 'Finished'
+                    ? 'Reopen job'
+                    : 'Mark job finished…'}
+              </Text>
+            </Pressable>
+          )}
           {/* Scope counts, "done/total" — shown once a total is set (totals
               are edited from the office surfaces; done from work requests). */}
           {counts.length > 0 && (
@@ -1089,6 +1141,13 @@ const styles = themed(() => StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.semiBold,
     fontSize: 13,
+  },
+  statusToggleArmed: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  statusToggleArmedText: {
+    color: colors.textOnAccent,
   },
   infoValue: {
     flexShrink: 1,
