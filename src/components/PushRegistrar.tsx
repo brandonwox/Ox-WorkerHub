@@ -12,13 +12,24 @@ import { AppNotification, NotificationType } from '@/types';
 import { notificationTarget } from '@/utils/notificationNav';
 
 /**
- * Mounted once in the root layout (native only — renders nothing). Registers
- * the device for phone pushes whenever a real worker is signed in, and routes
- * a TAP on a push to the same screen the in-app notification opens (the
- * work request, the job, …) via utils/notificationNav — both for a tap while
- * the app is running and for the tap that launched it.
+ * Mounted once in the root layout (renders nothing). Registers the device for
+ * phone pushes whenever a real worker is signed in, and routes a TAP on a
+ * push to the same screen the in-app notification opens (the work request,
+ * the job, …) via utils/notificationNav — both for a tap while the app is
+ * running and for the tap that launched it.
+ *
+ * On web this renders NOTHING and mounts no hooks: expo-notifications'
+ * `useLastNotificationResponse` calls a native-only module that throws
+ * ERR_UNAVAILABLE in the browser, which took down the whole React tree
+ * (blank white page on the website, 2026-09-08). The platform check must
+ * happen BEFORE any expo-notifications hook runs, hence the wrapper.
  */
 export function PushRegistrar() {
+  if (Platform.OS === 'web') return null;
+  return <NativePushRegistrar />;
+}
+
+function NativePushRegistrar() {
   const authWorker = useAppStore((s) => s.authWorker);
   const router = useRouter();
   // The response that launched a cold-started app (null while running).
