@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormInput } from '@/components/FormInput';
 import {
@@ -52,6 +52,12 @@ export function SettingsContent({ personalInfoSubPage = false }: Props) {
   const setTheme = useAppStore((s) => s.setTheme);
   const mutedTypes = useAppStore((s) => s.mutedNotificationTypes);
   const toggleMuted = useAppStore((s) => s.toggleNotificationTypeMuted);
+  // The personal-info sub-page lives in a bare RN Modal — a separate native
+  // root with no SafeAreaProvider inside it, where SafeAreaView resolves the
+  // top inset to 0 and the header rides under the iOS status bar / Dynamic
+  // Island. Read the inset from the app's provider instead (same trick as
+  // the notifications sheet).
+  const insets = useSafeAreaInsets();
 
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
@@ -251,7 +257,7 @@ export function SettingsContent({ personalInfoSubPage = false }: Props) {
           animationType="slide"
           onRequestClose={() => setPersonalOpen(false)}
         >
-          <SafeAreaView style={styles.subPageScreen} edges={['top']}>
+          <View style={[styles.subPageScreen, { paddingTop: insets.top }]}>
             <KeyboardAvoidingView
               style={styles.subPageFlex}
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -274,7 +280,7 @@ export function SettingsContent({ personalInfoSubPage = false }: Props) {
                 {profileForm}
               </ScrollView>
             </KeyboardAvoidingView>
-          </SafeAreaView>
+          </View>
           <ChangePasswordModal
             visible={passwordOpen}
             onClose={() => setPasswordOpen(false)}

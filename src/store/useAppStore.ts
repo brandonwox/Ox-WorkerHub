@@ -28,6 +28,7 @@ import {
   ActiveShift,
   AppNotification,
   AppRole,
+  CalendarTask,
   Crew,
   DailyCrew,
   Job,
@@ -319,6 +320,8 @@ const pendingWorkRequestTaskWrites = new Map<string, number>();
 const pendingDocumentInserts = new Map<string, number>();
 const pendingDocumentUpdates = new Map<string, number>();
 const pendingDocumentDeletes = new Map<string, number>();
+const pendingCalendarTaskUpserts = new Map<string, number>();
+const pendingCalendarTaskDeletes = new Map<string, number>();
 
 const GUARD_MAPS = {
   issueUpsert: pendingIssueUpserts,
@@ -328,6 +331,8 @@ const GUARD_MAPS = {
   documentInsert: pendingDocumentInserts,
   documentUpdate: pendingDocumentUpdates,
   documentDelete: pendingDocumentDeletes,
+  calendarTaskUpsert: pendingCalendarTaskUpserts,
+  calendarTaskDelete: pendingCalendarTaskDeletes,
 } as const;
 
 /** Which guard map a queued op holds a row in (serialized with the op). */
@@ -420,6 +425,9 @@ const OUTBOX_EXECUTORS = {
   insertJobIssue: (p: JobIssue) => backend.insertJobIssue(p),
   updateJobIssue: (p: JobIssue) => backend.updateJobIssue(p),
   deleteJobIssue: (p: string) => backend.deleteJobIssue(p),
+  insertCalendarTask: (p: CalendarTask) => backend.insertCalendarTask(p),
+  updateCalendarTask: (p: CalendarTask) => backend.updateCalendarTask(p),
+  deleteCalendarTask: (p: string) => backend.deleteCalendarTask(p),
   insertNotification: (p: AppNotification) =>
     notificationsBackend.insertNotification(p),
   markNotificationRead: (p: string) =>
@@ -821,6 +829,12 @@ interface AppState {
   /** Documents attached to jobs (photo/pdf/text; created by non-installers). */
   jobDocuments: JobDocument[];
   /**
+   * Calendar tasks — the signed-in Field Super's own day notes with optional
+   * checklists and reminders (RLS returns only the owner's rows). Local dev
+   * mode holds every mock worker's; the UI filters by the viewed worker.
+   */
+  calendarTasks: CalendarTask[];
+  /**
    * Photos captured on THIS device still waiting to upload. Separate from
    * `jobPhotos` so a realtime refetch never wipes the queue; uploads retry
    * automatically until they land (jobsites have dead zones).
@@ -1165,6 +1179,23 @@ interface AppState {
   /** Delete an issue. Its photos survive as plain job photos. */
   deleteJobIssue: (id: string) => void;
 
+  // --- Calendar tasks (Field Super's own day notes) ---
+  /**
+   * Create a calendar task on `date` for the current worker. Returns the
+   * created record, or null when signed out. `reminderAt` (ISO) arms a
+   * one-shot server reminder (in-app + phone push + email).
+   */
+  addCalendarTask: (input: {
+    title: string;
+    date: string;
+    description?: string;
+    tasks?: string[];
+    reminderAt?: string;
+  }) => CalendarTask | null;
+  /** Edit a calendar task (title, description, checklist, reminder, done). */
+  updateCalendarTask: (id: string, changes: Partial<CalendarTask>) => void;
+  deleteCalendarTask: (id: string) => void;
+
   // --- Timesheets → QuickBooks Time (Operator visibility) ---
   /**
    * Reflect a successful weekly sweep by flagging every un-sent/failed timesheet
@@ -1223,6 +1254,7 @@ let nextWorkerId = 100;
 let nextJobId = 100;
 let nextWorkRequestId = 100;
 let nextIssueId = 100;
+let nextCalendarTaskId = 100;
 let nextCrewId = 100;
 let nextDailyCrewId = 100;
 let nextAssignmentId = 100;
@@ -1265,6 +1297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   jobPhotos: [],
   jobIssues: [],
   jobDocuments: [],
+  calendarTasks: [],
   pendingPhotos: [],
   notifications: [],
   mutedNotificationTypes: [],
@@ -1357,6 +1390,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       jobPhotos: [],
       jobIssues: [],
       jobDocuments: [],
+      calendarTasks: [],
       pendingPhotos: [],
       devMode: true,
       devBaseUserId: seed.DEVELOPER_ID,
@@ -1391,6 +1425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           jobIssues: cached.jobIssues,
           // Older caches predate documents — tolerate their absence.
           jobDocuments: cached.jobDocuments ?? [],
+          calendarTasks: cached.calendarTasks ?? [],
         });
       }
     }
@@ -1412,6 +1447,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         jobPhotos: data.jobPhotos,
         jobIssues: data.jobIssues,
         jobDocuments: data.jobDocuments,
+        calendarTasks: data.calendarTasks,
       });
       if (me0) {
         persistDataCache(me0.id, data);
@@ -1548,6 +1584,22 @@ export const useAppStore = create<AppState>((set, get) => ({
               : issue
           ),
       ],
+      // Calendar tasks follow the issues rule: pending deletes stay gone,
+      // pending inserts/updates keep the local row.
+      calendarTasks: [
+        ...state.calendarTasks.filter(
+          (task) =>
+            pendingCalendarTaskUpserts.has(task.id) &&
+            !data.calendarTasks.some((f) => f.id === task.id)
+        ),
+        ...data.calendarTasks
+          .filter((task) => !pendingCalendarTaskDeletes.has(task.id))
+          .map((task) =>
+            pendingCalendarTaskUpserts.has(task.id)
+              ? (state.calendarTasks.find((t) => t.id === task.id) ?? task)
+              : task
+          ),
+      ],
     }));
     // Fresh cards may have gained a status since a reminder went out.
     get().pruneStaleStatusReminders();
@@ -1575,6 +1627,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     pendingIssueDeletes.clear();
     pendingPhotoNotes.clear();
     pendingWorkRequestTaskWrites.clear();
+    pendingCalendarTaskUpserts.clear();
+    pendingCalendarTaskDeletes.clear();
     // Park (don't drop) queued writes: the in-memory queue clears but the
     // persisted copy stays under the owner's key for their next sign-in.
     if (outboxRetryTimer) {
@@ -1609,6 +1663,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       jobPhotos: [],
       jobIssues: [],
       jobDocuments: [],
+      calendarTasks: [],
       pendingPhotos: [],
       notifications: [],
       devMode: false,
@@ -3135,6 +3190,71 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  addCalendarTask: (input) => {
+    const state = get();
+    const me = currentWorkerOf(state);
+    if (!me) return null;
+    const isBackend = backendActive(state);
+    const created: CalendarTask = {
+      id: isBackend ? uuid() : `ctask-${nextCalendarTaskId++}`,
+      workerId: me.id,
+      title: input.title.trim(),
+      description: input.description?.trim() || undefined,
+      date: input.date,
+      tasks: (input.tasks ?? [])
+        .map((text) => text.trim())
+        .filter((text) => text.length > 0)
+        .map((text) => ({
+          id: isBackend ? uuid() : `ctask-item-${nextCalendarTaskId++}`,
+          text,
+          done: false,
+        })),
+      reminderAt: input.reminderAt,
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+    if (created.tasks?.length === 0) created.tasks = undefined;
+    set({ calendarTasks: [created, ...state.calendarTasks] });
+    if (isBackend) {
+      write('insertCalendarTask', created, {
+        map: 'calendarTaskUpsert',
+        id: created.id,
+      });
+    }
+    return created;
+  },
+
+  updateCalendarTask: (id, changes) => {
+    let updated: CalendarTask | undefined;
+    set((state) => ({
+      calendarTasks: state.calendarTasks.map((task) => {
+        if (task.id !== id) return task;
+        updated = { ...task, ...changes };
+        // A changed reminder re-arms locally too (the DB trigger does the
+        // same), so the UI's "sent" state can't go stale.
+        if (
+          'reminderAt' in changes &&
+          changes.reminderAt !== task.reminderAt
+        ) {
+          updated.reminderSentAt = undefined;
+        }
+        return updated;
+      }),
+    }));
+    if (backendActive(get()) && updated) {
+      write('updateCalendarTask', updated, { map: 'calendarTaskUpsert', id });
+    }
+  },
+
+  deleteCalendarTask: (id) => {
+    set((state) => ({
+      calendarTasks: state.calendarTasks.filter((task) => task.id !== id),
+    }));
+    if (backendActive(get())) {
+      write('deleteCalendarTask', id, { map: 'calendarTaskDelete', id });
+    }
+  },
+
   pushNotification: (input) => {
     const state = get();
     const createdAt = new Date().toISOString();
@@ -3632,6 +3752,20 @@ export function useMyNotifications(): AppNotification[] {
   return useMemo(
     () => (me ? notifications.filter((n) => n.recipientId === me.id) : []),
     [notifications, me]
+  );
+}
+
+/**
+ * Hook: the current (effective) worker's calendar tasks. In backend mode the
+ * table is already RLS-scoped to the owner; local dev mode holds every mock
+ * worker's, so filter by the viewed worker here too.
+ */
+export function useMyCalendarTasks(): CalendarTask[] {
+  const calendarTasks = useAppStore((s) => s.calendarTasks);
+  const me = useCurrentWorker();
+  return useMemo(
+    () => (me ? calendarTasks.filter((t) => t.workerId === me.id) : []),
+    [calendarTasks, me]
   );
 }
 

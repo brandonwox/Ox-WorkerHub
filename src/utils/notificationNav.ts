@@ -35,6 +35,17 @@ export function notificationTarget(
   const jobId = typeof n.data?.jobId === 'string' ? n.data.jobId : undefined;
   const nonce = Date.now().toString();
 
+  // A calendar task reminder opens the Field Super's calendar on the task's
+  // day (the day flashes, same as "View on calendar").
+  if (n.type === 'task_reminder') {
+    const date = typeof n.data?.date === 'string' ? n.data.date : undefined;
+    if (!date || role !== 'field_super') return null;
+    return {
+      pathname: Platform.OS === 'web' ? '/field-super-calendar' : '/calendar',
+      params: { highlight: date, hl: nonce },
+    };
+  }
+
   if (
     n.type === 'work_request_now' &&
     role === 'scheduler' &&

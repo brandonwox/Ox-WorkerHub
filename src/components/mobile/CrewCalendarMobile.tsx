@@ -14,9 +14,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CalendarTaskSheet } from '@/components/CalendarTaskSheet';
 import { MobileWorkRequestItem } from '@/components/mobile/MobileWorkRequestItem';
 import { MonthCalendar } from '@/components/MonthCalendar';
-import { useAppStore } from '@/store/useAppStore';
+import {
+  useAppStore,
+  useCurrentRole,
+  useMyCalendarTasks,
+} from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, WorkRequest } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
@@ -65,6 +70,18 @@ export function CrewCalendarMobile({
   const [assignTarget, setAssignTarget] = useState<Crew | DailyCrew | null>(null);
   // The day ringed by a "View on calendar" jump (clears itself after a beat).
   const [flashDate, setFlashDate] = useState<string | null>(null);
+  // The Field Super's own calendar tasks (day notes with optional checklists
+  // and reminders) + the create/edit sheet. Read-only viewers only.
+  const role = useCurrentRole();
+  const showTasks = !canAssign && role === 'field_super';
+  const myCalendarTasks = useMyCalendarTasks();
+  const [taskSheet, setTaskSheet] = useState<{
+    date: string;
+    taskId?: string;
+  } | null>(null);
+  const openTaskSheet = taskSheet?.taskId
+    ? (myCalendarTasks.find((t) => t.id === taskSheet.taskId) ?? null)
+    : null;
 
   useEffect(() => {
     if (!highlightDate) return;
@@ -79,9 +96,29 @@ export function CrewCalendarMobile({
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
+  // Days with scheduled work — plus, for the Field Super, days with a task.
   const markedDates = useMemo(
-    () => new Set(assignments.map((a) => a.date)),
-    [assignments]
+    () =>
+      new Set([
+        ...assignments.map((a) => a.date),
+        ...(showTasks ? myCalendarTasks.map((t) => t.date) : []),
+      ]),
+    [assignments, myCalendarTasks, showTasks]
+  );
+
+  // The selected day's tasks: open ones first, then done, newest first.
+  const dayTasks = useMemo(
+    () =>
+      showTasks
+        ? myCalendarTasks
+            .filter((t) => t.date === dateKey)
+            .sort(
+              (a, b) =>
+                Number(a.done) - Number(b.done) ||
+                b.createdAt.localeCompare(a.createdAt)
+            )
+        : [],
+    [myCalendarTasks, dateKey, showTasks]
   );
 
   // Daily crews are date-free ad-hoc crews — always offered alongside the
@@ -140,6 +177,75 @@ export function CrewCalendarMobile({
         />
 
         <Text style={styles.dayLabel}>{dayLabel}</Text>
+
+        {/* The Field Super's own tasks on the selected day — the phone's
+            counterpart of the web calendar's hover-＋ row. */}
+        {showTasks && (
+          <View style={styles.tasksCard}>
+            <View style={styles.crewHeader}>
+              <View style={styles.crewTitleWrap}>
+                <Feather name="check-square" size={15} color={colors.textSecondary} />
+                <Text style={styles.crewName}>My tasks</Text>
+              </View>
+              <Text style={styles.crewMeta}>
+                {dayTasks.length === 0
+                  ? 'None'
+                  : `${dayTasks.filter((t) => !t.done).length} open`}
+              </Text>
+            </View>
+
+            {dayTasks.map((task) => {
+              const items = task.tasks ?? [];
+              const doneItems = items.filter((t) => t.done).length;
+              const reminder =
+                task.reminderAt && isValid(parseISO(task.reminderAt))
+                  ? format(parseISO(task.reminderAt), 'h:mm a')
+                  : null;
+              return (
+                <Pressable
+                  key={task.id}
+                  style={({ pressed }) => [styles.taskRow, pressed && styles.pressed]}
+                  onPress={() => setTaskSheet({ date: task.date, taskId: task.id })}
+                >
+                  <Feather
+                    name={task.done ? 'check-square' : 'square'}
+                    size={20}
+                    color={task.done ? colors.success : colors.textSecondary}
+                  />
+                  <View style={styles.taskBody}>
+                    <Text
+                      style={[styles.taskTitle, task.done && styles.taskTitleDone]}
+                      numberOfLines={2}
+                    >
+                      {task.title}
+                    </Text>
+                    {(reminder || items.length > 0) && (
+                      <Text style={styles.taskMeta} numberOfLines={1}>
+                        {[
+                          reminder
+                            ? `${task.reminderSentAt ? 'Reminded' : 'Reminder'} ${reminder}`
+                            : '',
+                          items.length > 0 ? `${doneItems}/${items.length} tasks` : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    )}
+                  </View>
+                  <Feather name="chevron-right" size={16} color={colors.textTertiary} />
+                </Pressable>
+              );
+            })}
+
+            <Pressable
+              style={({ pressed }) => [styles.assignBtn, pressed && styles.pressed]}
+              onPress={() => setTaskSheet({ date: dateKey })}
+            >
+              <Feather name="plus" size={15} color={colors.primary} />
+              <Text style={styles.assignBtnText}>Add task</Text>
+            </Pressable>
+          </View>
+        )}
 
         {dayCrews.length === 0 ? (
           <View style={styles.empty}>
@@ -270,6 +376,16 @@ export function CrewCalendarMobile({
           </View>
         </View>
       </Modal>
+
+      {/* Create a task on the selected day, or edit a tapped one. */}
+      {showTasks && (
+        <CalendarTaskSheet
+          visible={taskSheet != null}
+          date={taskSheet?.date ?? dateKey}
+          task={openTaskSheet}
+          onClose={() => setTaskSheet(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -302,6 +418,42 @@ const styles = themed(() => StyleSheet.create({
     borderLeftWidth: 3,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  // The Field Super's "My tasks" card — same shell as a crew card, no crew
+  // color stripe (tasks aren't scheduled work).
+  tasksCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  taskBody: {
+    flex: 1,
+    gap: 1,
+  },
+  taskTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+  },
+  taskTitleDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
+  },
+  taskMeta: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 12,
   },
   crewHeader: {
     flexDirection: 'row',

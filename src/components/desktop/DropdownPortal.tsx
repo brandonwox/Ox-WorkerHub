@@ -34,8 +34,27 @@ interface Props {
   minWidth?: number;
   /** Vertical gap between the trigger and the menu. Default 4. */
   offset?: number;
-  /** Which side of the trigger the menu opens on. Default `below`. */
-  placement?: 'below' | 'above';
+  /**
+   * Which side of the trigger the menu opens on. Default `below`. `center`
+   * centers the menu vertically ON the trigger (a picker-wheel feel) and
+   * needs `menuHeight`; it's clamped inside the viewport.
+   */
+  placement?: 'below' | 'above' | 'center';
+  /** The menu's fixed height — required for `placement: 'center'`. */
+  menuHeight?: number;
+}
+
+/** Top edge for a `center` menu: centered on the trigger, kept on screen. */
+function centeredTop(
+  triggerTop: number,
+  triggerHeight: number,
+  menuHeight: number,
+  viewportHeight: number,
+  margin = 8
+): number {
+  const ideal = triggerTop + triggerHeight / 2 - menuHeight / 2;
+  const max = Math.max(margin, viewportHeight - menuHeight - margin);
+  return Math.min(Math.max(ideal, margin), max);
 }
 
 interface Rect {
@@ -64,6 +83,7 @@ export function DropdownPortal({
   minWidth,
   offset = 4,
   placement = 'below',
+  menuHeight,
 }: Props) {
   const menuRef = useRef<View>(null);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -148,7 +168,17 @@ export function DropdownPortal({
       position: 'absolute',
       ...(placement === 'above'
         ? { bottom: windowHeight - nativeRect.y + offset }
-        : { top: nativeRect.y + nativeRect.height + offset }),
+        : placement === 'center' && menuHeight != null
+          ? {
+              top: centeredTop(
+                nativeRect.y,
+                nativeRect.height,
+                menuHeight,
+                windowHeight
+              ),
+              height: menuHeight,
+            }
+          : { top: nativeRect.y + nativeRect.height + offset }),
       minWidth: minWidth ?? nativeRect.width,
       ...(align === 'stretch'
         ? { left: nativeRect.x, width: nativeRect.width }
@@ -174,7 +204,17 @@ export function DropdownPortal({
     position: 'fixed',
     ...(placement === 'above'
       ? { bottom: window.innerHeight - rect.top + offset }
-      : { top: rect.bottom + offset }),
+      : placement === 'center' && menuHeight != null
+        ? {
+            top: centeredTop(
+              rect.top,
+              rect.bottom - rect.top,
+              menuHeight,
+              window.innerHeight
+            ),
+            height: menuHeight,
+          }
+        : { top: rect.bottom + offset }),
     minWidth: minWidth ?? rect.width,
     // Above react-native-web's <Modal> layer (fixed at 9999), so dropdowns
     // inside modals (Add worker, Edit job, …) open on top instead of behind.

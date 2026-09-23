@@ -9,7 +9,9 @@
 // only limit is 600 messages/second per project).
 //
 // Quiet hours: nothing is pushed between 8 PM and 6 AM Mountain time — the
-// in-app notification still lands and the bell still shows it.
+// in-app notification still lands and the bell still shows it. The one
+// exception is 'task_reminder' (a Field Super's own calendar task reminder):
+// they chose that time, so it pushes whenever it's due.
 //
 // Secrets (supabase secrets set …):
 //   PUSH_WEBHOOK_SECRET   shared with private.app_settings.push_webhook_secret
@@ -81,9 +83,13 @@ Deno.serve(async (req) => {
     return json({ error: 'recipient_id and title are required.' }, 400);
   }
 
-  // 2. Quiet hours — skip the phone, keep the in-app row.
+  // 2. Quiet hours — skip the phone, keep the in-app row. A calendar task
+  //    reminder is exempt: its owner picked that exact time on purpose.
   const hour = mountainHour();
-  if (hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR) {
+  if (
+    row.type !== 'task_reminder' &&
+    (hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR)
+  ) {
     return json({ ok: true, skipped: 'quiet-hours', hour });
   }
 

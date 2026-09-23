@@ -29,7 +29,7 @@ import {
 import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { Crew, WorkRequest, ScheduleAssignment } from '@/types';
+import { CalendarTask, Crew, WorkRequest, ScheduleAssignment } from '@/types';
 import { buildDayItems } from '@/utils/daySchedule';
 import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
@@ -84,10 +84,20 @@ interface Props {
   /** Job label rendered under each chip's title (same as the pool calendar). */
   jobNameFor: (card: WorkRequest) => string;
   /**
-   * Hovering a day cell shows a bottom ＋ row that creates a work request
-   * targeted at that day. Unset = no ＋ (Field Supers' read-only board).
+   * Hovering a day cell shows a bottom ＋ row that creates something on
+   * that day: a work request for the Scheduler, a calendar task for the
+   * Field Super (the host decides). Unset = no ＋.
    */
   onCreateRequest?: (date: string) => void;
+  /** Accessibility label for the ＋ row (default: create a work request). */
+  createLabel?: string;
+  /**
+   * The viewer's own calendar tasks (Field Super). Each renders as a chip
+   * in its day cell, under the work request chips.
+   */
+  calendarTasks?: CalendarTask[];
+  /** Open a calendar task chip (the edit sheet). */
+  onOpenTask?: (taskId: string) => void;
   /**
    * Blink this card's chips/bars ("Show in calendar"). The nonce keys the
    * animation so repeating the same card replays it.
@@ -144,6 +154,9 @@ export function MonthCalendar({
   crewNameFor,
   jobNameFor,
   onCreateRequest,
+  createLabel,
+  calendarTasks,
+  onOpenTask,
   flashCard,
 }: Props) {
   const monthStart = startOfMonth(month);
@@ -290,6 +303,9 @@ export function MonthCalendar({
               canUnassign={canUnassign}
               hoveredCol={hoveredCol}
               onCreateRequest={onCreateRequest}
+              createLabel={createLabel}
+              calendarTasks={calendarTasks}
+              onOpenTask={onOpenTask}
               flashCard={flashCard}
             />
           ))}
@@ -318,6 +334,9 @@ interface WeekRowProps {
   /** The weekday column the pointer is over anywhere on the calendar (0…6). */
   hoveredCol: number | null;
   onCreateRequest?: (date: string) => void;
+  createLabel?: string;
+  calendarTasks?: CalendarTask[];
+  onOpenTask?: (taskId: string) => void;
   flashCard?: { id: string; nonce: string } | null;
 }
 
@@ -344,6 +363,9 @@ function WeekRow({
   canUnassign,
   hoveredCol,
   onCreateRequest,
+  createLabel,
+  calendarTasks,
+  onOpenTask,
   flashCard,
 }: WeekRowProps) {
   // Each column's measured x/width within the row. Columns are flex-sized
@@ -450,6 +472,13 @@ function WeekRow({
                 canUnassign={canUnassign}
                 topPad={lanesOver(col) * LANE_H}
                 onCreateRequest={onCreateRequest}
+                createLabel={createLabel}
+                calendarTasks={
+                  calendarTasks
+                    ? calendarTasks.filter((t) => t.date === dateStr)
+                    : undefined
+                }
+                onOpenTask={onOpenTask}
                 flashCard={flashCard}
               />
             ) : null}
@@ -689,7 +718,8 @@ function SpanBar({
             <Feather name="x" size={12} color={colors.textTertiary} />
           </Pressable>
         )}
-        {board.enabled && !seg.continuesAfter && (
+        {board.canDrag({ kind: 'resize', id: span.card.id }) &&
+          !seg.continuesAfter && (
           <DragSource
             item={{ kind: 'resize', id: span.card.id }}
             ghost={{ title: `Stretch — ${span.card.title}`, color }}
@@ -701,6 +731,44 @@ function SpanBar({
         )}
       </DragSource>
       </View>
+    </View>
+  );
+}
+
+/**
+ * A Field Super's calendar task on its day: a quiet dashed chip. Click opens
+ * it; on the web console it also drags to another day (the board's `allow`
+ * rule lets the owner drag tasks even though work requests stay put).
+ */
+function TaskChip({ task, onOpen }: { task: CalendarTask; onOpen: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <View {...hoverProps(setHovered)}>
+      <DragSource
+        item={{ kind: 'task', id: task.id }}
+        ghost={{ title: task.title, color: colors.textSecondary }}
+        onPress={onOpen}
+        style={[
+          styles.taskChip,
+          task.done && styles.taskChipDone,
+          hovered && styles.taskChipHover,
+        ]}
+      >
+        <Feather
+          name={task.done ? 'check-square' : 'square'}
+          size={10}
+          color={task.done ? colors.success : colors.textSecondary}
+        />
+        <Text
+          style={[styles.taskChipText, task.done && styles.taskChipTextDone]}
+          numberOfLines={1}
+        >
+          {task.title}
+        </Text>
+        {task.reminderAt && !task.done && (
+          <Feather name="bell" size={9} color={colors.textSecondary} />
+        )}
+      </DragSource>
     </View>
   );
 }
@@ -724,6 +792,10 @@ interface DayCellProps {
   /** Vertical space reserved for the week's bars covering this day. */
   topPad: number;
   onCreateRequest?: (date: string) => void;
+  createLabel?: string;
+  /** This day's calendar tasks (already filtered to the date). */
+  calendarTasks?: CalendarTask[];
+  onOpenTask?: (taskId: string) => void;
   flashCard?: { id: string; nonce: string } | null;
 }
 
@@ -749,6 +821,9 @@ function DayCell({
   canUnassign,
   topPad,
   onCreateRequest,
+  createLabel,
+  calendarTasks,
+  onOpenTask,
   flashCard,
 }: DayCellProps) {
   const board = useDragBoard();
@@ -761,9 +836,13 @@ function DayCell({
     date,
     priority: 2,
   });
-  // Insertion lines mean nothing while a stretch grip is being dragged — the
-  // drop only re-dates the end day.
-  const resizing = board.draggingKey?.startsWith('resize:') ?? false;
+  // Insertion lines mean nothing while a stretch grip is being dragged (the
+  // drop only re-dates the end day) or while a calendar task is (tasks
+  // aren't ordered among the work requests — the drop just re-dates it).
+  const resizing =
+    (board.draggingKey?.startsWith('resize:') ||
+      board.draggingKey?.startsWith('task:')) ??
+    false;
 
   const items = buildDayItems(assignments, workRequests);
   // hoverIndex counts the day's chips EXCLUDING the dragged one (the drag
@@ -833,9 +912,20 @@ function DayCell({
           </Fragment>
         ))}
 
-        {/* Hover-only ＋ row IN the chip stack — right below the last work
-            request (top of the stack when the day is empty). Creates a work
-            request targeted at this day. */}
+        {/* The viewer's own calendar tasks on this day (Field Super) — under
+            the work request chips; click opens the task's edit sheet. */}
+        {calendarTasks?.map((task) => (
+          <TaskChip
+            key={task.id}
+            task={task}
+            onOpen={() => onOpenTask?.(task.id)}
+          />
+        ))}
+
+        {/* Hover-only ＋ row IN the chip stack — right below the last chip
+            (top of the stack when the day is empty). Creates something on
+            this day: a work request (Scheduler) or a calendar task (Field
+            Super) — the host decides. */}
         {onCreateRequest && cellHovered && (
           <Pressable
             style={({ pressed, hovered: h }: PressState) => [
@@ -844,7 +934,7 @@ function DayCell({
             ]}
             onPress={() => onCreateRequest(date)}
             accessibilityRole="button"
-            accessibilityLabel={`Create a work request on ${date}`}
+            accessibilityLabel={createLabel ?? `Create a work request on ${date}`}
           >
             <Feather name="plus" size={13} color={colors.textSecondary} />
           </Pressable>
@@ -960,7 +1050,7 @@ function DayChip({
             <Feather name="x" size={12} color={colors.textTertiary} />
           </Pressable>
         )}
-        {board.enabled && (
+        {board.canDrag({ kind: 'resize', id: item.card.id }) && (
           <DragSource
             item={{ kind: 'resize', id: item.card.id }}
             ghost={{ title: `Stretch — ${item.card.title}`, color }}
@@ -1191,6 +1281,37 @@ const styles = themed(() => StyleSheet.create({
   },
   addRequestRowHover: {
     borderColor: colors.primary,
+  },
+  // A Field Super's own calendar task on this day: a quiet outlined chip
+  // (no crew color — it isn't scheduled work).
+  taskChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.textTertiary,
+    backgroundColor: colors.surfaceLight,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+  },
+  taskChipHover: {
+    borderColor: colors.primary,
+  },
+  taskChipDone: {
+    borderStyle: 'solid',
+    borderColor: colors.border,
+  },
+  taskChipText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontFamily: fonts.medium,
+    fontSize: 10,
+  },
+  taskChipTextDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
   },
   // Crew letters shown inside a multi-crew chip/bar while hovered.
   placedCrews: {

@@ -41,10 +41,11 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
  */
 
 /**
- * What is being dragged: a request chip being moved, or a request's stretch
- * handle being pulled to a new END day (multi-day span).
+ * What is being dragged: a request chip being moved, a request's stretch
+ * handle being pulled to a new END day (multi-day span), or a Field Super's
+ * calendar task chip being moved to another day.
  */
-export type DragItem = { kind: 'request' | 'resize'; id: string };
+export type DragItem = { kind: 'request' | 'resize' | 'task'; id: string };
 
 /** Where a drag can land. */
 export type DropTarget =
@@ -100,6 +101,12 @@ interface Snapshot {
 
 interface DragBoardContextValue {
   enabled: boolean;
+  /**
+   * Whether THIS item may be dragged: the board is enabled and the host's
+   * `allow` rule accepts it (a Field Super drags their task chips but not
+   * the work requests around them).
+   */
+  canDrag: (item: DragItem) => boolean;
   /** Key of the chip being dragged ("request:<id>"), or null. */
   draggingKey: string | null;
   /** The hovered drop position (zone + insertion index), or null. */
@@ -114,6 +121,7 @@ interface DragBoardContextValue {
 
 const DragBoardContext = createContext<DragBoardContextValue>({
   enabled: false,
+  canDrag: () => false,
   draggingKey: null,
   hover: null,
   registerZone: () => () => {},
@@ -160,14 +168,28 @@ function suppressTextSelection(on: boolean) {
 }
 
 interface ProviderProps {
-  /** Drag is offered only to schedulers on the web console. */
+  /** Drag is offered only on the web console (mouse-driven). */
   enabled: boolean;
+  /**
+   * Which items this viewer may drag (default: all). The Scheduler drags
+   * work requests; a Field Super drags only their own task chips.
+   */
+  allow?: (item: DragItem) => boolean;
   /** Receives every completed (valid) drop. */
   onDrop: (item: DragItem, target: DropTarget) => void;
   children: ReactNode;
 }
 
-export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) {
+export function DragBoardProvider({
+  enabled,
+  allow,
+  onDrop,
+  children,
+}: ProviderProps) {
+  const canDrag = useCallback(
+    (item: DragItem) => enabled && (allow ? allow(item) : true),
+    [enabled, allow]
+  );
   const rootRef = useRef<View>(null);
   const zonesRef = useRef(
     new Map<string, { ref: RefObject<View | null>; meta: ZoneMeta }>()
@@ -357,6 +379,7 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
   const value = useMemo<DragBoardContextValue>(
     () => ({
       enabled,
+      canDrag,
       draggingKey,
       hover,
       registerZone,
@@ -366,7 +389,18 @@ export function DragBoardProvider({ enabled, onDrop, children }: ProviderProps) 
       drop,
       cancel: finish,
     }),
-    [enabled, draggingKey, hover, registerZone, registerItem, begin, move, drop, finish]
+    [
+      enabled,
+      canDrag,
+      draggingKey,
+      hover,
+      registerZone,
+      registerItem,
+      begin,
+      move,
+      drop,
+      finish,
+    ]
   );
 
   return (
@@ -456,16 +490,17 @@ export function DragSource({
 
   // Depend on the stable pieces (not the whole context value) so hover
   // updates mid-drag don't churn the registration.
-  const { enabled, registerItem } = board;
+  const { canDrag, registerItem } = board;
+  const draggable = canDrag(item);
   useEffect(() => {
-    if (!enabled || !zoneId) return;
+    if (!draggable || !zoneId) return;
     return registerItem(zoneId, itemKey, ref);
-  }, [enabled, registerItem, zoneId, itemKey]);
+  }, [draggable, registerItem, zoneId, itemKey]);
 
   // Mutable gesture state (no re-renders while tracking).
   const gesture = useRef({ startX: 0, startY: 0, dragging: false });
 
-  const handlers = board.enabled
+  const handlers = draggable
     ? {
         onStartShouldSetResponder: () => true,
         onResponderTerminationRequest: () => !gesture.current.dragging,

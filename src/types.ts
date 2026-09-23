@@ -903,6 +903,34 @@ export interface QbtConfig {
  *  - `qbt_push_result`: the weekly timesheet push to QuickBooks Time ran →
  *    operator + finance managers.
  */
+/**
+ * A Field Super's own note on a calendar day — created from the calendar's
+ * hover-＋ (web) or "Add task" (phone). Not a work request: nothing is
+ * scheduled onto a crew and no other role sees it. Private to its owner (RLS).
+ */
+export interface CalendarTask {
+  id: string;
+  /** The owner — the Field Super whose calendar it lives on. */
+  workerId: string;
+  title: string;
+  description?: string;
+  /** The calendar day it sits on (yyyy-MM-dd). */
+  date: string;
+  /** Optional checklist — same shape as a work request's tasks. */
+  tasks?: WorkRequestTask[];
+  /**
+   * When to remind the owner (ISO datetime): a time of day picked on the
+   * task's date. Unset = no reminder. The server sweep fires it once as an
+   * in-app notification + phone push + email.
+   */
+  reminderAt?: string;
+  /** Stamped by the server once the reminder went out. */
+  reminderSentAt?: string;
+  done: boolean;
+  /** ISO datetime it was created. */
+  createdAt: string;
+}
+
 export type NotificationType =
   | 'work_request_now'
   | 'schedule_change'
@@ -915,7 +943,9 @@ export type NotificationType =
   | 'work_request_scheduled'
   | 'job_assigned'
   | 'job_needs_qbt'
-  | 'qbt_push_result';
+  | 'qbt_push_result'
+  /** A Field Super's calendar task reminder came due (server sweep). */
+  | 'task_reminder';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it

@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Platform } from 'react-native';
 
 import {
+  CalendarTask,
   Crew,
   DailyCrew,
   Job,
@@ -49,6 +50,11 @@ export interface CachedCollections {
    * the documents feature — readers default to [].
    */
   jobDocuments?: JobDocument[];
+  /**
+   * The signed-in Field Super's own calendar tasks. Absent in caches written
+   * before the feature — readers default to [].
+   */
+  calendarTasks?: CalendarTask[];
   cachedAt: string;
 }
 
@@ -72,6 +78,7 @@ export function persistDataCache(
     ),
     jobIssues: data.jobIssues,
     jobDocuments: data.jobDocuments,
+    calendarTasks: data.calendarTasks,
     cachedAt: new Date().toISOString(),
   };
   AsyncStorage.setItem(

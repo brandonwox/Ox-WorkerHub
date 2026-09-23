@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 
+import { CalendarTaskSheet } from '@/components/CalendarTaskSheet';
 import { JobDashboardSidebar } from '@/components/desktop/JobDashboardSidebar';
 import {
   NewWorkRequestInput,
@@ -40,6 +41,7 @@ import {
   useAppStore,
   useCurrentRole,
   useCurrentWorker,
+  useMyCalendarTasks,
 } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Crew, DailyCrew, WorkRequest } from '@/types';
@@ -111,6 +113,7 @@ export function CalendarBoard({
   const deleteWorkRequest = useAppStore((s) => s.deleteWorkRequest);
   const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
   const addWorkRequest = useAppStore((s) => s.addWorkRequest);
+  const updateCalendarTask = useAppStore((s) => s.updateCalendarTask);
   const reorderDaySchedule = useAppStore((s) => s.reorderDaySchedule);
   const flash = useAppStore((s) => s.flash);
   const role = useCurrentRole();
@@ -147,6 +150,19 @@ export function CalendarBoard({
     date: string;
     assign: boolean;
   } | null>(null);
+  // The Field Super's calendar task sheet: a day cell's hover-＋ opens it
+  // for creation on that day; clicking a task chip opens that task to edit.
+  const [taskSheet, setTaskSheet] = useState<{
+    date: string;
+    taskId?: string;
+  } | null>(null);
+  // The viewer's own calendar tasks (Field Super) — day notes with optional
+  // checklists and reminders, rendered as chips on the main calendar.
+  const myCalendarTasks = useMyCalendarTasks();
+  const showTasks = role === 'field_super';
+  const openTaskSheet = taskSheet?.taskId
+    ? (myCalendarTasks.find((t) => t.id === taskSheet.taskId) ?? null)
+    : null;
   // The card whose chip is blinking from a "Show in calendar" reveal, and the
   // month the pool calendar should jump to for an unscheduled one.
   const [flashCard, setFlashCard] = useState<{
@@ -470,9 +486,12 @@ export function CalendarBoard({
     flash(title ? `Work Request "${title}" deleted` : 'Work Request deleted', 'success');
   };
 
-  // Drag & drop is a scheduler tool on the web console (mouse-driven); field
-  // supers and native fall back to plain taps.
-  const dragEnabled = canAssign && Platform.OS === 'web';
+  // Drag & drop lives on the web console (mouse-driven); native falls back to
+  // plain taps. The Scheduler drags work requests; a Field Super drags only
+  // their own calendar task chips (`allowDrag` keeps their work requests put).
+  const dragEnabled = Platform.OS === 'web' && (canAssign || showTasks);
+  const allowDrag = (item: DragItem) =>
+    item.kind === 'task' ? showTasks : canAssign;
 
   /**
    * Renumber `date`'s schedule with the moved request inserted at `index`
@@ -518,6 +537,46 @@ export function CalendarBoard({
 
   /** Every completed drag lands here (see DragBoard's DropTarget). */
   const handleDrop = (item: DragItem, target: DropTarget) => {
+    if (item.kind === 'task') {
+      // A Field Super's calendar task: dropping on a day (main calendar or
+      // the day sidebar) moves it to that day. A reminder keeps its time of
+      // day but follows the task to the new date.
+      const task = myCalendarTasks.find((t) => t.id === item.id);
+      if (!task) return;
+      if (target.kind !== 'day') {
+        flash('Drop the task on a calendar day.', 'info');
+        return;
+      }
+      if (target.date === task.date) return;
+      let reminderAt = task.reminderAt;
+      let reminderDropped = false;
+      if (task.reminderAt) {
+        const old = parseISO(task.reminderAt);
+        const moved = parseISO(target.date);
+        moved.setHours(old.getHours(), old.getMinutes(), 0, 0);
+        if (moved.getTime() <= Date.now()) {
+          // The new date+time is already behind us — the sweep would fire
+          // it on its next pass, so the reminder comes off instead.
+          reminderAt = undefined;
+          reminderDropped = true;
+        } else {
+          reminderAt = moved.toISOString();
+        }
+      }
+      updateCalendarTask(item.id, {
+        date: target.date,
+        ...(reminderAt !== task.reminderAt ? { reminderAt } : {}),
+      });
+      const dayLabel = format(parseISO(target.date), 'EEEE, MMM d');
+      flash(
+        reminderDropped
+          ? `Task "${task.title}" moved to ${dayLabel} — its reminder was removed (that time has passed)`
+          : `Task "${task.title}" moved to ${dayLabel}`,
+        reminderDropped ? 'warning' : 'success'
+      );
+      return;
+    }
+
     const card = workRequests.find((c) => c.id === item.id);
     if (!card) return;
     const existing = assignments.filter((a) => a.workRequestId === item.id);
@@ -599,7 +658,7 @@ export function CalendarBoard({
   };
 
   return (
-    <DragBoardProvider enabled={dragEnabled} onDrop={handleDrop}>
+    <DragBoardProvider enabled={dragEnabled} allow={allowDrag} onDrop={handleDrop}>
     <View style={styles.screen}>
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
@@ -698,13 +757,25 @@ export function CalendarBoard({
             canAssign={canAssign}
             crewNameFor={crewHoverTagFor}
             jobNameFor={jobNameFor}
-            // The main calendar's hover-＋ is a Scheduler tool (Field Supers
-            // share this board read-only — they create from the pool calendar).
+            // The main calendar's hover-＋: the Scheduler creates a work
+            // request scheduled onto that day; the Field Super (read-only for
+            // crews — they create work requests from the pool calendar) adds a
+            // calendar TASK on that day instead.
             onCreateRequest={
               canAssign
                 ? (date) => setCreateTarget({ date, assign: true })
-                : undefined
+                : showTasks
+                  ? (date) => setTaskSheet({ date })
+                  : undefined
             }
+            createLabel={
+              canAssign ? undefined : showTasks ? 'Add a task on this day' : undefined
+            }
+            calendarTasks={showTasks ? myCalendarTasks : undefined}
+            onOpenTask={(id) => {
+              const task = myCalendarTasks.find((t) => t.id === id);
+              if (task) setTaskSheet({ date: task.date, taskId: id });
+            }}
             flashCard={flashCard}
           />
         </Animated.View>
@@ -789,6 +860,17 @@ export function CalendarBoard({
           onClose={() => setCreateTarget(null)}
           onDelete={() => {}}
           onCreate={handleCreate}
+        />
+      )}
+
+      {/* The Field Super's calendar task sheet — create on the hovered day,
+          or edit the clicked task chip. */}
+      {showTasks && (
+        <CalendarTaskSheet
+          visible={taskSheet != null}
+          date={taskSheet?.date ?? ''}
+          task={openTaskSheet}
+          onClose={() => setTaskSheet(null)}
         />
       )}
 

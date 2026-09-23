@@ -408,6 +408,11 @@ verify_jwt = false
 [functions.push-notification]
 verify_jwt = false
 
+# task-reminder-email is called by the pg_cron reminder sweep (pg_net) and
+# authenticates with the x-webhook-secret header.
+[functions.task-reminder-email]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

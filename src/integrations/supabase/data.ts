@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 import {
+  CalendarTask,
   Crew,
   DailyCrew,
   Job,
@@ -192,6 +193,20 @@ interface JobIssueRow {
   status: string;
   resolved_by: string | null;
   resolved_at: string | null;
+  created_at: string;
+}
+
+interface CalendarTaskRow {
+  id: string;
+  worker_id: string;
+  title: string;
+  description: string;
+  /** date column — arrives as yyyy-MM-dd. */
+  date: string;
+  tasks: unknown;
+  reminder_at: string | null;
+  reminder_sent_at: string | null;
+  done: boolean;
   created_at: string;
 }
 
@@ -429,6 +444,41 @@ function rowToJobIssue(r: JobIssueRow): JobIssue {
   };
 }
 
+/** A calendar task's checklist jsonb → typed items (malformed entries dropped). */
+function normalizeChecklist(raw: unknown): WorkRequestTask[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const items = raw.flatMap((t): WorkRequestTask[] => {
+    if (!t || typeof t !== 'object') return [];
+    const o = t as Record<string, unknown>;
+    if (typeof o.id !== 'string' || typeof o.text !== 'string') return [];
+    return [
+      {
+        id: o.id,
+        text: o.text,
+        done: o.done === true,
+        doneById: typeof o.doneById === 'string' ? o.doneById : undefined,
+        doneAt: typeof o.doneAt === 'string' ? o.doneAt : undefined,
+      },
+    ];
+  });
+  return items.length > 0 ? items : undefined;
+}
+
+function rowToCalendarTask(r: CalendarTaskRow): CalendarTask {
+  return {
+    id: r.id,
+    workerId: r.worker_id,
+    title: r.title,
+    description: r.description || undefined,
+    date: r.date,
+    tasks: normalizeChecklist(r.tasks),
+    reminderAt: r.reminder_at ?? undefined,
+    reminderSentAt: r.reminder_sent_at ?? undefined,
+    done: r.done,
+    createdAt: r.created_at,
+  };
+}
+
 // --- Bulk read ---------------------------------------------------------------
 
 export interface BackendData {
@@ -442,6 +492,8 @@ export interface BackendData {
   jobPhotos: JobPhoto[];
   jobIssues: JobIssue[];
   jobDocuments: JobDocument[];
+  /** The caller's own calendar tasks (RLS scopes the table to its owner). */
+  calendarTasks: CalendarTask[];
 }
 
 /** Load every collection from Supabase (RLS-scoped to the caller). */
@@ -462,6 +514,7 @@ export async function fetchAllData(): Promise<BackendData> {
     jobPhotosR,
     jobIssuesR,
     jobDocumentsR,
+    calendarTasksR,
   ] = await Promise.all([
     sb.from('workers').select('*'),
     sb.from('jobs').select('*'),
@@ -478,6 +531,7 @@ export async function fetchAllData(): Promise<BackendData> {
     sb.from('job_photos').select('*'),
     sb.from('job_issues').select('*'),
     sb.from('job_documents').select('*'),
+    sb.from('calendar_tasks').select('*'),
   ]);
 
   const firstError =
@@ -506,6 +560,13 @@ export async function fetchAllData(): Promise<BackendData> {
     console.warn(
       'Job documents load failed; none shown.',
       jobDocumentsR.error.message
+    );
+  }
+  // Calendar tasks degrade the same way while their migration hasn't run yet.
+  if (calendarTasksR.error) {
+    console.warn(
+      'Calendar tasks load failed; none shown.',
+      calendarTasksR.error.message
     );
   }
   // Group Field Super assignments by job so each Job carries its own
@@ -561,6 +622,9 @@ export async function fetchAllData(): Promise<BackendData> {
     jobIssues: ((jobIssuesR.data ?? []) as JobIssueRow[]).map(rowToJobIssue),
     jobDocuments: ((jobDocumentsR.data ?? []) as JobDocumentRow[]).map(
       rowToJobDocument
+    ),
+    calendarTasks: ((calendarTasksR.data ?? []) as CalendarTaskRow[]).map(
+      rowToCalendarTask
     ),
   };
 }
@@ -1249,6 +1313,46 @@ export async function deleteJobIssue(id: string): Promise<void> {
   check((await getSupabase().from('job_issues').delete().eq('id', id)).error);
 }
 
+// reminder_sent_at is deliberately absent: only the server sweep stamps it
+// (and a changed reminder_at re-arms it via trigger).
+function calendarTaskToRow(task: CalendarTask) {
+  return {
+    id: task.id,
+    worker_id: task.workerId,
+    title: task.title,
+    description: task.description ?? '',
+    date: task.date,
+    tasks: task.tasks ?? [],
+    reminder_at: task.reminderAt ?? null,
+    done: task.done,
+    created_at: task.createdAt,
+  };
+}
+
+export async function insertCalendarTask(task: CalendarTask): Promise<void> {
+  check(
+    (await getSupabase().from('calendar_tasks').insert(calendarTaskToRow(task)))
+      .error
+  );
+}
+
+export async function updateCalendarTask(task: CalendarTask): Promise<void> {
+  check(
+    (
+      await getSupabase()
+        .from('calendar_tasks')
+        .update(calendarTaskToRow(task))
+        .eq('id', task.id)
+    ).error
+  );
+}
+
+export async function deleteCalendarTask(id: string): Promise<void> {
+  check(
+    (await getSupabase().from('calendar_tasks').delete().eq('id', id)).error
+  );
+}
+
 export async function updateJobPhotoNote(
   id: string,
   note: string | undefined
@@ -1319,6 +1423,7 @@ const REALTIME_TABLES = [
   'job_photos',
   'job_issues',
   'job_documents',
+  'calendar_tasks',
 ] as const;
 
 // One shared data channel per session; re-subscribing (or signing out) tears the
