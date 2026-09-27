@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AboutCard } from '@/components/AboutCard';
 import { AuthControl } from '@/components/AuthControl';
 import { DevRoleSwitcher } from '@/components/DevRoleSwitcher';
 import { SettingsContent } from '@/components/SettingsContent';
@@ -31,6 +32,7 @@ export default function SettingsScreen() {
           <SettingsContent personalInfoSubPage />
 
           <DevRoleSwitcher variant="card" />
+          <AboutCard />
           <AuthControl variant="card" />
         </ScrollView>
       </KeyboardAvoidingView>

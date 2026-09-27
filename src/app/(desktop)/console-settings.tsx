@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { AboutCard } from '@/components/AboutCard';
 import { AuthControl } from '@/components/AuthControl';
 import { SettingsContent } from '@/components/SettingsContent';
 import { spacing, themed } from '@/theme';
@@ -18,6 +19,7 @@ export default function SettingsPage() {
         showsVerticalScrollIndicator={false}
       >
         <SettingsContent />
+        <AboutCard />
         <AuthControl variant="card" />
       </ScrollView>
     </View>

@@ -53,7 +53,7 @@ interface Props {
  * web quick view edits that isn't a field action: title, arrival time, scopes
  * (with the Delivery / casement auto-tasks and the per-scope extras), tasks
  * (add / edit / delete), readiness, priority window, materials, pickup, and
- * office notes. Every complete change fires `onChange` right away (text
+ * (create only) notes. Every complete change fires `onChange` right away (text
  * fields commit on blur), so the same component backs both the create sheet
  * (draft) and the detail page's edit mode (autosave).
  */
@@ -516,16 +516,20 @@ export function WorkRequestOfficeFields({
         )}
       </View>
 
-      <CommitField
-        label="Office notes"
-        value={card.notes ?? ''}
-        onCommit={(text) => {
-          const v = text.trim() || undefined;
-          if (v !== card.notes) onChange({ notes: v });
-        }}
-        placeholder="Notes for the crew (optional)"
-        multiline
-      />
+      {/* Notes only while creating: on an existing card the detail screen's
+          own Notes section (the one shared field, every role) edits them. */}
+      {creating && (
+        <CommitField
+          label="Notes"
+          value={card.notes ?? ''}
+          onCommit={(text) => {
+            const v = text.trim() || undefined;
+            if (v !== card.notes) onChange({ notes: v });
+          }}
+          placeholder="Anything the office or the crew should know (optional)"
+          multiline
+        />
+      )}
     </View>
   );
 }

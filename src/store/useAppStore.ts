@@ -990,8 +990,11 @@ interface AppState {
   ) => void;
   /** Delete a Work Request and any schedule assignments pointing at it. */
   deleteWorkRequest: (id: string) => void;
-  /** Installer-facing: append/replace shared field notes on a Work Request. */
-  updateWorkRequestNotes: (id: string, fieldNotes: string) => void;
+  /**
+   * Inline notes edit from the phone detail screen (any role): replaces the
+   * card's single shared notes text. Silent write — no "Saved" pill.
+   */
+  updateWorkRequestNotes: (id: string, notes: string) => void;
   /**
    * Report a work request's field status. `note` is required by the UI for
    * 'Untouched' / 'False Start' (the typed reason) and 'Finished' (the
@@ -2100,12 +2103,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (backendActive(get())) write('deleteWorkRequest', id);
   },
 
-  updateWorkRequestNotes: (id, fieldNotes) => {
+  updateWorkRequestNotes: (id, notes) => {
     let updated: WorkRequest | undefined;
     set((state) => ({
       workRequests: state.workRequests.map((card) => {
         if (card.id !== id) return card;
-        updated = { ...card, fieldNotes };
+        updated = { ...card, notes: notes.trim() || undefined };
         return updated;
       }),
     }));

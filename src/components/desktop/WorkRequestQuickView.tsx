@@ -1997,7 +1997,8 @@ export function WorkRequestQuickView({
             ))}
         </Row>
 
-        {/* Notes */}
+        {/* Notes — the ONE shared notes field; installers edit the same text
+            from the phone, so anything a crew typed on site shows here too. */}
         <Row icon="edit-3" label="Notes">
           {editing === 'notes' ? (
             <TextInput
@@ -2005,7 +2006,7 @@ export function WorkRequestQuickView({
               value={draft}
               onChangeText={setDraft}
               onBlur={commitNotes}
-              placeholder="Anything else the crew or scheduler should know…"
+              placeholder="Anything the office or the crew should know…"
               placeholderTextColor={colors.textTertiary}
               autoFocus
               multiline
@@ -2022,13 +2023,6 @@ export function WorkRequestQuickView({
             </Editable>
           )}
         </Row>
-
-        {/* Installer-authored field notes (read-only here). */}
-        {workRequest.fieldNotes ? (
-          <Row icon="message-square" label="Field notes (installers)">
-            <Text style={styles.valueText}>{workRequest.fieldNotes}</Text>
-          </Row>
-        ) : null}
 
         {/* Photos — from every role with access to the card, not just
             installers. */}

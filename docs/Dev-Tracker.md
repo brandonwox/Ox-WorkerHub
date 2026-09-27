@@ -4,6 +4,21 @@ This file is used by the developer of Ox WorkerHub. (Agents may use this file in
 
 # Awaiting
 
+BRANDON TO DO — new native build 1.1.0 (Pass 45; agents skip this block). WHY: phones are on the 8/28 build (runtime 1.0.0, no expo-notifications). Every OTA update published since 9/7 imports expo-notifications, crashes on launch on that build, and expo-updates silently rolls back to the built-in bundle — so nothing from Pass 40 onward has ever shown on a phone. app.json is now version 1.1.0 (runtime 1.1.0), so the 8/28 installs stop being served updates they can't run. This is the SAME build Pass 41 step 6 asks for — doing it here ticks that step too. In order:
+1. [Brandon] (If the Pass 41 Firebase/FCM steps 2–3 aren't done, do them first so the build carries Android push; iOS needs nothing extra.)
+2. [Brandon] `eas build --platform all --profile production`, then submit iOS to TestFlight and hand out the new APK. Everyone installs the new build.
+3. [Brandon] From now on, JS changes ship with `eas update --channel production` as before — they target runtime 1.1.0 and only reach the new build.
+4. [Brandon] Optional tidy-up so old 1.0.0 installs stop re-downloading a crashing update every launch: `eas update:roll-back-to-embedded --branch production --runtime-version 1.0.0 --message "1.0.0 stays on embedded"`.
+5. [Brandon] Check: Settings → "About this app" on the new build shows Version 1.1.0 and the loaded update; the installer home screen shows the crew status line under the day label.
+6. [Brandon] Once it works, delete this block. RULE going forward: any time a native dependency is added or removed, bump app.json `version` in the same commit and rebuild.
+
+BRANDON TO DO — finish the single-notes change (Pass 44; agents skip this block). STATUS 2026-09-27: 20260924120000 (merge + drop field_notes) was applied while Live and the 8/28 phones still wrote field_notes, which broke every work request save; hotfix 20260927120000 put the column back (nullable, write-only sink) so all clients save again. Remaining, IN THIS ORDER:
+1. [Brandon] Commit the working tree and merge Dev → Live; deploy the web build (single-notes code — no field_notes in writes).
+2. [Brandon] Ship the 1.1.0 native build (the Pass 45 block above) and get every phone onto it. Until then, installers on the 8/28 build still see their old "Field Notes" box (writes go to the sink column; the office doesn't see that text yet).
+3. [Brandon] ONLY once no one is on the 8/28 build: ask an agent for the final cleanup migration — re-merge field_notes into notes (notes, blank line, field_notes) and drop the column — then `supabase db push`.
+4. [Brandon] Test: as an installer on the phone, open a work request, type in Notes, tap away — then open the same card in the web quick view as a Scheduler or Field Super and confirm the text is there and editable; edit it on the web and confirm the phone shows the new text when the box isn't focused.
+5. [Brandon] Once it works, delete this block.
+
 BRANDON TO DO — manual setup for Field Super calendar task reminders (Pass 43; agents skip this block). The tasks themselves work as soon as step 1 is done; the reminder legs need the rest. Do these in order:
 1. [Brandon] Apply migration 20260923120000_calendar_tasks.sql (`supabase db push`, or paste it into the SQL editor). It creates the calendar_tasks table, adds 'task_reminder' to the pushed notification types, and schedules a pg_cron job (`calendar-task-reminders`, every minute) that fires due reminders. If the SQL editor complains that pg_cron isn't available, enable it first: Dashboard → Database → Extensions → search "pg_cron" → enable, then re-run the migration.
 2. [Brandon] Phone push for reminders needs nothing new — it rides the Pass 41 push setup (push_tokens + push-notification function + the two push_* app_settings rows + the new native build). If Pass 41 isn't done yet, reminders still land as in-app notifications and emails; the phone push starts working the moment Pass 41 is finished. One thing to redeploy: `supabase functions deploy push-notification` (the function now exempts task reminders from quiet hours).

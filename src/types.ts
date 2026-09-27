@@ -521,16 +521,17 @@ export interface WorkRequest {
   pickupRequired?: boolean;
   /** Where the pickup is. Set (and required) only when {@link pickupRequired}. */
   pickupLocation?: string;
-  /** Free-form Field Super notes captured at the bottom of the creation form. */
+  /**
+   * The ONE free-form notes field on the card, shared by the office and the
+   * field: Field Supers, Schedulers, and installers all read and edit the same
+   * text (installers inline from the phone). Because a Work Request is a
+   * single shared record, a note added by one crew is visible to every crew
+   * the card is assigned to. (Merged the former installer-only `fieldNotes`
+   * in migration 20260924120000_work_request_single_notes.sql.)
+   */
   notes?: string;
   /** @deprecated Superseded by {@link scopes} + {@link tasks}. Kept for legacy data. */
   scopeOfWork?: string;
-  /**
-   * Shared field notes updated by installers on site. Because a Work Request is a
-   * single shared record, a note added by one crew is visible to every crew the
-   * card is assigned to.
-   */
-  fieldNotes?: string;
   /**
    * TEMPORARY: which installer sees this card. The real model assigns work to
    * crews on dates (Permanent/Daily Crews), not to individuals — this field is

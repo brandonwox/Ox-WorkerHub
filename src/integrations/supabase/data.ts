@@ -105,7 +105,6 @@ interface WorkRequestRow {
   materials: string | null;
   notes: string | null;
   scope_of_work: string | null;
-  field_notes: string | null;
   pickup_required: boolean | null;
   pickup_location: string | null;
   delivery_count_total: number | null;
@@ -342,7 +341,6 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     materials: r.materials ?? undefined,
     notes: r.notes ?? undefined,
     scopeOfWork: r.scope_of_work ?? undefined,
-    fieldNotes: r.field_notes ?? undefined,
     pickupRequired: r.pickup_required ?? undefined,
     pickupLocation: r.pickup_location ?? undefined,
     deliveryCountTotal: r.delivery_count_total ?? undefined,
@@ -815,7 +813,6 @@ function workRequestToRow(card: WorkRequest) {
     materials: card.materials ?? null,
     notes: card.notes ?? null,
     scope_of_work: card.scopeOfWork ?? null,
-    field_notes: card.fieldNotes ?? null,
     pickup_required: card.pickupRequired ?? null,
     pickup_location: card.pickupLocation ?? null,
     delivery_count_total: card.deliveryCountTotal ?? null,

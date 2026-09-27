@@ -109,7 +109,14 @@ export default function JobDetailsScreen() {
   // route through the StatusChangeModal before committing.
   const [pendingNoteStatus, setPendingNoteStatus] =
     useState<WorkRequestStatus | null>(null);
-  const [notes, setNotes] = useState(job?.fieldNotes ?? '');
+  // The ONE shared notes field (office + field). Local text while typing;
+  // commits on blur. While the box is NOT focused, an edit that lands from
+  // another role (web quick view, another phone) replaces the local text.
+  const [notes, setNotes] = useState(job?.notes ?? '');
+  const notesFocused = useRef(false);
+  useEffect(() => {
+    if (!notesFocused.current) setNotes(job?.notes ?? '');
+  }, [job?.notes]);
   const [picking, setPicking] = useState(false);
   // The parent JOB's scope counts ("Window Count 0/100") — tapping one opens
   // the done-number popup for the roles that update progress. The work
@@ -975,9 +982,9 @@ export default function JobDetailsScreen() {
               <Feather name="edit-3" size={18} color={colors.textSecondary} />
             </View>
             <View style={styles.infoText}>
-              <Text style={styles.infoLabel}>Field Notes</Text>
+              <Text style={styles.infoLabel}>Notes</Text>
               <Text style={styles.notesCaption}>
-                Shared with every crew on this work request.
+                Shared with the office and every crew on this work request.
               </Text>
             </View>
           </View>
@@ -985,8 +992,16 @@ export default function JobDetailsScreen() {
             style={styles.notesInput}
             value={notes}
             onChangeText={setNotes}
-            onBlur={() => updateWorkRequestNotes(job.id, notes)}
-            placeholder="Add notes from the field…"
+            onFocus={() => {
+              notesFocused.current = true;
+            }}
+            onBlur={() => {
+              notesFocused.current = false;
+              if (notes.trim() !== (job.notes ?? '')) {
+                updateWorkRequestNotes(job.id, notes);
+              }
+            }}
+            placeholder="Add notes…"
             placeholderTextColor={colors.textTertiary}
             multiline
             inputAccessoryViewID={KEYBOARD_DONE_ID}
