@@ -1,5 +1,13 @@
 import { Feather } from '@expo/vector-icons';
-import { format, parse } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  format,
+  isValid,
+  parse,
+  parseISO,
+} from 'date-fns';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -46,7 +54,7 @@ import {
   JobScope,
   READINESS_PRESETS,
 } from '@/types';
-import { buildCrewColorMap, crewColorFrom } from '@/utils/crewColors';
+import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
 import { formatCount, jobCounts } from '@/utils/jobCounts';
 import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
@@ -85,6 +93,8 @@ export interface NewWorkRequestInput {
    * Unset = today.
    */
   date?: string;
+  /** Target END day (yyyy-MM-dd) when the request should take several days. */
+  endDate?: string;
   title: string;
   /** Time of day the installers must arrive (ISO datetime), when it matters. */
   startTime?: string;
@@ -122,10 +132,16 @@ const emptyDraft = (): WorkRequest => ({
   details: { generalContractor: '', managerName: '', managerPhone: '' },
 });
 
+/** A yyyy-MM-dd day for the date fields: "Mon, Oct 26, 2026". */
+const formatDay = (ymd: string) =>
+  format(parse(ymd, 'yyyy-MM-dd', new Date()), 'EEE, MMM d, yyyy');
+
 /** Which field is being edited inline. Only one edits at a time. */
 type EditField =
   | 'title'
   | 'address'
+  | 'date'
+  | 'end-date'
   | 'arrival'
   | 'scopes'
   | 'readiness'
@@ -226,6 +242,7 @@ export function WorkRequestQuickView({
   const assignments = useAppStore((s) => s.assignments);
   const assignWorkRequest = useAppStore((s) => s.assignWorkRequest);
   const unassignWorkRequest = useAppStore((s) => s.unassignWorkRequest);
+  const setWorkRequestDates = useAppStore((s) => s.setWorkRequestDates);
   const workers = useAppStore((s) => s.workers);
   const role = useCurrentRole();
   const router = useRouter();
@@ -463,14 +480,53 @@ export function WorkRequestQuickView({
   const assignedCrewIds = [...new Set(cardAssignments.map((a) => a.crewId))];
   const crewNameFor = (id: string) =>
     allCrews.find((c) => c.id === id)?.name ?? 'Unknown crew';
+  // Pencilled-in crews ("fake assigned" while the card sits in the pool);
+  // ids of removed crews are dropped. Only meaningful while unscheduled.
+  const plannedCrewIds = (workRequest.plannedCrewIds ?? []).filter((id) =>
+    allCrews.some((c) => c.id === id)
+  );
+  const crewSquarePlanned =
+    assignedCrewIds.length === 0 && plannedCrewIds.length > 0;
   const crewSquareColor =
     assignedCrewIds.length > 0
       ? crewColorFrom(crewColorMap, assignedCrewIds[0])
-      : undefined;
+      : crewSquarePlanned
+        ? crewColorFrom(crewColorMap, plannedCrewIds[0])
+        : undefined;
   const crewTooltip =
     assignedCrewIds.length > 0
       ? assignedCrewIds.map(crewNameFor).join(', ')
-      : 'No crew assigned';
+      : crewSquarePlanned
+        ? `Pencilled in: ${plannedCrewIds.map(crewNameFor).join(', ')} — not scheduled yet`
+        : 'No crew assigned';
+  const togglePlannedCrew = (crewId: string) => {
+    const on = plannedCrewIds.includes(crewId);
+    const next = on
+      ? plannedCrewIds.filter((id) => id !== crewId)
+      : [...plannedCrewIds, crewId];
+    applyChange({ plannedCrewIds: next.length > 0 ? next : undefined });
+    flash(
+      on
+        ? `${crewNameFor(crewId)} un-pencilled`
+        : `Pencilled in for ${crewNameFor(crewId)} — still in Work Requests until it's scheduled`,
+      'success'
+    );
+  };
+
+  // The card's day(s): the scheduled run when it's on the calendar, else its
+  // target date (+ optional end day) on the Work Requests calendar.
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const targetStart = workRequest.date || todayStr;
+  const dateRange = scheduledRange ?? {
+    start: targetStart,
+    end:
+      workRequest.endDate && workRequest.endDate > targetStart
+        ? workRequest.endDate
+        : targetStart,
+  };
+  // Office roles set an unscheduled card's target days; once it's on the
+  // calendar, moving it is the Scheduler's call.
+  const canEditDates = scheduledRange ? role === 'scheduler' : officeRole;
 
   const startEdit = (field: EditField, initial: string) => {
     setEditing(field);
@@ -569,6 +625,83 @@ export function WorkRequestQuickView({
     }
     const iso = parsed.toISOString();
     if (iso !== workRequest.startTime) applyChange({ startTime: iso });
+  };
+
+  /** yyyy-MM-dd text → that day, or null when it isn't a real date. */
+  const parseYmd = (text: string): string | null => {
+    const t = text.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !isValid(parseISO(t))) return null;
+    return t;
+  };
+
+  // The date field. A scheduled card's whole stretch moves to START on the
+  // typed day (length kept — the store rewrites its assignment rows on every
+  // crew); an unscheduled card's target date moves on the Work Requests
+  // calendar (its end day follows, keeping the span's length).
+  const commitDate = () => {
+    setEditing(null);
+    const day = parseYmd(draft);
+    if (!day) {
+      if (draft.trim()) {
+        flash('Could not read that date — type it as YYYY-MM-DD.', 'warning');
+      }
+      return;
+    }
+    if (day === dateRange.start) return;
+    if (creating) {
+      const length = differenceInCalendarDays(
+        parseISO(dateRange.end),
+        parseISO(dateRange.start)
+      );
+      applyChange({
+        date: day,
+        endDate:
+          length > 0
+            ? format(addDays(parseISO(day), length), 'yyyy-MM-dd')
+            : undefined,
+      });
+      return;
+    }
+    setWorkRequestDates(workRequest.id, day);
+    flash(
+      `${scheduledRange ? 'Rescheduled' : 'Target date moved'} to ${formatDay(day)}`,
+      'success'
+    );
+  };
+
+  // The end-day field: blank = a single day; otherwise the run stretches or
+  // shrinks to end on the typed day (never before the start).
+  const commitEndDate = () => {
+    setEditing(null);
+    const t = draft.trim();
+    const single = dateRange.end === dateRange.start;
+    if (!t) {
+      if (single) return;
+      if (creating) applyChange({ endDate: undefined });
+      else setWorkRequestDates(workRequest.id, dateRange.start, dateRange.start);
+      return;
+    }
+    const day = parseYmd(t);
+    if (!day) {
+      flash('Could not read that date — type it as YYYY-MM-DD.', 'warning');
+      return;
+    }
+    if (day < dateRange.start) {
+      flash("The end day can't be before the start day.", 'warning');
+      return;
+    }
+    if (day === dateRange.end) return;
+    if (creating) {
+      applyChange({ endDate: day === dateRange.start ? undefined : day });
+      return;
+    }
+    setWorkRequestDates(workRequest.id, dateRange.start, day);
+    flash(
+      day === dateRange.start
+        ? 'Now a single day'
+        : `Now runs through ${formatDay(day)}`,
+      'success'
+    );
   };
 
   const changeScopes = (vals: string[]) => {
@@ -830,10 +963,17 @@ export function WorkRequestQuickView({
    * from the square both assigns AND schedules it there, moving the card off
    * the Work Requests pool onto the main calendar.
    */
-  const crewAssignDates = () =>
-    cardAssignments.length > 0
-      ? [...new Set(cardAssignments.map((a) => a.date))]
-      : [workRequest.date || format(new Date(), 'yyyy-MM-dd')];
+  const crewAssignDates = () => {
+    if (cardAssignments.length > 0) {
+      return [...new Set(cardAssignments.map((a) => a.date))];
+    }
+    // Unscheduled: every day of its target span (date…endDate), so a
+    // request planned as three days schedules as three days.
+    return eachDayOfInterval({
+      start: parseISO(dateRange.start),
+      end: parseISO(dateRange.end),
+    }).map((d) => format(d, 'yyyy-MM-dd'));
+  };
 
   /**
    * A crew menu click. Normally swaps which crew the card is assigned to
@@ -951,6 +1091,7 @@ export function WorkRequestQuickView({
       jobIds: workRequest.jobIds,
       address: noJob ? workRequest.address.trim() : undefined,
       date: workRequest.date || undefined,
+      endDate: workRequest.endDate || undefined,
       title: workRequest.title.trim(),
       startTime: workRequest.startTime,
       scopes,
@@ -1155,7 +1296,16 @@ export function WorkRequestQuickView({
                 style={[
                   styles.titleDot,
                   crewSquareColor
-                    ? { backgroundColor: crewSquareColor }
+                    ? crewSquarePlanned
+                      ? // Pencilled in, not scheduled: a dashed outline in
+                        // the planned crew's color over a light tint.
+                        {
+                          backgroundColor: withAlpha(crewSquareColor, 0.3),
+                          borderWidth: 1.5,
+                          borderStyle: 'dashed',
+                          borderColor: crewSquareColor,
+                        }
+                      : { backgroundColor: crewSquareColor }
                     : styles.titleDotEmpty,
                 ]}
               >
@@ -1316,30 +1466,139 @@ export function WorkRequestQuickView({
             </Text>
           )}
         </Row>
-        <Row icon="calendar">
-          <Text style={styles.mutedText}>
-            {creating && workRequest.date
-              ? // The hover-＋ creation preset a target date — show it.
-                `Target date · ${format(
-                  parse(workRequest.date, 'yyyy-MM-dd', new Date()),
-                  'EEEE, MMMM d'
-                )}`
-              : scheduledRange
-                ? scheduledRange.start === scheduledRange.end
-                  ? format(
-                      parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
-                      'EEEE, MMMM d'
-                    )
-                  : `${format(
-                      parse(scheduledRange.start, 'yyyy-MM-dd', new Date()),
-                      'MMMM d'
-                    )} – ${format(
-                      parse(scheduledRange.end, 'yyyy-MM-dd', new Date()),
-                      'MMMM d'
-                    )}`
-                : 'Not Scheduled'}
-          </Text>
+        {/* Date(s). Scheduled: the run on the crew calendar — editing the
+            start moves the whole stretch (length kept), editing the end
+            stretches / shrinks it. Unscheduled: the target date (+ optional
+            end day) on the Work Requests calendar. Typed as YYYY-MM-DD. */}
+        <Row
+          icon="calendar"
+          label={
+            scheduledRange
+              ? 'Scheduled'
+              : creating
+                ? 'Target date'
+                : 'Target date · not scheduled'
+          }
+        >
+          <View style={styles.dateRow}>
+            {editing === 'date' ? (
+              <TextInput
+                style={[styles.textEditor, styles.dateInput]}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitDate}
+                onSubmitEditing={commitDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            ) : canEditDates ? (
+              <Editable onPress={() => startEdit('date', dateRange.start)}>
+                <Text style={styles.valueText}>{formatDay(dateRange.start)}</Text>
+              </Editable>
+            ) : (
+              <Text style={styles.mutedText}>{formatDay(dateRange.start)}</Text>
+            )}
+            <Text style={styles.dateTo}>to</Text>
+            {editing === 'end-date' ? (
+              <TextInput
+                style={[styles.textEditor, styles.dateInput]}
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={commitEndDate}
+                onSubmitEditing={commitEndDate}
+                placeholder="YYYY-MM-DD · blank = one day"
+                placeholderTextColor={colors.textTertiary}
+                autoFocus
+              />
+            ) : canEditDates ? (
+              <Editable
+                onPress={() =>
+                  startEdit(
+                    'end-date',
+                    dateRange.end !== dateRange.start ? dateRange.end : ''
+                  )
+                }
+              >
+                <Text
+                  style={
+                    dateRange.end !== dateRange.start
+                      ? styles.valueText
+                      : styles.placeholderText
+                  }
+                >
+                  {dateRange.end !== dateRange.start
+                    ? formatDay(dateRange.end)
+                    : 'Add an end day…'}
+                </Text>
+              </Editable>
+            ) : (
+              <Text style={styles.mutedText}>
+                {dateRange.end !== dateRange.start
+                  ? formatDay(dateRange.end)
+                  : 'same day'}
+              </Text>
+            )}
+          </View>
         </Row>
+
+        {/* Pencilled-in crew(s) — only while the card is UNSCHEDULED (once
+            it's on the calendar the title square shows its real crews). The
+            Scheduler toggles crews here without scheduling anything: the
+            card stays in Work Requests and lands on these crews when it's
+            moved over. Other office roles just see the plan. */}
+        {!creating &&
+          !scheduledRange &&
+          (role === 'scheduler' || plannedCrewIds.length > 0) && (
+            <Row icon="users" label="Pencilled-in crew">
+              <View style={styles.plannedChips}>
+                {(role === 'scheduler'
+                  ? allCrews
+                  : allCrews.filter((c) => plannedCrewIds.includes(c.id))
+                ).map((crew) => {
+                  const on = plannedCrewIds.includes(crew.id);
+                  const color = crewColorFrom(crewColorMap, crew.id);
+                  return (
+                    <Pressable
+                      key={crew.id}
+                      disabled={role !== 'scheduler'}
+                      onPress={() => togglePlannedCrew(crew.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      style={({ pressed, hovered }: PressState) => [
+                        styles.plannedChip,
+                        { borderColor: withAlpha(color, on ? 0.9 : 0.45) },
+                        on && { backgroundColor: withAlpha(color, 0.18) },
+                        (hovered || pressed) &&
+                          role === 'scheduler' &&
+                          styles.plannedChipHover,
+                      ]}
+                    >
+                      <View style={[styles.menuDot, { backgroundColor: color }]} />
+                      <Text
+                        style={[
+                          styles.plannedChipText,
+                          on && styles.plannedChipTextOn,
+                        ]}
+                      >
+                        {crew.name}
+                      </Text>
+                      {on && (
+                        <Feather name="check" size={12} color={colors.primary} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+                {role === 'scheduler' && (
+                  <Text style={styles.plannedHint}>
+                    {plannedCrewIds.length > 0
+                      ? 'Not scheduled — it stays in Work Requests and lands on this crew when moved onto the calendar.'
+                      : 'Plan a crew without putting the request on the calendar.'}
+                  </Text>
+                )}
+              </View>
+            </Row>
+          )}
         {/* Arrival time — the time of day the installers must be on site.
             Optional; when unset the installer view shows no time at all. */}
         <Row icon="clock" label="Arrival time">
@@ -2427,6 +2686,56 @@ const styles = themed(() => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.xs,
+  },
+  // Start / "to" / end on one line (wrapping on a narrow sidebar).
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  dateInput: {
+    minWidth: 150,
+  },
+  dateTo: {
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+  },
+  // Pencilled-in crew toggles: dashed pills in each crew's color.
+  plannedChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  plannedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+  },
+  plannedChipHover: {
+    opacity: 0.85,
+  },
+  plannedChipText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  plannedChipTextOn: {
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+  },
+  plannedHint: {
+    width: '100%',
+    color: colors.textTertiary,
+    fontFamily: fonts.regular,
+    fontSize: 11,
   },
   titleEditable: {
     flex: 1,

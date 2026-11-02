@@ -5,7 +5,7 @@
 > `Step-0-Overview.md` for the shared vocabulary and conventions; read the
 > matching `Step-N-*.md` for the full work order.
 
-**Last updated:** 2026-07-09
+**Last updated:** 2026-10-21
 
 ---
 
@@ -98,6 +98,17 @@ Legend: ✅ done · 🟡 in progress · ⬜ not started · ⛔ blocked · 📘 r
 - Assignment writes `ScheduleAssignment` rows (idempotent); a card with ≥1
   assignment leaves the backlog automatically; the same card can go to multiple
   crews without duplicating the record.
+- **2026-10-21 (Pass 46)** — the Work Requests calendar draws multi-day target
+  spans (`WorkRequest.endDate`, shared bar geometry in `scheduler/spanLanes.ts`);
+  "Pencil in" a crew without scheduling (`WorkRequest.plannedCrewIds` — the card
+  stays in the pool and lands on that crew when moved over); Scheduler-made
+  **Calendars** that aren't crews (`Crew.isCalendar`, no members, long names);
+  both month labels are drag-aware month pickers (`MonthDragNav`); typed
+  date / end-day fields in the quick view (`setWorkRequestDates` rewrites a
+  scheduled card's rows); chip hover shows crew + address; a Field Super's
+  expanded pool calendar shrinks the crew calendar to an arrow strip. Migration
+  `20261021120000_calendars_planned_crews_end_date.sql`. Details in
+  `docs/Dev-Tracker-Done.md` (Pass 46).
 
 **To do** — none. (Drag-and-drop was specced as an optional enhancement over the
 required click-to-assign baseline; baseline implemented, DnD not added.)

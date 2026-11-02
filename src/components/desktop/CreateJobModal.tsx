@@ -55,6 +55,11 @@ interface Props {
    * callers omit it (a creating Field Super is auto-assigned).
    */
   fieldSupers?: Worker[];
+  /**
+   * Whether the PO input shows (and is required). Default on; Field Supers
+   * create jobs without one — the office adds the PO later from Edit job.
+   */
+  poField?: boolean;
   onClose: () => void;
   onSubmit: (job: NewJobInput) => void;
 }
@@ -63,6 +68,7 @@ export function CreateJobModal({
   visible,
   mode = 'operator',
   fieldSupers = [],
+  poField = true,
   onClose,
   onSubmit,
 }: Props) {
@@ -133,11 +139,11 @@ export function CreateJobModal({
       setError('Job name is required.');
       return;
     }
-    if (!po.trim()) {
+    if (poField && !po.trim()) {
       setError('PO is required.');
       return;
     }
-    if (poTaken(po, jobs)) {
+    if (poField && poTaken(po, jobs)) {
       setError(PO_TAKEN_MESSAGE);
       return;
     }
@@ -161,7 +167,7 @@ export function CreateJobModal({
     // it right on the form (still optional — editable later either way).
     onSubmit({
       name: name.trim(),
-      po: po.trim(),
+      po: poField ? po.trim() : '',
       location: mode === 'field' ? location.trim() : '',
       qbtJobcodeId:
         mode === 'operator' ? qbtJobcodeId.trim() || undefined : undefined,
@@ -187,7 +193,8 @@ export function CreateJobModal({
             </Pressable>
           </View>
 
-          {/* Name + PO share the line — both are required to create. */}
+          {/* Name + PO share the line — both are required to create (the PO
+              column is gone entirely for callers that don't ask for one). */}
           <View style={styles.nameRow}>
             <View style={styles.nameCol}>
               <FormInput
@@ -198,15 +205,17 @@ export function CreateJobModal({
                 autoCapitalize="words"
               />
             </View>
-            <View style={styles.poCol}>
-              <FormInput
-                label="PO"
-                value={po}
-                onChangeText={setPo}
-                placeholder="e.g. 4501"
-                autoCapitalize="none"
-              />
-            </View>
+            {poField && (
+              <View style={styles.poCol}>
+                <FormInput
+                  label="PO"
+                  value={po}
+                  onChangeText={setPo}
+                  placeholder="e.g. 4501"
+                  autoCapitalize="none"
+                />
+              </View>
+            )}
           </View>
           {mode === 'operator' ? (
             <FormInput

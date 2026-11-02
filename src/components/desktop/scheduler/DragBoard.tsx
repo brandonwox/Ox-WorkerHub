@@ -60,9 +60,13 @@ export type DropTarget =
   | { kind: 'backlog' }
   | { kind: 'backlog-day'; date: string };
 
-/** A zone's registration metadata. */
+/**
+ * A zone's registration metadata. `nav` zones are hover-only: a drag passing
+ * over one steers the board (the month label's pick-a-month list) but
+ * dropping on it lands nowhere — the drag just snaps back.
+ */
 export interface ZoneMeta {
-  type: 'day' | 'backlog' | 'backlog-day';
+  type: 'day' | 'backlog' | 'backlog-day' | 'nav';
   surface?: 'calendar' | 'sidebar';
   date?: string;
   /** Higher wins when zones overlap (day cells sit inside the backlog panel). */
@@ -117,6 +121,12 @@ interface DragBoardContextValue {
   move: (x: number, y: number) => void;
   drop: (x: number, y: number) => void;
   cancel: () => void;
+  /**
+   * Re-measure every zone right now (mid-drag only; a no-op otherwise). For
+   * zones that appear DURING a drag — the month list that unfolds under a
+   * hovered month label — so they're hit-testable before the next interval.
+   */
+  requestSnapshot: () => void;
 }
 
 const DragBoardContext = createContext<DragBoardContextValue>({
@@ -130,6 +140,7 @@ const DragBoardContext = createContext<DragBoardContextValue>({
   move: () => {},
   drop: () => {},
   cancel: () => {},
+  requestSnapshot: () => {},
 });
 
 export function useDragBoard(): DragBoardContextValue {
@@ -371,10 +382,16 @@ export function DragBoardProvider({
       } else if (meta.type === 'backlog') {
         target = { kind: 'backlog' };
       }
+      // A 'nav' zone is steering only — no target, the drag snaps back.
       if (target) onDrop(item, target);
     },
     [finish, onDrop, resolve]
   );
+
+  const requestSnapshot = useCallback(() => {
+    if (!dragRef.current) return;
+    void takeSnapshot();
+  }, [takeSnapshot]);
 
   const value = useMemo<DragBoardContextValue>(
     () => ({
@@ -388,6 +405,7 @@ export function DragBoardProvider({
       move,
       drop,
       cancel: finish,
+      requestSnapshot,
     }),
     [
       enabled,
@@ -400,6 +418,7 @@ export function DragBoardProvider({
       move,
       drop,
       finish,
+      requestSnapshot,
     ]
   );
 

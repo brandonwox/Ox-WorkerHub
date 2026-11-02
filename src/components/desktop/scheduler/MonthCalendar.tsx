@@ -5,7 +5,6 @@ import {
   format,
   getDay,
   isToday,
-  parseISO,
   startOfMonth,
 } from 'date-fns';
 import { Fragment, useState } from 'react';
@@ -27,6 +26,17 @@ import {
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
 import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
+import { MonthDragNav } from '@/components/desktop/scheduler/MonthDragNav';
+import {
+  BAR_H,
+  BAR_TOP,
+  LANE_H,
+  LaneSegment,
+  lanesOver,
+  packWeekSegments,
+  useColRects,
+  weekBounds,
+} from '@/components/desktop/scheduler/spanLanes';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { CalendarTask, Crew, WorkRequest, ScheduleAssignment } from '@/types';
@@ -39,14 +49,6 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** RN's Pressable state on web also carries `hovered` (react-native-web). */
 type PressState = { pressed: boolean; hovered?: boolean };
 
-// Multi-day bar geometry: bars overlay the week row at fixed lane slots, and
-// every covered cell reserves the same vertical space so its single-day chips
-// start below the bars.
-// Two text lines (title + job name), same as a single-day chip.
-const BAR_H = 34;
-const LANE_H = BAR_H + 3; // one lane's slot (bar + gap)
-// Distance from the week row's top to lane 0: cell padding + day number line.
-const BAR_TOP = 25;
 // The hovered day column widens to at least this, squeezing the other six, so
 // the chips inside it become readable even on a crowded board.
 const HOVER_COL_MIN = 180;
@@ -55,6 +57,11 @@ interface Props {
   month: Date;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  /**
+   * Jump straight to a month — the month label's pick-a-month list (also
+   * steered by dragging a request over it). Unset = the label is plain text.
+   */
+  onSelectMonth?: (month: Date) => void;
   /** The crews a placed card is assigned to (the assign targets). */
   activeCrews: Crew[];
   /** Assignments already filtered to the visible (toggled-on) crews. */
@@ -119,15 +126,7 @@ interface SpanInfo {
 }
 
 /** One week-row slice of a multi-day span, with its allocated lane. */
-interface SpanSegment {
-  span: SpanInfo;
-  startCol: number;
-  endCol: number;
-  /** The span continues past this week's edge(s). */
-  continuesBefore: boolean;
-  continuesAfter: boolean;
-  lane: number;
-}
+type SpanSegment = LaneSegment<SpanInfo>;
 
 /**
  * Month grid showing the visible crews' assignments per day, colored by crew.
@@ -139,6 +138,7 @@ export function MonthCalendar({
   month,
   onPrevMonth,
   onNextMonth,
+  onSelectMonth,
   activeCrews,
   visibleAssignments,
   workRequests,
@@ -231,7 +231,16 @@ export function MonthCalendar({
     <View style={styles.wrap}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
+          {onSelectMonth ? (
+            <MonthDragNav
+              month={month}
+              onSelectMonth={onSelectMonth}
+              zoneKey="crew-cal"
+              textStyle={styles.monthLabel}
+            />
+          ) : (
+            <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
+          )}
           {canAssign && (
             <Text style={styles.viewing}>
               {activeCrews.length > 0 ? (
@@ -371,73 +380,18 @@ function WeekRow({
   // Each column's measured x/width within the row. Columns are flex-sized
   // (the hovered one widens), so the bar overlay positions off these live
   // rects instead of fixed sevenths.
-  const [colRects, setColRects] = useState<({ x: number; w: number } | null)[]>(
-    []
-  );
-  const setColRect = (col: number, x: number, w: number) =>
-    setColRects((prev) => {
-      const cur = prev[col];
-      if (cur && Math.abs(cur.x - x) < 0.5 && Math.abs(cur.w - w) < 0.5) {
-        return prev;
-      }
-      const next = [...prev];
-      next[col] = { x, w };
-      return next;
-    });
+  const [colRects, setColRect] = useColRects();
 
   const dateStrs = week.map((d) => (d ? format(d, 'yyyy-MM-dd') : null));
-  const firstCol = dateStrs.findIndex((d) => d !== null);
-  const lastCol = 6 - [...dateStrs].reverse().findIndex((d) => d !== null);
-  const weekStart = dateStrs[firstCol];
-  const weekEnd = dateStrs[lastCol];
-
-  // This week's slice of every intersecting span, then greedy lane packing
-  // (earlier starts first, longer spans first among equals) so overlapping
+  const { weekStart, weekEnd } = weekBounds(dateStrs);
+  // This week's slice of every intersecting span, lane-packed so overlapping
   // bars stack instead of colliding.
-  const segments: SpanSegment[] = [];
-  if (weekStart && weekEnd) {
-    for (const span of spans) {
-      if (span.end < weekStart || span.start > weekEnd) continue;
-      const segStart = span.start < weekStart ? weekStart : span.start;
-      const segEnd = span.end > weekEnd ? weekEnd : span.end;
-      segments.push({
-        span,
-        startCol: getDay(parseISO(segStart)),
-        endCol: getDay(parseISO(segEnd)),
-        continuesBefore: span.start < segStart,
-        continuesAfter: span.end > segEnd,
-        lane: 0,
-      });
-    }
-  }
-  segments.sort(
-    (a, b) =>
-      a.startCol - b.startCol ||
-      b.endCol - a.endCol ||
-      a.span.card.title.localeCompare(b.span.card.title)
+  const segments: SpanSegment[] = packWeekSegments(
+    spans,
+    weekStart,
+    weekEnd,
+    (s) => s.card.title
   );
-  const laneEnds: number[] = []; // last occupied column per lane
-  for (const seg of segments) {
-    let lane = laneEnds.findIndex((end) => end < seg.startCol);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(seg.endCol);
-    } else {
-      laneEnds[lane] = seg.endCol;
-    }
-    seg.lane = lane;
-  }
-
-  /** Vertical bar slots a cell must reserve (deepest lane covering it + 1). */
-  const lanesOver = (col: number) => {
-    let lanes = 0;
-    for (const seg of segments) {
-      if (col >= seg.startCol && col <= seg.endCol) {
-        lanes = Math.max(lanes, seg.lane + 1);
-      }
-    }
-    return lanes;
-  };
 
   return (
     <View style={styles.week}>
@@ -470,7 +424,7 @@ function WeekRow({
                 onOpenDay={onOpenDay}
                 onOpenCard={onOpenCard}
                 canUnassign={canUnassign}
-                topPad={lanesOver(col) * LANE_H}
+                topPad={lanesOver(segments, col) * LANE_H}
                 onCreateRequest={onCreateRequest}
                 createLabel={createLabel}
                 calendarTasks={
@@ -524,9 +478,10 @@ export function hoverProps(setHovered: (on: boolean) => void): object {
  * color drawn as a 3px ring — noticeably thicker than the single-crew 1px
  * border so shared cards read at a glance (an absolute color row under an
  * inset of the chip's own background). Render it FIRST inside the chip, with
- * the chip's own border and background made transparent.
+ * the chip's own border and background made transparent. (Shared with the
+ * Work Requests calendar's pencilled-in multi-crew chips.)
  */
-function CrewSplitBorder({
+export function CrewSplitBorder({
   crewColors,
   borderAlpha,
   squareLeft = false,
@@ -576,18 +531,26 @@ function CrewSplitBorder({
   );
 }
 
-/** The colored crew letters shown inside a multi-crew chip/bar on hover. */
-function CrewLetters({
+/**
+ * A chip/bar's hover line: the colored crew letters, then the jobsite
+ * address after a dot (so a hovered chip tells you WHO and WHERE at once).
+ * With no crews (a pool chip nobody's pencilled in) it's the address alone.
+ */
+export function CrewLetters({
   crewIds,
   colorForCrew,
   crewNameFor,
+  address,
   style,
 }: {
   crewIds: string[];
   colorForCrew: (crewId: string) => string;
   crewNameFor: (crewId: string) => string;
+  /** The work request's address, appended after the crew letters. */
+  address?: string;
   style?: StyleProp<TextStyle>;
 }) {
+  const where = address?.trim();
   return (
     <Text style={style} numberOfLines={1}>
       {crewIds.map((id, j) => (
@@ -596,6 +559,7 @@ function CrewLetters({
           {crewNameFor(id)}
         </Text>
       ))}
+      {where ? (crewIds.length > 0 ? `  ·  ${where}` : where) : ''}
     </Text>
   );
 }
@@ -693,12 +657,13 @@ function SpanBar({
             {span.card.title}
           </Text>
           {/* Same as the single-day chip: hovering swaps the job line for
-              the crew letters — the title stays put. */}
+              the crew letters + address — the title stays put. */}
           {hovered ? (
             <CrewLetters
               crewIds={crewIds}
               colorForCrew={colorForCrew}
               crewNameFor={crewNameFor}
+              address={span.card.address}
               style={styles.placedJob}
             />
           ) : (
@@ -1024,13 +989,14 @@ function DayChip({
           >
             {item.card.title}
           </Text>
-          {/* Hovering swaps the job line for the crew letters — the title
-              stays put. */}
+          {/* Hovering swaps the job line for the crew letters + address —
+              the title stays put. */}
           {hovered ? (
             <CrewLetters
               crewIds={crewIds}
               colorForCrew={colorForCrew}
               crewNameFor={crewNameFor}
+              address={item.card.address}
               style={styles.placedJob}
             />
           ) : (
@@ -1087,6 +1053,8 @@ const styles = themed(() => StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    // The month label's pick-a-month list unfolds over the grid below.
+    zIndex: 10,
   },
   monthLabel: {
     color: colors.textPrimary,

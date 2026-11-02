@@ -428,6 +428,24 @@ export interface WorkRequest {
   /** Scheduled calendar day (yyyy-MM-dd). Always set. */
   date: string;
   /**
+   * Target END day (yyyy-MM-dd) of a request that should take more than one
+   * day — the Work Requests calendar stretches it from {@link date} to here
+   * while it's still unscheduled, and scheduling it onto the crew calendar
+   * carries the same length over. Unset = a single day. Never before `date`
+   * (a stale earlier value is read as unset).
+   */
+  endDate?: string;
+  /**
+   * "Pencilled in" crews: the crew(s) the Scheduler plans to give this
+   * request to while it still sits on the Work Requests calendar (a
+   * {@link Crew.id} or {@link DailyCrew.id} each). NOT an assignment — no
+   * installer sees anything, and the card stays off the crew calendar — but
+   * when the card IS moved over, these become its crews instead of the
+   * board's assign targets. Cleared by the Scheduler; stale ids (a removed
+   * crew) are ignored.
+   */
+  plannedCrewIds?: string[];
+  /**
    * Optional time of day the installers must ARRIVE on site (the office sets
    * it from the quick view's "Arrival time" field when it matters — most
    * cards won't have one). With {@link endTime} also set it reads as a full
@@ -550,13 +568,26 @@ export interface WorkRequest {
   };
 }
 
-/** A permanent crew of installers. The default scheduling container. */
+/**
+ * A permanent crew of installers. The default scheduling container — or,
+ * with {@link isCalendar}, a plain named calendar that isn't a crew at all.
+ */
 export interface Crew {
   id: string;
-  /** A single letter ("A"). */
+  /**
+   * A single letter ("A") for an installer crew — it tags calendar chips.
+   * A calendar ({@link isCalendar}) carries any name ("Deliveries").
+   */
   name: string;
-  /** Members — MUST all be workers with role 'installer'. */
+  /** Members — MUST all be workers with role 'installer'. Always empty on a calendar. */
   installerIds: string[];
+  /**
+   * A Scheduler-made CALENDAR rather than a crew: no members, no foreman, a
+   * free-form name. Work schedules onto it exactly like a crew (it has its
+   * own chip and color on the board), but nothing reaches any installer —
+   * it's a planning lane. Sorted after the installer crews.
+   */
+  isCalendar?: boolean;
   /**
    * The crew's foreman — the scheduler must pick exactly one per permanent
    * crew (no more, no less; always one of {@link installerIds}). Only the

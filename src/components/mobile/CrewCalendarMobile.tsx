@@ -279,8 +279,13 @@ export function CrewCalendarMobile({
                     )}
                   </View>
                   <Text style={styles.crewMeta}>
-                    {crew.installerIds.length}{' '}
-                    {crew.installerIds.length === 1 ? 'installer' : 'installers'}
+                    {'isCalendar' in crew && crew.isCalendar
+                      ? 'Calendar'
+                      : `${crew.installerIds.length} ${
+                          crew.installerIds.length === 1
+                            ? 'installer'
+                            : 'installers'
+                        }`}
                   </Text>
                 </View>
 

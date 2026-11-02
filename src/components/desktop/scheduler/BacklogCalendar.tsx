@@ -12,18 +12,44 @@ import {
 } from 'date-fns';
 import { CalendarDays } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { isReadyNow } from '@/components/desktop/scheduler/Backlog';
 import {
   DragSource,
+  useDragBoard,
   useDropZone,
 } from '@/components/desktop/scheduler/DragBoard';
 import { FlashBorder } from '@/components/desktop/scheduler/FlashBorder';
-import { hoverProps } from '@/components/desktop/scheduler/MonthCalendar';
+import {
+  CrewLetters,
+  CrewSplitBorder,
+  hoverProps,
+} from '@/components/desktop/scheduler/MonthCalendar';
+import { MonthDragNav } from '@/components/desktop/scheduler/MonthDragNav';
+import {
+  BAR_H,
+  BAR_TOP,
+  DateSpan,
+  LANE_H,
+  LaneSegment,
+  lanesOver,
+  packWeekSegments,
+  useColRects,
+  weekBounds,
+} from '@/components/desktop/scheduler/spanLanes';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { WorkRequest } from '@/types';
+import { withAlpha } from '@/utils/crewColors';
 import { effectivePriority } from '@/utils/priorityRange';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -52,14 +78,29 @@ interface Props {
    * targeted at that day (Schedulers AND Field Supers).
    */
   onCreateRequest?: (date: string) => void;
+  /** Distinct color for a crew id — pencilled-in crews tint their chips. */
+  colorForCrew: (crewId: string) => string;
+  /** Crew display name for the hover line (letter / daily initials / calendar name). */
+  crewNameFor: (crewId: string) => string;
+  /** The crews pencilled in on a card ("fake assigned"), stale ids dropped. */
+  plannedCrewIdsFor: (card: WorkRequest) => string[];
+}
+
+/** A pool request stretched over more than one target day. */
+interface PoolSpan extends DateSpan {
+  card: WorkRequest;
 }
 
 /**
  * The Work Requests pool expanded in place into a large month calendar: it
  * replaces the list inside the (half-width-expanded) Work Requests column,
- * with each open request on its target date, colored by priority. Requests
- * drag between days here (changing their target date), out to the crew
- * calendar (scheduling them), and in from it (unassigning back to the pool).
+ * with each open request on its target date, colored by priority — or
+ * tinted (dashed) by the crew the Scheduler has pencilled in. Requests drag
+ * between days here (changing their target date), out to the crew calendar
+ * (scheduling them), and in from it (unassigning back to the pool). A
+ * request meant to take several days stretches across them as one bar, the
+ * same way the crew calendar draws scheduled stretches (the grip on its
+ * right edge pulls the end day).
  */
 // The hovered day column widens to at least this (same rule as the crew
 // calendar) so the requests inside it are readable.
@@ -74,6 +115,9 @@ export function BacklogCalendar({
   focusNonce,
   flashCard,
   onCreateRequest,
+  colorForCrew,
+  crewNameFor,
+  plannedCrewIdsFor,
 }: Props) {
   const [month, setMonth] = useState(() => new Date());
 
@@ -102,20 +146,31 @@ export function BacklogCalendar({
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   const monthKey = format(month, 'yyyy-MM');
-  const cardsByDate = useMemo(() => {
+  const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+  const monthEndStr = format(endOfMonth(month), 'yyyy-MM-dd');
+  // Single-day requests by their target date; stretched ones (an end date
+  // after the target date) become bars across every week they touch.
+  const { singlesByDate, spans } = useMemo(() => {
     const map = new Map<string, WorkRequest[]>();
+    const list: PoolSpan[] = [];
     for (const card of cards) {
+      const end =
+        card.endDate && card.endDate > card.date ? card.endDate : card.date;
+      if (end !== card.date) {
+        if (end < monthStartStr || card.date > monthEndStr) continue;
+        list.push({ card, start: card.date, end });
+        continue;
+      }
       if (!card.date.startsWith(monthKey)) continue;
-      const list = map.get(card.date) ?? [];
-      list.push(card);
-      map.set(card.date, list);
+      const dayList = map.get(card.date) ?? [];
+      dayList.push(card);
+      map.set(card.date, dayList);
     }
-    return map;
-  }, [cards, monthKey]);
-  const shownCount = [...cardsByDate.values()].reduce(
-    (n, list) => n + list.length,
-    0
-  );
+    return { singlesByDate: map, spans: list };
+  }, [cards, monthKey, monthStartStr, monthEndStr]);
+  const shownCount =
+    [...singlesByDate.values()].reduce((n, list) => n + list.length, 0) +
+    spans.length;
 
   return (
     <View style={styles.wrap}>
@@ -141,7 +196,13 @@ export function BacklogCalendar({
             >
               <Feather name="chevron-left" size={18} color={colors.textSecondary} />
             </Pressable>
-            <Text style={styles.monthLabel}>{format(month, 'MMMM yyyy')}</Text>
+            <MonthDragNav
+              month={month}
+              onSelectMonth={setMonth}
+              zoneKey="pool-cal"
+              textStyle={styles.monthLabel}
+              align="center"
+            />
             <Pressable
               style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
               onPress={() => setMonth((m) => addMonths(m, 1))}
@@ -186,34 +247,319 @@ export function BacklogCalendar({
 
         <ScrollView contentContainerStyle={styles.grid}>
           {weeks.map((week, w) => (
-            <View key={w} style={styles.week}>
-              {week.map((dayDate, col) => {
-                const dateStr = dayDate ? format(dayDate, 'yyyy-MM-dd') : null;
-                return (
-                  <View
-                    key={dateStr ?? `blank-${col}`}
-                    style={[
-                      styles.col,
-                      hoveredCol === col && styles.colHovered,
-                    ]}
-                  >
-                    {dayDate && dateStr ? (
-                      <BacklogDayCell
-                        date={dateStr}
-                        today={isToday(dayDate)}
-                        cards={cardsByDate.get(dateStr) ?? []}
-                        jobNameFor={jobNameFor}
-                        onOpenCard={onOpenCard}
-                        flashCard={flashCard}
-                        onCreateRequest={onCreateRequest}
-                      />
-                    ) : null}
-                  </View>
-                );
-              })}
-            </View>
+            <PoolWeekRow
+              key={w}
+              week={week}
+              spans={spans}
+              singlesByDate={singlesByDate}
+              hoveredCol={hoveredCol}
+              jobNameFor={jobNameFor}
+              onOpenCard={onOpenCard}
+              flashCard={flashCard}
+              onCreateRequest={onCreateRequest}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewNameFor}
+              plannedCrewIdsFor={plannedCrewIdsFor}
+            />
           ))}
         </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+/** Props every chip/bar needs to paint and open a request. */
+interface ChipHostProps {
+  jobNameFor: (card: WorkRequest) => string;
+  onOpenCard: (card: WorkRequest) => void;
+  flashCard?: { id: string; nonce: string } | null;
+  colorForCrew: (crewId: string) => string;
+  crewNameFor: (crewId: string) => string;
+  plannedCrewIdsFor: (card: WorkRequest) => string[];
+}
+
+interface PoolWeekRowProps extends ChipHostProps {
+  week: (Date | null)[];
+  spans: PoolSpan[];
+  singlesByDate: Map<string, WorkRequest[]>;
+  hoveredCol: number | null;
+  onCreateRequest?: (date: string) => void;
+}
+
+/**
+ * One calendar week: seven day cells plus the absolutely-positioned
+ * multi-day bars overlapping their borders. Cells covered by bars reserve
+ * matching vertical space so single-day chips start below them.
+ */
+function PoolWeekRow({
+  week,
+  spans,
+  singlesByDate,
+  hoveredCol,
+  onCreateRequest,
+  ...host
+}: PoolWeekRowProps) {
+  const [colRects, setColRect] = useColRects();
+  const dateStrs = week.map((d) => (d ? format(d, 'yyyy-MM-dd') : null));
+  const { weekStart, weekEnd } = weekBounds(dateStrs);
+  const segments = packWeekSegments(
+    spans,
+    weekStart,
+    weekEnd,
+    (s) => s.card.title
+  );
+
+  return (
+    <View style={styles.week}>
+      {week.map((dayDate, col) => {
+        const dateStr = dateStrs[col];
+        return (
+          <View
+            key={dateStr ?? `blank-${col}`}
+            style={[styles.col, hoveredCol === col && styles.colHovered]}
+            onLayout={(e) => {
+              const { x, width } = e.nativeEvent.layout;
+              setColRect(col, x, width);
+            }}
+          >
+            {dayDate && dateStr ? (
+              <BacklogDayCell
+                date={dateStr}
+                today={isToday(dayDate)}
+                cards={singlesByDate.get(dateStr) ?? []}
+                topPad={lanesOver(segments, col) * LANE_H}
+                onCreateRequest={onCreateRequest}
+                {...host}
+              />
+            ) : null}
+          </View>
+        );
+      })}
+
+      {segments.map((seg) => {
+        const startRect = colRects[seg.startCol];
+        const endRect = colRects[seg.endCol];
+        if (!startRect || !endRect) return null;
+        return (
+          <PoolSpanBar
+            key={`bar-${seg.span.card.id}`}
+            seg={seg}
+            left={startRect.x}
+            width={endRect.x + endRect.w - startRect.x}
+            {...host}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * How a pool chip/bar paints: neutral grey when nobody's pencilled in; a
+ * DASHED border + light tint in the planned crew's color for one crew; the
+ * split color ring (as on the crew calendar) for several. `color` is the
+ * lead crew's color (the drag ghost + grip), unset when none.
+ */
+function chipTint(
+  planned: string[],
+  colorForCrew: (crewId: string) => string
+): { style: StyleProp<ViewStyle>; multi: boolean; color?: string } {
+  if (planned.length === 0) return { style: undefined, multi: false };
+  const color = colorForCrew(planned[0]);
+  if (planned.length === 1) {
+    return {
+      style: {
+        backgroundColor: withAlpha(color, 0.14),
+        borderColor: withAlpha(color, 0.75),
+        borderStyle: 'dashed',
+      },
+      multi: false,
+      color,
+    };
+  }
+  return { style: styles.requestMulti, multi: true, color };
+}
+
+interface ChipContentProps extends ChipHostProps {
+  card: WorkRequest;
+  hovered: boolean;
+  planned: string[];
+  /** Show the stretch grip (not on a bar segment continuing past the week). */
+  grip: boolean;
+  gripColor: string;
+  /** Square off the split ring's corners where a bar continues. */
+  squareLeft?: boolean;
+  squareRight?: boolean;
+}
+
+/**
+ * The inside of a pool chip or bar: priority dot (or the slashed calendar
+ * for a not-ready request), title, and under it the job name — swapped on
+ * hover for the pencilled-in crew(s) and the jobsite address — plus the
+ * stretch grip on the right edge when the viewer may drag.
+ */
+function PoolChipContent({
+  card,
+  hovered,
+  planned,
+  grip,
+  gripColor,
+  squareLeft,
+  squareRight,
+  jobNameFor,
+  flashCard,
+  colorForCrew,
+  crewNameFor,
+}: ChipContentProps) {
+  const board = useDragBoard();
+  const accent = effectivePriority(card).color;
+  const ready = isReadyNow(card);
+  // Nothing pencilled in and no address → the hover line has nothing to
+  // say, so the job name stays.
+  const hasHoverLine = planned.length > 0 || !!card.address.trim();
+  return (
+    <>
+      {planned.length > 1 && (
+        <CrewSplitBorder
+          crewColors={planned.map(colorForCrew)}
+          borderAlpha={0.6}
+          squareLeft={squareLeft}
+          squareRight={squareRight}
+        />
+      )}
+      {flashCard?.id === card.id && <FlashBorder key={flashCard.nonce} />}
+      {/* Not-ready swaps the priority dot for a slashed calendar in the same
+          priority color (the sidebar menu's CalendarDays icon) — no text tag
+          eating the title's space. */}
+      {ready ? (
+        <View style={[styles.requestDot, { backgroundColor: accent }]} />
+      ) : (
+        <View style={styles.notReadyIcon}>
+          <CalendarDays size={11} color={accent} />
+          <View
+            style={[styles.notReadyIconSlash, { backgroundColor: accent }]}
+          />
+        </View>
+      )}
+      <View style={styles.requestText}>
+        <Text style={styles.requestTitle} numberOfLines={1}>
+          {card.title}
+        </Text>
+        {hovered && hasHoverLine ? (
+          <CrewLetters
+            crewIds={planned}
+            colorForCrew={colorForCrew}
+            crewNameFor={crewNameFor}
+            address={card.address}
+            style={styles.requestJob}
+          />
+        ) : (
+          <Text style={styles.requestJob} numberOfLines={1}>
+            {jobNameFor(card)}
+          </Text>
+        )}
+      </View>
+      {grip && board.canDrag({ kind: 'resize', id: card.id }) && (
+        <DragSource
+          item={{ kind: 'resize', id: card.id }}
+          ghost={{ title: `Stretch — ${card.title}`, color: gripColor }}
+          cursor="ew-resize"
+          style={styles.resizeGrip}
+        >
+          <View
+            style={[
+              styles.resizeGripBar,
+              { backgroundColor: withAlpha(gripColor, 0.9) },
+            ]}
+          />
+        </DragSource>
+      )}
+    </>
+  );
+}
+
+/** One single-day request chip in its day cell. */
+function PoolRequestChip({ card, ...host }: ChipHostProps & { card: WorkRequest }) {
+  const [hovered, setHovered] = useState(false);
+  const planned = host.plannedCrewIdsFor(card);
+  const tint = chipTint(planned, host.colorForCrew);
+  const lead = tint.color ?? effectivePriority(card).color;
+  return (
+    <View {...hoverProps(setHovered)}>
+      <DragSource
+        item={{ kind: 'request', id: card.id }}
+        ghost={{ title: card.title, color: lead }}
+        onPress={() => host.onOpenCard(card)}
+        // Neutral gray chip by default — priority already lives in the left
+        // dot; a crew color appears only once a crew is pencilled in (dashed)
+        // or, on the crew calendar, scheduled.
+        style={[
+          styles.request,
+          tint.style,
+          !isReadyNow(card) && styles.requestNotReady,
+        ]}
+      >
+        <PoolChipContent
+          card={card}
+          hovered={hovered}
+          planned={planned}
+          grip
+          gripColor={lead}
+          {...host}
+        />
+      </DragSource>
+    </View>
+  );
+}
+
+interface PoolSpanBarProps extends ChipHostProps {
+  seg: LaneSegment<PoolSpan>;
+  /** Measured pixel geometry within the week row (tracks column resizing). */
+  left: number;
+  width: number;
+}
+
+/**
+ * One week-row segment of a stretched pool request: a continuous bar across
+ * its covered day cells. Dragging the bar moves the whole stretch to a new
+ * target start (length preserved); the grip on the right edge drags the END
+ * day. Continuation past a week edge squares that edge's corners off.
+ */
+function PoolSpanBar({ seg, left, width, ...host }: PoolSpanBarProps) {
+  const [hovered, setHovered] = useState(false);
+  const { card } = seg.span;
+  const planned = host.plannedCrewIdsFor(card);
+  const tint = chipTint(planned, host.colorForCrew);
+  const lead = tint.color ?? effectivePriority(card).color;
+  return (
+    <View
+      style={[styles.barSlot, { left, width, top: BAR_TOP + seg.lane * LANE_H }]}
+      pointerEvents="box-none"
+    >
+      <View style={styles.barHoverWrap} {...hoverProps(setHovered)}>
+        <DragSource
+          item={{ kind: 'request', id: card.id }}
+          ghost={{ title: card.title, color: lead }}
+          onPress={() => host.onOpenCard(card)}
+          style={[
+            styles.bar,
+            tint.style,
+            seg.continuesBefore && styles.barContinuesBefore,
+            seg.continuesAfter && styles.barContinuesAfter,
+            !isReadyNow(card) && styles.requestNotReady,
+          ]}
+        >
+          <PoolChipContent
+            card={card}
+            hovered={hovered}
+            planned={planned}
+            grip={!seg.continuesAfter}
+            gripColor={lead}
+            squareLeft={seg.continuesBefore}
+            squareRight={seg.continuesAfter}
+            {...host}
+          />
+        </DragSource>
       </View>
     </View>
   );
@@ -224,17 +570,16 @@ function BacklogDayCell({
   date,
   today,
   cards,
-  jobNameFor,
-  onOpenCard,
-  flashCard,
+  topPad,
   onCreateRequest,
-}: {
+  ...host
+}: ChipHostProps & {
   date: string;
   today: boolean;
+  /** This day's single-day requests (stretched ones render as bars). */
   cards: WorkRequest[];
-  jobNameFor: (card: WorkRequest) => string;
-  onOpenCard: (card: WorkRequest) => void;
-  flashCard?: { id: string; nonce: string } | null;
+  /** Vertical space reserved for the week's bars covering this day. */
+  topPad: number;
   onCreateRequest?: (date: string) => void;
 }) {
   const { ref, hovered } = useDropZone(`bcal:${date}`, {
@@ -258,50 +603,10 @@ function BacklogDayCell({
       <Text style={[styles.dayNum, today && styles.dayNumToday]}>
         {format(parseISO(date), 'd')}
       </Text>
-      <View style={styles.cellCards}>
-        {cards.map((card) => {
-          const accent = effectivePriority(card).color;
-          const ready = isReadyNow(card);
-          return (
-            <DragSource
-              key={card.id}
-              item={{ kind: 'request', id: card.id }}
-              ghost={{ title: card.title, color: accent }}
-              onPress={() => onOpenCard(card)}
-              // Neutral gray chip — priority already lives in the left dot;
-              // color belongs to the crew calendar once it's scheduled.
-              style={[styles.request, !ready && styles.requestNotReady]}
-            >
-              {flashCard?.id === card.id && (
-                <FlashBorder key={flashCard.nonce} />
-              )}
-              {/* Not-ready swaps the priority dot for a slashed calendar in
-                  the same priority color (the sidebar menu's CalendarDays
-                  icon) — no text tag eating the title's space. */}
-              {ready ? (
-                <View style={[styles.requestDot, { backgroundColor: accent }]} />
-              ) : (
-                <View style={styles.notReadyIcon}>
-                  <CalendarDays size={11} color={accent} />
-                  <View
-                    style={[
-                      styles.notReadyIconSlash,
-                      { backgroundColor: accent },
-                    ]}
-                  />
-                </View>
-              )}
-              <View style={styles.requestText}>
-                <Text style={styles.requestTitle} numberOfLines={1}>
-                  {card.title}
-                </Text>
-                <Text style={styles.requestJob} numberOfLines={1}>
-                  {jobNameFor(card)}
-                </Text>
-              </View>
-            </DragSource>
-          );
-        })}
+      <View style={[styles.cellCards, topPad > 0 && { marginTop: 3 + topPad }]}>
+        {cards.map((card) => (
+          <PoolRequestChip key={card.id} card={card} {...host} />
+        ))}
 
         {/* Hover-only ＋ row IN the chip stack — right below the last work
             request (top of the stack when the day is empty). Creates a work
@@ -341,6 +646,8 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.lg,
+    // The month label's pick-a-month list unfolds over the grid below.
+    zIndex: 10,
   },
   headerLeft: {
     flex: 1,
@@ -442,6 +749,8 @@ const styles = themed(() => StyleSheet.create({
   },
   week: {
     flexDirection: 'row',
+    // Bars position against the week row.
+    position: 'relative',
   },
   col: {
     flex: 1,
@@ -487,6 +796,12 @@ const styles = themed(() => StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 3,
   },
+  // Several crews pencilled in: the chip's own border + background go
+  // transparent — CrewSplitBorder draws the segmented ring and the fill.
+  requestMulti: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
   requestDot: {
     width: 6,
     height: 6,
@@ -494,6 +809,7 @@ const styles = themed(() => StyleSheet.create({
   },
   requestText: {
     flex: 1,
+    minWidth: 0,
   },
   requestTitle: {
     color: colors.textPrimary,
@@ -538,5 +854,48 @@ const styles = themed(() => StyleSheet.create({
     height: 1,
     borderRadius: 1,
     transform: [{ rotate: '-45deg' }],
+  },
+  // Multi-day bars: absolutely positioned over the week row, overlapping the
+  // day cells' borders as one continuous rounded rectangle (same geometry as
+  // the crew calendar).
+  barSlot: {
+    position: 'absolute',
+    height: BAR_H,
+    paddingHorizontal: 2,
+    zIndex: 5,
+  },
+  barHoverWrap: {
+    flex: 1,
+  },
+  bar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    backgroundColor: colors.surfaceLight,
+    borderColor: colors.border,
+    paddingHorizontal: 5,
+  },
+  barContinuesBefore: {
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  barContinuesAfter: {
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  // The stretch grip on a chip/bar's right edge.
+  resizeGrip: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+    marginRight: -2,
+  },
+  resizeGripBar: {
+    width: 3,
+    borderRadius: 2,
+    height: 12,
   },
 }));

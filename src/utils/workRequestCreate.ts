@@ -23,6 +23,9 @@ export function newWorkRequestPayload(input: NewWorkRequestInput, jobs: Job[]) {
     // Target date: the calendars' hover-＋ creation presets a specific day;
     // everywhere else it defaults to today (the Scheduler places it later).
     date: input.date ?? format(new Date(), 'yyyy-MM-dd'),
+    // A request meant to take several days stretches to this end day on the
+    // Work Requests calendar (and schedules as that many days).
+    endDate: input.endDate || undefined,
     startTime: input.startTime,
     priority: input.priority,
     priorityStartDate: input.priorityStartDate || undefined,

@@ -90,6 +90,10 @@ interface WorkRequestRow {
   title: string;
   address: string;
   date: string;
+  /** Target end day of a multi-day pool request; null = single day. */
+  end_date: string | null;
+  /** Pencilled-in crew / daily crew ids (not assignments). */
+  planned_crew_ids: string[] | null;
   start_time: string | null;
   end_time: string | null;
   status: string;
@@ -128,6 +132,8 @@ interface CrewRow {
   id: string;
   name: string;
   color: string | null;
+  /** A Scheduler-made calendar (no members) rather than an installer crew. */
+  is_calendar: boolean | null;
 }
 interface CrewMemberRow {
   crew_id: string;
@@ -322,6 +328,13 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     title: r.title,
     address: r.address,
     date: r.date,
+    // A stale end day at/before the start (an older client moved `date`
+    // without touching end_date) reads as a single day.
+    endDate: r.end_date && r.end_date > r.date ? r.end_date : undefined,
+    plannedCrewIds:
+      r.planned_crew_ids && r.planned_crew_ids.length > 0
+        ? r.planned_crew_ids
+        : undefined,
     startTime: r.start_time ?? undefined,
     endTime: r.end_time ?? undefined,
     status: normalizeStatus(r.status, r.status_note),
@@ -582,6 +595,7 @@ export async function fetchAllData(): Promise<BackendData> {
     id: c.id,
     name: c.name,
     color: c.color ?? undefined,
+    isCalendar: c.is_calendar ? true : undefined,
     installerIds: crewMembers
       .filter((m) => m.crew_id === c.id)
       .map((m) => m.installer_id),
@@ -792,6 +806,8 @@ function workRequestToRow(card: WorkRequest) {
     title: card.title,
     address: card.address,
     date: card.date,
+    end_date: card.endDate ?? null,
+    planned_crew_ids: card.plannedCrewIds ?? null,
     start_time: card.startTime ?? null,
     end_time: card.endTime ?? null,
     status: card.status,
@@ -928,7 +944,12 @@ export async function insertCrew(crew: Crew): Promise<void> {
     (
       await getSupabase()
         .from('crews')
-        .insert({ id: crew.id, name: crew.name, color: crew.color ?? null })
+        .insert({
+          id: crew.id,
+          name: crew.name,
+          color: crew.color ?? null,
+          is_calendar: crew.isCalendar ?? false,
+        })
     ).error
   );
   await replaceMembers(
@@ -944,7 +965,11 @@ export async function updateCrew(crew: Crew): Promise<void> {
     (
       await getSupabase()
         .from('crews')
-        .update({ name: crew.name, color: crew.color ?? null })
+        .update({
+          name: crew.name,
+          color: crew.color ?? null,
+          is_calendar: crew.isCalendar ?? false,
+        })
         .eq('id', crew.id)
     ).error
   );

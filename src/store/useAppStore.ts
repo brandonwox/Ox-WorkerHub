@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format, parse } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  format,
+  parse,
+  parseISO,
+} from 'date-fns';
 import { useMemo } from 'react';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
@@ -79,7 +86,13 @@ function onlyInstallerIds(workers: Worker[], ids: string[]): string[] {
  * (keyed by list position) stable.
  */
 function sortCrews(list: Crew[]): Crew[] {
-  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  // Installer crews first (alphabetical), then the Scheduler's calendars —
+  // so adding a calendar never shifts the crews' automatic colors.
+  return [...list].sort(
+    (a, b) =>
+      Number(!!a.isCalendar) - Number(!!b.isCalendar) ||
+      a.name.localeCompare(b.name)
+  );
 }
 function sortDailyCrews(list: DailyCrew[]): DailyCrew[] {
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -1065,6 +1078,16 @@ interface AppState {
    * actually changed are written.
    */
   reorderDaySchedule: (date: string, orderedRequestIds: string[]) => void;
+  /**
+   * Re-date a work request to run `start`…`end` (yyyy-MM-dd; `end` omitted =
+   * keep its current length). A SCHEDULED card's assignment rows are
+   * rewritten on every crew it's on — days outside the range come off,
+   * missing days are added — so the stretch stays contiguous (the same rule
+   * the board's drag paths follow). An unscheduled card just moves its
+   * target date / end date on the Work Requests calendar. The card's own
+   * `date` / `endDate` follow either way.
+   */
+  setWorkRequestDates: (id: string, start: string, end?: string) => void;
 
   clockIn: (ref: { workRequestId?: string; customProjectName?: string }) => void;
   /** Ends the active shift and returns the generated log, or null if not clocked in. */
@@ -1769,6 +1792,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       status: 'Active',
       ...job,
       id: job.id ?? (isBackend ? uuid() : `job-${nextJobId++}`),
+      // A blank PO (Field Supers create jobs without one) is stored as unset,
+      // never as an empty string.
+      po: job.po?.trim() || undefined,
     };
     // A Field Super creating a job is auto-assigned to it — otherwise it
     // would vanish from their scoped views immediately. The DB does the same
@@ -2329,10 +2355,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     // dropped (the UI blocks picking them; this + a DB unique index are the
     // backstops). Daily crews are exempt.
     const takenElsewhere = new Set(state.crews.flatMap((c) => c.installerIds));
-    const installerIds = onlyInstallerIds(
-      state.workers,
-      crew.installerIds
-    ).filter((wid) => !takenElsewhere.has(wid));
+    // A calendar is not a crew: it never has members (or a foreman).
+    const installerIds = crew.isCalendar
+      ? []
+      : onlyInstallerIds(state.workers, crew.installerIds).filter(
+          (wid) => !takenElsewhere.has(wid)
+        );
     const created: Crew = {
       ...crew,
       id: crew.id ?? (isBackend ? uuid() : `crew-${nextCrewId++}`),
@@ -2369,6 +2397,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                   )
                 : crew.installerIds,
             };
+            // A calendar never carries members or a foreman.
+            if (merged.isCalendar) merged.installerIds = [];
             // A foreman who leaves the crew loses the tag (the UI then demands a
             // replacement — every permanent crew needs exactly one).
             if (
@@ -2529,6 +2559,46 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().updateWorkRequest(id, { priorityOrder: order }, { silentSave: true });
       }
     });
+  },
+
+  setWorkRequestDates: (id, start, end) => {
+    const state = get();
+    const card = state.workRequests.find((c) => c.id === id);
+    if (!card) return;
+    const rows = state.assignments.filter((a) => a.workRequestId === id);
+    // The current stretch: the assignment rows when scheduled, else the
+    // pool's target range.
+    const current =
+      rows.length > 0
+        ? rows.map((a) => a.date)
+        : [card.date, card.endDate ?? card.date];
+    const curStart = current.reduce((m, d) => (d < m ? d : m));
+    const curEnd = current.reduce((m, d) => (d > m ? d : m));
+    const length = differenceInCalendarDays(parseISO(curEnd), parseISO(curStart));
+    let endDay =
+      end ?? format(addDays(parseISO(start), length), 'yyyy-MM-dd');
+    // An end before the start collapses to a single day, never a negative span.
+    if (endDay < start) endDay = start;
+    if (rows.length > 0) {
+      const wanted = eachDayOfInterval({
+        start: parseISO(start),
+        end: parseISO(endDay),
+      }).map((d) => format(d, 'yyyy-MM-dd'));
+      const crewIds = [...new Set(rows.map((a) => a.crewId))];
+      rows
+        .filter((a) => !wanted.includes(a.date))
+        .forEach((a) => get().unassignWorkRequest(a.id));
+      crewIds.forEach((crewId) =>
+        wanted.forEach((date) => get().assignWorkRequest(id, crewId, date))
+      );
+    }
+    const patch: Partial<WorkRequest> = {};
+    if (card.date !== start) patch.date = start;
+    const nextEnd = endDay === start ? undefined : endDay;
+    if (card.endDate !== nextEnd) patch.endDate = nextEnd;
+    if (Object.keys(patch).length > 0) {
+      get().updateWorkRequest(id, patch, { silentSave: true });
+    }
   },
 
   clockIn: (ref) =>

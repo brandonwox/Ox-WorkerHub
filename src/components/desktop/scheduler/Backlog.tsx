@@ -39,6 +39,17 @@ interface Props {
    * colors) and the selected-card tint (a single crew's color, else neutral grey).
    */
   activeCrews?: { id: string; name: string; color: string }[];
+  /** The crews pencilled in on a card ("fake assigned"), stale ids dropped. */
+  plannedCrewIdsFor?: (card: WorkRequest) => string[];
+  colorForCrew?: (crewId: string) => string;
+  crewNameFor?: (crewId: string) => string;
+  /**
+   * "Pencil in": plan the board's assign target(s) on the card WITHOUT
+   * scheduling it — the card stays in the pool, tinted by that crew, and is
+   * handed to that crew when it's finally moved onto the calendar. A click
+   * on an already-planned card clears its plan. Scheduler only.
+   */
+  onPlanCrews?: (cardId: string) => void;
 }
 
 /** Right-column pool of unassigned work requests waiting for a crew + date. */
@@ -51,6 +62,10 @@ export function Backlog({
   onExpandCalendar,
   canSchedule = true,
   activeCrews = [],
+  plannedCrewIdsFor = () => [],
+  colorForCrew = () => colors.textTertiary,
+  crewNameFor = () => '?',
+  onPlanCrews,
 }: Props) {
   // Single target → tint with that crew's color; several (multi-assign) or none
   // → stay neutral grey. The crew names themselves render in their own colors.
@@ -77,6 +92,10 @@ export function Backlog({
 
   const renderCard = (card: WorkRequest, showReadiness = false) => {
     const selected = placingCardId === card.id;
+    // A pencilled-in crew shows as a dashed border in its color (several
+    // crews: just the names line — no single color owns the card).
+    const planned = plannedCrewIdsFor(card);
+    const planColor = planned.length === 1 ? colorForCrew(planned[0]) : undefined;
     return (
       // Draggable: schedulers can drag a request straight onto a calendar day
       // instead of the Schedule-then-click flow. A plain click (no drag)
@@ -84,10 +103,17 @@ export function Backlog({
       <DragSource
         key={card.id}
         item={{ kind: 'request', id: card.id }}
-        ghost={{ title: card.title, color: effectivePriority(card).color }}
+        ghost={{
+          title: card.title,
+          color: planColor ?? effectivePriority(card).color,
+        }}
         onPress={() => onOpenCard(card)}
         style={[
           styles.card,
+          planColor != null && {
+            borderColor: withAlpha(planColor, 0.7),
+            borderStyle: 'dashed',
+          },
           selected && styles.cardSelected,
           selected && {
             borderColor: crewTint,
@@ -104,6 +130,20 @@ export function Backlog({
         <Text style={styles.cardJob} numberOfLines={1}>
           {jobNameFor(card)}
         </Text>
+        {planned.length > 0 && (
+          <Text style={styles.plannedLine} numberOfLines={1}>
+            <Text style={styles.plannedLabel}>Pencilled in · </Text>
+            {planned.map((id, i) => (
+              <Text
+                key={id}
+                style={[styles.plannedCrew, { color: colorForCrew(id) }]}
+              >
+                {i > 0 ? ', ' : ''}
+                {crewNameFor(id)}
+              </Text>
+            ))}
+          </Text>
+        )}
         {showReadiness && card.readiness ? (
           <Text style={styles.readinessNote} numberOfLines={1}>
             Ready for installers: {card.readiness}
@@ -162,6 +202,49 @@ export function Backlog({
                 )}
               </Text>
             </Pressable>
+            {/* "Pencil in": plan the assign target crew(s) on the card without
+                scheduling it. On a planned card the same spot clears it. */}
+            {onPlanCrews && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  planColor != null && { borderColor: withAlpha(planColor, 0.7) },
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => onPlanCrews(card.id)}
+                accessibilityLabel={
+                  planned.length > 0
+                    ? 'Clear the pencilled-in crew'
+                    : 'Pencil in the assign target crew without scheduling'
+                }
+              >
+                <Feather
+                  name={planned.length > 0 ? 'x' : 'edit-3'}
+                  size={10}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.actionText} numberOfLines={1}>
+                  {planned.length > 0 ? (
+                    'Clear pencil'
+                  ) : (
+                    <>
+                      Pencil in
+                      {activeCrews.length > 0 && (
+                        <>
+                          <Text style={styles.placingLabel}> — </Text>
+                          {activeCrews.map((c, i) => (
+                            <Text key={c.id} style={{ color: c.color }}>
+                              {c.name}
+                              {i < activeCrews.length - 1 ? ', ' : ''}
+                            </Text>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
       </DragSource>
@@ -187,7 +270,7 @@ export function Backlog({
       </View>
       <Text style={styles.hint}>
         {canSchedule
-          ? 'Click a request to view details, or Schedule it onto the calendar.'
+          ? 'Click a request to view details, Schedule it onto the calendar, or Pencil in a crew without scheduling it.'
           : 'Click a request to view or edit its details.'}
       </Text>
 
@@ -380,6 +463,18 @@ const styles = themed(() => StyleSheet.create({
     color: colors.warning,
     fontFamily: fonts.medium,
     fontSize: 11,
+  },
+  // "Pencilled in · A" — the planned crew(s), named in their own colors.
+  plannedLine: {
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+  },
+  plannedLabel: {
+    color: colors.textTertiary,
+  },
+  plannedCrew: {
+    fontFamily: fonts.bold,
   },
   noReadyText: {
     color: colors.textTertiary,

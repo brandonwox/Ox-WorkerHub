@@ -52,6 +52,9 @@ import { activeJobs, activeWorkRequests } from '@/utils/jobArchive';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 
+/** Width of a Field Super's shrunken crew calendar (the arrow strip). */
+const STRIP_W = 48;
+
 interface Props {
   /**
    * Whether the viewer may place work onto crews. Schedulers can; Field Supers
@@ -243,10 +246,18 @@ export function CalendarBoard({
   // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
   // Work Requests container visibly grows leftward across the board.
   const expandAnim = useRef(new Animated.Value(0)).current;
-  // Expanded, the two calendars split the board 50/50 (equal flex).
+  // Expanded, the Scheduler's two calendars split the board 50/50 (equal
+  // flex) — they drag requests across. Field Supers don't, so THEIR expanded
+  // Work Requests calendar takes (almost) the whole board: the crew calendar
+  // shrinks to a slim strip with just an arrow to bring it back.
+  const stripMode = !canAssign;
   const calFlex = expandAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [2, 1],
+    outputRange: [2, stripMode ? 0.0001 : 1],
+  });
+  const calMinWidth = expandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, stripMode ? STRIP_W : 0],
   });
   const backlogFlex = expandAnim.interpolate({
     inputRange: [0, 1],
@@ -402,6 +413,38 @@ export function CalendarBoard({
   const jobNameFor = (card: WorkRequest) =>
     workRequestJobsLabel(card, jobs) || 'No parent job';
 
+  // The crews pencilled in on a card ("fake assigned" while it sits in the
+  // pool) — ids of removed crews are dropped, never shown or assigned.
+  const plannedCrewIdsFor = (card: WorkRequest) =>
+    (card.plannedCrewIds ?? []).filter((id) =>
+      allCrews.some((c) => c.id === id)
+    );
+
+  // The crews a pool card lands on when it's scheduled: its pencilled-in
+  // crews when it has any, else the board's assign target(s).
+  const targetCrewsFor = (card: WorkRequest): (Crew | DailyCrew)[] => {
+    const planned = plannedCrewIdsFor(card);
+    return planned.length > 0
+      ? allCrews.filter((c) => planned.includes(c.id))
+      : activeCrews;
+  };
+
+  /**
+   * The run of days a pool card covers once it lands on `start`: its target
+   * span's length (date…endDate) carries over, so a request planned as three
+   * days schedules as three days.
+   */
+  const spanDaysFrom = (card: WorkRequest, start: string) => {
+    const length =
+      card.endDate && card.endDate > card.date
+        ? differenceInCalendarDays(parseISO(card.endDate), parseISO(card.date))
+        : 0;
+    return eachDayOfInterval({
+      start: parseISO(start),
+      end: addDays(parseISO(start), length),
+    }).map((d) => format(d, 'yyyy-MM-dd'));
+  };
+
   // Creation scope for the hover-＋ popup: a Field Super creates only within
   // their own jobs; the Scheduler within every active job.
   const creationJobs = useMemo(() => {
@@ -450,7 +493,11 @@ export function CalendarBoard({
 
   const assignToDate = (date: string) => {
     if (!placingCardId) return;
-    if (activeCrews.length === 0) {
+    const card = workRequests.find((c) => c.id === placingCardId);
+    if (!card) return;
+    // A pencilled-in crew wins over the board's assign target(s).
+    const targets = targetCrewsFor(card);
+    if (targets.length === 0) {
       flash(
         allCrews.length === 0
           ? 'Create a crew before assigning work.'
@@ -459,11 +506,13 @@ export function CalendarBoard({
       );
       return;
     }
-    activeCrews.forEach((c) => assignWorkRequest(placingCardId, c.id, date));
-    const card = workRequests.find((c) => c.id === placingCardId);
+    const days = spanDaysFrom(card, date);
+    targets.forEach((c) =>
+      days.forEach((d) => assignWorkRequest(card.id, c.id, d))
+    );
     setPlacingCardId(null);
-    const names = activeCrews.map((c) => c.name).join(', ');
-    flash(`Assigned "${card?.title ?? 'work request'}" to ${names}`, 'success');
+    const names = targets.map((c) => c.name).join(', ');
+    flash(`Assigned "${card.title}" to ${names}`, 'success');
   };
 
   // Removing a placed card from the calendar pulls it off EVERY crew it was
@@ -484,6 +533,37 @@ export function CalendarBoard({
     const title = workRequests.find((c) => c.id === id)?.title;
     deleteWorkRequest(id);
     flash(title ? `Work Request "${title}" deleted` : 'Work Request deleted', 'success');
+  };
+
+  // "Pencil in" from the pool list: plan the board's assign target(s) on the
+  // card WITHOUT scheduling it — or, on an already-planned card, clear the
+  // plan. The card stays in Work Requests either way; it lands on the
+  // pencilled-in crew(s) when it's finally moved onto the calendar.
+  const handlePlanCrews = (cardId: string) => {
+    const card = workRequests.find((c) => c.id === cardId);
+    if (!card) return;
+    if (plannedCrewIdsFor(card).length > 0) {
+      updateWorkRequest(cardId, { plannedCrewIds: undefined });
+      flash(`"${card.title}" — pencilled-in crew cleared`, 'success');
+      return;
+    }
+    if (activeCrews.length === 0) {
+      flash(
+        allCrews.length === 0
+          ? 'Create a crew before pencilling in work.'
+          : 'Tap a crew to make it the assign target first.',
+        'warning'
+      );
+      return;
+    }
+    updateWorkRequest(cardId, {
+      plannedCrewIds: activeCrews.map((c) => c.id),
+    });
+    const names = activeCrews.map((c) => c.name).join(', ');
+    flash(
+      `"${card.title}" pencilled in for ${names} — it stays in Work Requests until it's moved over`,
+      'success'
+    );
   };
 
   // Drag & drop lives on the web console (mouse-driven); native falls back to
@@ -582,9 +662,32 @@ export function CalendarBoard({
     const existing = assignments.filter((a) => a.workRequestId === item.id);
 
     if (item.kind === 'resize') {
+      if (existing.length === 0) {
+        // An UNSCHEDULED request's grip re-dates the END of its target span
+        // on the Work Requests calendar (never before its target date — that
+        // collapses back to one day).
+        if (target.kind !== 'backlog-day') {
+          flash(
+            'Drop the stretch handle on a day of the Work Requests calendar.',
+            'info'
+          );
+          return;
+        }
+        const end = target.date < card.date ? card.date : target.date;
+        const nextEnd = end === card.date ? undefined : end;
+        if (nextEnd !== card.endDate) {
+          updateWorkRequest(item.id, { endDate: nextEnd });
+        }
+        flash(
+          nextEnd
+            ? `"${card.title}" planned ${card.date} – ${end}`
+            : `"${card.title}" planned for ${card.date} only`,
+          'success'
+        );
+        return;
+      }
       // The stretch grip: dropping on a day re-dates the END of the request's
       // stretch (never before its start — that collapses back to one day).
-      if (existing.length === 0) return;
       if (target.kind !== 'day') {
         flash('Drop the stretch handle on a calendar day.', 'info');
         return;
@@ -610,10 +713,28 @@ export function CalendarBoard({
     }
 
     if (target.kind === 'backlog-day') {
-      // A specific pool day: unassign (if placed) and retarget the request.
+      // A specific pool day: unassign (if placed) and retarget the request,
+      // keeping its length — a 3-day stretch stays 3 days in the pool.
+      const dates =
+        existing.length > 0
+          ? [...new Set(existing.map((a) => a.date))].sort()
+          : [
+              card.date,
+              card.endDate && card.endDate > card.date
+                ? card.endDate
+                : card.date,
+            ];
+      const length = differenceInCalendarDays(
+        parseISO(dates[dates.length - 1]),
+        parseISO(dates[0])
+      );
       existing.forEach((a) => unassignWorkRequest(a.id));
-      if (card.date !== target.date) {
-        updateWorkRequest(item.id, { date: target.date });
+      const nextEnd =
+        length > 0
+          ? format(addDays(parseISO(target.date), length), 'yyyy-MM-dd')
+          : undefined;
+      if (card.date !== target.date || card.endDate !== nextEnd) {
+        updateWorkRequest(item.id, { date: target.date, endDate: nextEnd });
       }
       flash(
         existing.length > 0
@@ -640,8 +761,11 @@ export function CalendarBoard({
         format(addDays(parseISO(target.date), length), 'yyyy-MM-dd')
       );
     } else {
-      // From the pool: same crew-target rules as the Schedule button.
-      if (activeCrews.length === 0) {
+      // From the pool: its pencilled-in crew(s) if any, else the same
+      // crew-target rules as the Schedule button. Its target span's length
+      // carries over (a 3-day pool stretch schedules as 3 days).
+      const targets = targetCrewsFor(card);
+      if (targets.length === 0) {
         flash(
           allCrews.length === 0
             ? 'Create a crew before assigning work.'
@@ -650,8 +774,11 @@ export function CalendarBoard({
         );
         return;
       }
-      activeCrews.forEach((c) => assignWorkRequest(item.id, c.id, target.date));
-      const names = activeCrews.map((c) => c.name).join(', ');
+      const days = spanDaysFrom(card, target.date);
+      targets.forEach((c) =>
+        days.forEach((d) => assignWorkRequest(item.id, c.id, d))
+      );
+      const names = targets.map((c) => c.name).join(', ');
       flash(`Assigned "${card.title}" to ${names}`, 'success');
     }
     applyDayOrder(target.date, item.id, target.index);
@@ -704,6 +831,7 @@ export function CalendarBoard({
                   visible={!hiddenCrewIds.has(crew.id)}
                   active={canAssign && activeCrewIds.has(crew.id)}
                   daily={dailyCrews.some((dc) => dc.id === crew.id)}
+                  calendar={'isCalendar' in crew && !!crew.isCalendar}
                   onPress={() => cycleCrew(crew.id)}
                 />
               ))}
@@ -733,11 +861,20 @@ export function CalendarBoard({
       )}
 
       <View style={styles.board}>
-        <Animated.View style={[styles.calCol, { flex: calFlex }]}>
+        <Animated.View
+          style={[styles.calCol, { flex: calFlex, minWidth: calMinWidth }]}
+        >
+          {stripMode && backlogExpanded ? (
+            <CollapsedCalendarStrip
+              month={month}
+              onExpand={() => toggleBacklogExpanded(false)}
+            />
+          ) : (
           <MonthCalendar
             month={month}
             onPrevMonth={() => setMonth((m) => subMonths(m, 1))}
             onNextMonth={() => setMonth((m) => addMonths(m, 1))}
+            onSelectMonth={setMonth}
             activeCrews={activeCrews}
             visibleAssignments={visibleAssignments}
             workRequests={workRequests}
@@ -778,6 +915,7 @@ export function CalendarBoard({
             }}
             flashCard={flashCard}
           />
+          )}
         </Animated.View>
 
         {dayFocus != null && (
@@ -810,6 +948,9 @@ export function CalendarBoard({
               focusNonce={showCardNonce}
               flashCard={flashCard}
               onCreateRequest={(date) => setCreateTarget({ date, assign: false })}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewHoverTagFor}
+              plannedCrewIdsFor={plannedCrewIdsFor}
             />
           ) : (
             <Backlog
@@ -825,6 +966,10 @@ export function CalendarBoard({
                 name: c.name,
                 color: colorForCrew(c.id),
               }))}
+              plannedCrewIdsFor={plannedCrewIdsFor}
+              colorForCrew={colorForCrew}
+              crewNameFor={crewTagFor}
+              onPlanCrews={canAssign ? handlePlanCrews : undefined}
             />
           )}
           </BacklogDropColumn>
@@ -928,6 +1073,37 @@ function BacklogDropColumn({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A Field Super's crew calendar while their Work Requests calendar is
+ * expanded: a slim strip holding the month and ONE arrow that brings the
+ * full calendar back (collapsing the Work Requests calendar again).
+ */
+function CollapsedCalendarStrip({
+  month,
+  onExpand,
+}: {
+  month: Date;
+  onExpand: () => void;
+}) {
+  return (
+    <View style={styles.strip}>
+      <Pressable
+        onPress={onExpand}
+        style={({ pressed }) => [styles.stripBtn, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Show the full calendar"
+      >
+        <Feather name="chevron-right" size={18} color={colors.textPrimary} />
+      </Pressable>
+      <View style={styles.stripLabelWrap}>
+        <Text style={styles.stripLabel} numberOfLines={1}>
+          {format(month, 'MMMM yyyy')}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 /** A crew toggle: hidden → visible → active (assign target) → hidden. */
 function CrewChip({
   crew,
@@ -935,6 +1111,7 @@ function CrewChip({
   visible,
   active,
   daily,
+  calendar,
   onPress,
 }: {
   crew: Crew;
@@ -943,9 +1120,12 @@ function CrewChip({
   active: boolean;
   /** True for a Daily Crew — drives the hover "Daily" tag. */
   daily?: boolean;
+  /** True for a Scheduler's calendar (no members) — hover "Calendar" tag. */
+  calendar?: boolean;
   onPress: () => void;
 }) {
-  // The "Daily" tag only shows on hover to keep the chip row compact.
+  // The "Daily" / "Calendar" tag only shows on hover to keep the chip row
+  // compact.
   const [hovered, setHovered] = useState(false);
   return (
     <Pressable
@@ -980,9 +1160,11 @@ function CrewChip({
       >
         {crew.name}
       </Text>
-      {daily && hovered && (
+      {(daily || calendar) && hovered && (
         <View style={[styles.dailyTag, { borderColor: withAlpha(color, 0.6) }]}>
-          <Text style={[styles.dailyTagText, { color }]}>Daily</Text>
+          <Text style={[styles.dailyTagText, { color }]}>
+            {daily ? 'Daily' : 'Calendar'}
+          </Text>
         </View>
       )}
       {active && <Feather name="crosshair" size={12} color={color} />}
@@ -1131,5 +1313,44 @@ const styles = themed(() => StyleSheet.create({
   backlogCol: {
     flex: 1,
     maxWidth: 360,
+  },
+  // The Field Super's shrunken crew calendar (see CollapsedCalendarStrip).
+  strip: {
+    flex: 1,
+    width: STRIP_W,
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  stripBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The month name reads bottom-to-top down the strip. The text's layout box
+  // stays 160 wide (transforms don't affect layout), centered in the strip
+  // and clipped by it — so only the rotated glyphs show.
+  stripLabelWrap: {
+    flex: 1,
+    width: STRIP_W,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  stripLabel: {
+    width: 160,
+    textAlign: 'center',
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    transform: [{ rotate: '-90deg' }],
   },
 }));

@@ -251,6 +251,8 @@ export default function FieldSuperJobsScreen() {
       <CreateJobModal
         visible={createOpen}
         mode="field"
+        // Field Supers don't enter a PO — the office adds it from Edit job.
+        poField={false}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
       />

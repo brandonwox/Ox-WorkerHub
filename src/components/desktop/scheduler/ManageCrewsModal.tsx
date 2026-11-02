@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -24,7 +24,12 @@ interface Props {
   onClose: () => void;
 }
 
-/** Crew CRUD. Only installer-role workers can ever be added to a crew. */
+/**
+ * Crew CRUD. Only installer-role workers can ever be added to a crew. The
+ * Scheduler's CALENDARS (planning lanes that aren't crews — no members, a
+ * free-form name) are managed here too; they live in the same `crews` list
+ * flagged `isCalendar`.
+ */
 export function ManageCrewsModal({ visible, onClose }: Props) {
   const workers = useAppStore((s) => s.workers);
   const crews = useAppStore((s) => s.crews);
@@ -38,6 +43,10 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
 
   // Hard constraint: the picker only ever lists installers.
   const installers = workers.filter((w) => w.role === 'installer');
+  // Installer crews and the Scheduler's calendars share the list; each
+  // section shows its own kind.
+  const installerCrews = crews.filter((c) => !c.isCalendar);
+  const calendars = crews.filter((c) => c.isCalendar);
 
   // Options for the foreman dropdowns: the given crew members, by name.
   const memberOptions = (ids: string[]) =>
@@ -71,7 +80,44 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
   const [newCrewColor, setNewCrewColor] = useState<string | undefined>();
   const [newDailyMembers, setNewDailyMembers] = useState<string[]>([]);
   const [newDailyColor, setNewDailyColor] = useState<string | undefined>();
+  const [newCalendarName, setNewCalendarName] = useState('');
+  const [newCalendarColor, setNewCalendarColor] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
+
+  /** A calendar/crew name already in use (case-insensitive), other than `exceptId`'s own. */
+  const nameTaken = (name: string, exceptId?: string) =>
+    crews.some(
+      (c) => c.id !== exceptId && c.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+  const createCalendar = () => {
+    const name = newCalendarName.trim();
+    if (!name) {
+      setError('Give the calendar a name.');
+      return;
+    }
+    if (nameTaken(name)) {
+      setError('That name is already used by a crew or calendar.');
+      return;
+    }
+    // No members, no foreman — a calendar is a planning lane, not a crew.
+    addCrew({ name, installerIds: [], color: newCalendarColor, isCalendar: true });
+    setNewCalendarName('');
+    setNewCalendarColor(undefined);
+    setError(null);
+  };
+
+  const renameCalendar = (id: string, raw: string) => {
+    const name = raw.trim();
+    const current = crews.find((c) => c.id === id);
+    if (!current || !name || name === current.name) return;
+    if (nameTaken(name, id)) {
+      setError('That name is already used by a crew or calendar.');
+      return;
+    }
+    updateCrew(id, { name });
+    setError(null);
+  };
 
   const createCrew = () => {
     const name = newCrewName.trim().toUpperCase();
@@ -128,10 +174,10 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
           <ScrollView contentContainerStyle={styles.body}>
             {/* Permanent crews */}
             <Text style={styles.sectionTitle}>Permanent crews</Text>
-            {crews.length === 0 ? (
+            {installerCrews.length === 0 ? (
               <Text style={styles.muted}>No crews yet.</Text>
             ) : (
-              crews.map((crew) => (
+              installerCrews.map((crew) => (
                 <View key={crew.id} style={styles.crewBlock}>
                   <View style={styles.crewHead}>
                     <Text style={styles.crewName}>{crew.name}</Text>
@@ -232,6 +278,70 @@ export function ManageCrewsModal({ visible, onClose }: Props) {
               >
                 <Feather name="plus" size={15} color={colors.textOnAccent} />
                 <Text style={styles.addBtnText}>Add crew</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Calendars — the Scheduler's planning lanes. Not crews: no
+                members, no foreman, any name. Work schedules onto one exactly
+                like a crew (own chip + color on the board) but nothing
+                reaches any installer. */}
+            <Text style={styles.sectionTitle}>Calendars</Text>
+            <Text style={styles.muted}>
+              Extra calendars that aren&apos;t crews — no installers are
+              assigned to them. Schedule work onto one like any crew; it shows
+              on the board in its own color and no installer sees it.
+            </Text>
+            {calendars.length === 0 ? (
+              <Text style={styles.muted}>No calendars yet.</Text>
+            ) : (
+              calendars.map((cal) => (
+                <View key={cal.id} style={styles.crewBlock}>
+                  <View style={styles.crewHead}>
+                    <Text style={styles.crewName}>{cal.name}</Text>
+                    <Pressable
+                      onPress={() => removeCrew(cal.id)}
+                      hitSlop={6}
+                      style={({ pressed }) => pressed && styles.pressed}
+                    >
+                      <Feather name="trash-2" size={15} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                  <CalendarNameField
+                    name={cal.name}
+                    onCommit={(name) => renameCalendar(cal.id, name)}
+                  />
+                  <Text style={styles.fieldLabel}>Color</Text>
+                  <ColorPicker
+                    value={cal.color}
+                    fallback={autoColors.get(cal.id) ?? colors.textTertiary}
+                    onPick={(color) => updateCrew(cal.id, { color })}
+                  />
+                </View>
+              ))
+            )}
+
+            <View style={styles.formBlock}>
+              <FormInput
+                label="New calendar name"
+                value={newCalendarName}
+                onChangeText={setNewCalendarName}
+                placeholder="Deliveries"
+                autoCapitalize="words"
+              />
+              <Text style={styles.fieldLabel}>Color</Text>
+              <ColorPicker
+                value={newCalendarColor}
+                fallback={colors.textTertiary}
+                onPick={setNewCalendarColor}
+              />
+              <Pressable
+                style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+                onPress={createCalendar}
+              >
+                <Feather name="plus" size={15} color={colors.textOnAccent} />
+                <Text style={styles.addBtnText}>Add calendar</Text>
               </Pressable>
             </View>
 
@@ -420,6 +530,32 @@ function MemberEditor({
           </View>
         ))}
     </View>
+  );
+}
+
+/**
+ * A calendar's rename box: edits locally, commits on blur / enter (the host
+ * rejects blanks and names another crew or calendar already uses).
+ */
+function CalendarNameField({
+  name,
+  onCommit,
+}: {
+  name: string;
+  onCommit: (name: string) => void;
+}) {
+  const [text, setText] = useState(name);
+  // A rename that lands from elsewhere (or a rejected one) resyncs the box.
+  useEffect(() => setText(name), [name]);
+  return (
+    <FormInput
+      label="Name"
+      value={text}
+      onChangeText={setText}
+      onBlur={() => onCommit(text)}
+      onSubmitEditing={() => onCommit(text)}
+      autoCapitalize="words"
+    />
   );
 }
 

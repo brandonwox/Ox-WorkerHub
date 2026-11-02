@@ -24,7 +24,7 @@ import { Job, JOB_SCOPES, JobScope, JobStatus, Worker } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
 import { CountTotalField, JOB_COUNT_DEFS } from '@/utils/jobCounts';
 import { SUB_JOB_TYPE_PRESETS } from '@/utils/jobName';
-import { PO_TAKEN_MESSAGE, poTaken } from '@/utils/jobPo';
+import { poTaken } from '@/utils/jobPo';
 import { workRequestLinksJob } from '@/utils/workRequestJobs';
 
 /**
@@ -269,7 +269,6 @@ function CreateJobSheet({
   onSubmit: (
     input: {
       name: string;
-      po: string;
       location: string;
       builder?: string;
       scopes?: JobScope[];
@@ -277,7 +276,6 @@ function CreateJobSheet({
   ) => void;
 }) {
   const [name, setName] = useState('');
-  const [po, setPo] = useState('');
   const [location, setLocation] = useState('');
   const [builder, setBuilder] = useState('');
   const [scopes, setScopes] = useState<JobScope[]>([]);
@@ -287,8 +285,6 @@ function CreateJobSheet({
     Partial<Record<CountTotalField, string>>
   >({});
   const [error, setError] = useState<string | null>(null);
-  // For the duplicate-PO check (archived jobs included).
-  const allJobs = useAppStore((s) => s.jobs);
 
   // The count pairs the selected scopes require (Windows carries two: Window
   // + SGD; Storefront carries none) — same rule as the desktop form.
@@ -296,7 +292,6 @@ function CreateJobSheet({
 
   const close = () => {
     setName('');
-    setPo('');
     setLocation('');
     setBuilder('');
     setScopes([]);
@@ -317,14 +312,8 @@ function CreateJobSheet({
       setError('Job name is required.');
       return;
     }
-    if (!po.trim()) {
-      setError('PO is required.');
-      return;
-    }
-    if (poTaken(po, allJobs)) {
-      setError(PO_TAKEN_MESSAGE);
-      return;
-    }
+    // No PO at creation for Field Supers — the office adds it later (the
+    // inline editor below still refuses a PO another job already uses).
     // Every selected scope's count total is required (0 is fine — it just
     // has to be entered deliberately).
     const countTotals: Partial<Record<CountTotalField, number>> = {};
@@ -338,7 +327,6 @@ function CreateJobSheet({
     }
     onSubmit({
       name: name.trim(),
-      po: po.trim(),
       location: location.trim(),
       builder: builder.trim() || undefined,
       scopes: scopes.length > 0 ? scopes : undefined,
@@ -359,27 +347,15 @@ function CreateJobSheet({
             </Pressable>
           </View>
 
-          {/* Name + PO share the line — both are required to create. */}
-          <View style={styles.namePoRow}>
-            <View style={styles.nameCol}>
-              <FormInput
-                label="Job name"
-                value={name}
-                onChangeText={setName}
-                placeholder="Snyderville Commercial Complex"
-                autoCapitalize="words"
-              />
-            </View>
-            <View style={styles.poCol}>
-              <FormInput
-                label="PO"
-                value={po}
-                onChangeText={setPo}
-                placeholder="e.g. 4501"
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
+          {/* Just the name — Field Supers create jobs without a PO (the
+              office adds it later from the job's details). */}
+          <FormInput
+            label="Job name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Snyderville Commercial Complex"
+            autoCapitalize="words"
+          />
           <FormInput
             label="Jobsite address"
             value={location}
@@ -1271,16 +1247,6 @@ const styles = themed(() => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: fonts.bold,
     fontSize: 18,
-  },
-  namePoRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  nameCol: {
-    flex: 2,
-  },
-  poCol: {
-    flex: 1,
   },
   scopeField: {
     gap: spacing.sm,
