@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -14,6 +14,7 @@ import { DateField } from '@/components/DateField';
 import { KEYBOARD_DONE_ID } from '@/components/KeyboardDoneBar';
 import { TimeField } from '@/components/TimeField';
 import { useAppStore, uuid } from '@/store/useAppStore';
+import { autoGrowHeight } from '@/utils/autoGrow';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import {
   Job,
@@ -599,6 +600,14 @@ function CommitField({
   // Multi-line fields grow to fit their text (measured content height) so
   // every line stays visible, on the way in and once committed.
   const [contentHeight, setContentHeight] = useState(0);
+  // Stable identity on purpose: react-native-web re-measures the textarea
+  // whenever this handler changes, so an inline arrow would re-measure on
+  // every render.
+  const onContentSize = useCallback(
+    (e: { nativeEvent: { contentSize: { height: number } } }) =>
+      setContentHeight(e.nativeEvent.contentSize.height),
+    []
+  );
   useEffect(() => {
     if (!focused) setText(value);
   }, [value, focused]);
@@ -615,18 +624,20 @@ function CommitField({
           styles.input,
           compact && styles.inputCompact,
           inputProps.multiline && styles.inputMultiline,
+          // autoGrowHeight knows what each platform's measurement already
+          // includes — adding the padding on web too grew the box without
+          // end (blank page).
           inputProps.multiline &&
             contentHeight > 0 && {
-              height: Math.max(72, contentHeight + spacing.md * 2 + 4),
+              height: autoGrowHeight(contentHeight, {
+                min: 72,
+                nativeChrome: spacing.md * 2 + 4,
+              }),
             },
         ]}
         value={text}
         onChangeText={setText}
-        onContentSizeChange={
-          inputProps.multiline
-            ? (e) => setContentHeight(e.nativeEvent.contentSize.height)
-            : undefined
-        }
+        onContentSizeChange={inputProps.multiline ? onContentSize : undefined}
         onFocus={() => setFocused(true)}
         onBlur={commit}
         onSubmitEditing={inputProps.multiline ? undefined : commit}

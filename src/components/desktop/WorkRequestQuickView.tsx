@@ -9,7 +9,14 @@ import {
 } from 'date-fns';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Modal,
   Platform,
@@ -77,6 +84,7 @@ import {
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow, formatTime, parseTimeInput } from '@/utils/time';
 import { useDismissOnOutsideClick } from '@/utils/useOutsideClick';
+import { autoGrowHeight } from '@/utils/autoGrow';
 import {
   CASEMENT_TASK_PREFIX,
   DELIVERY_AUTO_TASKS,
@@ -299,6 +307,14 @@ export function WorkRequestQuickView({
   // The pickup location editor grows with its text (multi-line, Enter adds
   // a line); this is the measured content height while it's open.
   const [pickupHeight, setPickupHeight] = useState(0);
+  // Stable identity on purpose: react-native-web re-measures the textarea
+  // whenever this handler changes, so an inline arrow would re-measure on
+  // every render.
+  const onPickupContentSize = useCallback(
+    (e: { nativeEvent: { contentSize: { height: number } } }) =>
+      setPickupHeight(e.nativeEvent.contentSize.height),
+    []
+  );
   // Office-side "Upload images" (web file picker) is in flight.
   const [pickingPhotos, setPickingPhotos] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
@@ -2357,18 +2373,20 @@ export function WorkRequestQuickView({
                   styles.textEditor,
                   styles.multiline,
                   // Grow to fit every line typed (never shrink below the
-                  // multi-line minimum); the padding allowance keeps the last
-                  // line from being clipped on web.
+                  // multi-line minimum). autoGrowHeight knows what each
+                  // platform's measurement already includes — adding the
+                  // padding on web too grew the box without end (blank page).
                   pickupHeight > 0 && {
-                    height: Math.max(56, pickupHeight + spacing.sm * 2 + 2),
+                    height: autoGrowHeight(pickupHeight, {
+                      min: 56,
+                      nativeChrome: spacing.sm * 2 + 2,
+                    }),
                   },
                 ]}
                 value={draft}
                 onChangeText={setDraft}
                 onBlur={commitPickupLocation}
-                onContentSizeChange={(e) =>
-                  setPickupHeight(e.nativeEvent.contentSize.height)
-                }
+                onContentSizeChange={onPickupContentSize}
                 placeholder="Where does the crew pick up? (Enter for a new line)"
                 placeholderTextColor={colors.textTertiary}
                 autoFocus
