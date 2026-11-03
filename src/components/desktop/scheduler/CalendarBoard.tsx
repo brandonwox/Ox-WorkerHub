@@ -480,9 +480,16 @@ export function CalendarBoard({
     flash(`Work Request "${input.title}" created`, 'success');
   };
 
-  // Work Requests = work requests with no assignment row anywhere.
+  // Work Requests = work requests with no assignment row anywhere. A card the
+  // Scheduler RESOLVED (closed out) leaves the pool for good; scheduled chips
+  // on the crew calendar are untouched.
   const unassigned = useMemo(
-    () => workRequests.filter((c) => assignments.every((a) => a.workRequestId !== c.id)),
+    () =>
+      workRequests.filter(
+        (c) =>
+          c.resolvedAt == null &&
+          assignments.every((a) => a.workRequestId !== c.id)
+      ),
     [workRequests, assignments]
   );
   // Every assignment belonging to a visible (not toggled-off) crew.

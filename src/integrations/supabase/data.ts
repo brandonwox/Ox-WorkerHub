@@ -72,6 +72,14 @@ interface JobRow {
   screen_count_total: number | null;
   igu_count_done: number | null;
   igu_count_total: number | null;
+  /** Delivered (on-site) numbers, one per count. */
+  window_count_delivered: number | null;
+  sgd_count_delivered: number | null;
+  mirror_count_delivered: number | null;
+  shower_count_delivered: number | null;
+  swing_door_count_delivered: number | null;
+  screen_count_delivered: number | null;
+  igu_count_delivered: number | null;
   window_layout_not_needed: boolean | null;
   mirror_layout_not_needed: boolean | null;
   shower_layout_not_needed: boolean | null;
@@ -120,6 +128,9 @@ interface WorkRequestRow {
   /** jsonb array of WorkRequestStatusLogEntry objects, oldest first. */
   status_log: WorkRequestStatusLogEntry[] | null;
   undefined_reminder_date: string | null;
+  /** The Scheduler's close-out stamp (null = open) and who set it. */
+  resolved_at: string | null;
+  resolved_by: string | null;
   details: {
     generalContractor?: string;
     managerName?: string;
@@ -277,6 +288,13 @@ function rowToJob(r: JobRow): Job {
     screenCountTotal: r.screen_count_total ?? undefined,
     iguCountDone: r.igu_count_done ?? undefined,
     iguCountTotal: r.igu_count_total ?? undefined,
+    windowCountDelivered: r.window_count_delivered ?? undefined,
+    sgdCountDelivered: r.sgd_count_delivered ?? undefined,
+    mirrorCountDelivered: r.mirror_count_delivered ?? undefined,
+    showerCountDelivered: r.shower_count_delivered ?? undefined,
+    swingDoorCountDelivered: r.swing_door_count_delivered ?? undefined,
+    screenCountDelivered: r.screen_count_delivered ?? undefined,
+    iguCountDelivered: r.igu_count_delivered ?? undefined,
     windowLayoutNotNeeded: r.window_layout_not_needed || undefined,
     mirrorLayoutNotNeeded: r.mirror_layout_not_needed || undefined,
     showerLayoutNotNeeded: r.shower_layout_not_needed || undefined,
@@ -343,6 +361,8 @@ function rowToWorkRequest(r: WorkRequestRow): WorkRequest {
     statusChangedById: r.status_changed_by ?? undefined,
     statusLog: r.status_log && r.status_log.length > 0 ? r.status_log : undefined,
     undefinedReminderDate: r.undefined_reminder_date ?? undefined,
+    resolvedAt: r.resolved_at ?? undefined,
+    resolvedById: r.resolved_by ?? undefined,
     priority: r.priority as WorkRequestPriority,
     priorityOrder: r.priority_order,
     priorityStartDate: r.priority_start_date ?? undefined,
@@ -696,6 +716,13 @@ function jobToRow(job: Job) {
     screen_count_total: job.screenCountTotal ?? null,
     igu_count_done: job.iguCountDone ?? null,
     igu_count_total: job.iguCountTotal ?? null,
+    window_count_delivered: job.windowCountDelivered ?? null,
+    sgd_count_delivered: job.sgdCountDelivered ?? null,
+    mirror_count_delivered: job.mirrorCountDelivered ?? null,
+    shower_count_delivered: job.showerCountDelivered ?? null,
+    swing_door_count_delivered: job.swingDoorCountDelivered ?? null,
+    screen_count_delivered: job.screenCountDelivered ?? null,
+    igu_count_delivered: job.iguCountDelivered ?? null,
     window_layout_not_needed: job.windowLayoutNotNeeded ?? false,
     mirror_layout_not_needed: job.mirrorLayoutNotNeeded ?? false,
     shower_layout_not_needed: job.showerLayoutNotNeeded ?? false,
@@ -817,6 +844,8 @@ function workRequestToRow(card: WorkRequest) {
     // Column is NOT NULL — an absent log writes as the empty jsonb array.
     status_log: card.statusLog ?? [],
     undefined_reminder_date: card.undefinedReminderDate ?? null,
+    resolved_at: card.resolvedAt ?? null,
+    resolved_by: card.resolvedById ?? null,
     priority: card.priority,
     priority_order: card.priorityOrder,
     priority_start_date: card.priorityStartDate ?? null,

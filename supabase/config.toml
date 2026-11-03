@@ -413,6 +413,11 @@ verify_jwt = false
 [functions.task-reminder-email]
 verify_jwt = false
 
+# work-event-email is called by DATABASE triggers (pg_net) — priority "Now"
+# and delivery-complete — and authenticates with the x-webhook-secret header.
+[functions.work-event-email]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

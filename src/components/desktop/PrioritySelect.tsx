@@ -1,18 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import {
-  addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  format,
-  getDay,
-  isToday,
-  parseISO,
-  startOfMonth,
-  subMonths,
-} from 'date-fns';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DayPickerField } from '@/components/desktop/DayPicker';
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { PRIORITY_CHOICES, PriorityChoice } from '@/types';
@@ -137,14 +127,14 @@ export function PrioritySelect({ value, onChange, autoOpen }: Props) {
 
       {value.priority !== '' && (
         <View style={styles.datesRow}>
-          <DateField
+          <DayPickerField
             label="Start"
             value={value.startDate}
             onChange={setStart}
           />
           {/* Right-aligned: the End field sits at the form's right edge, so a
               left-aligned picker (252px wide) ran off the screen. */}
-          <DateField
+          <DayPickerField
             label="End"
             value={value.endDate}
             onChange={setEnd}
@@ -152,128 +142,6 @@ export function PrioritySelect({ value, onChange, autoOpen }: Props) {
           />
         </View>
       )}
-    </View>
-  );
-}
-
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-/** A date input that opens a small month-calendar popover to pick the day. */
-function DateField({
-  label,
-  value,
-  onChange,
-  align = 'left',
-}: {
-  label: string;
-  /** yyyy-MM-dd, or '' when unset. */
-  value: string;
-  onChange: (date: string) => void;
-  /** Which field edge the picker hugs — 'right' keeps it on-screen for the End field. */
-  align?: 'left' | 'right';
-}) {
-  const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(() =>
-    value ? parseISO(value) : new Date()
-  );
-  const wrapRef = useRef<View>(null);
-
-  const monthStart = startOfMonth(month);
-  const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
-  const leadingBlanks = getDay(monthStart);
-
-  const openPicker = () => {
-    setMonth(value ? parseISO(value) : new Date());
-    setOpen(true);
-  };
-
-  return (
-    <View ref={wrapRef} style={styles.dateField}>
-      <Text style={styles.dateLabel}>{label}</Text>
-      <Pressable
-        style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
-        onPress={openPicker}
-      >
-        <Feather name="calendar" size={13} color={colors.textSecondary} />
-        <Text
-          style={[styles.triggerText, !value && styles.triggerPlaceholder]}
-        >
-          {value ? format(parseISO(value), 'EEE, MMM d') : 'Pick a date'}
-        </Text>
-      </Pressable>
-      <DropdownPortal
-        anchorRef={wrapRef}
-        open={open}
-        onClose={() => setOpen(false)}
-        minWidth={252}
-        align={align}
-      >
-        <View style={styles.picker}>
-          <View style={styles.pickerHeader}>
-            <Pressable
-              style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-              onPress={() => setMonth((m) => subMonths(m, 1))}
-              hitSlop={6}
-            >
-              <Feather
-                name="chevron-left"
-                size={16}
-                color={colors.textSecondary}
-              />
-            </Pressable>
-            <Text style={styles.pickerMonth}>{format(month, 'MMMM yyyy')}</Text>
-            <Pressable
-              style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-              onPress={() => setMonth((m) => addMonths(m, 1))}
-              hitSlop={6}
-            >
-              <Feather
-                name="chevron-right"
-                size={16}
-                color={colors.textSecondary}
-              />
-            </Pressable>
-          </View>
-          <View style={styles.pickerGrid}>
-            {WEEKDAYS.map((d, i) => (
-              <Text key={`${d}-${i}`} style={styles.pickerWeekday}>
-                {d}
-              </Text>
-            ))}
-            {Array.from({ length: leadingBlanks }).map((_, i) => (
-              <View key={`blank-${i}`} style={styles.pickerCell} />
-            ))}
-            {days.map((day) => {
-              const ymd = format(day, 'yyyy-MM-dd');
-              const selected = ymd === value;
-              return (
-                <Pressable
-                  key={ymd}
-                  style={({ pressed }) => [
-                    styles.pickerCell,
-                    selected && styles.pickerCellSelected,
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => {
-                    onChange(ymd);
-                    setOpen(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.pickerDay,
-                      isToday(day) && styles.pickerDayToday,
-                      selected && styles.pickerDaySelected,
-                    ]}
-                  >
-                    {format(day, 'd')}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </DropdownPortal>
     </View>
   );
 }
@@ -337,79 +205,5 @@ const styles = themed(() => StyleSheet.create({
   datesRow: {
     flexDirection: 'row',
     gap: spacing.md,
-  },
-  dateField: {
-    flex: 1,
-    gap: 3,
-  },
-  dateLabel: {
-    color: colors.textTertiary,
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  picker: {
-    width: 252,
-    backgroundColor: colors.surfaceLight,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.sm,
-    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.4)',
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: spacing.sm,
-  },
-  navBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickerMonth: {
-    color: colors.textPrimary,
-    fontFamily: fonts.semiBold,
-    fontSize: 13,
-  },
-  pickerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  pickerWeekday: {
-    width: '14.2857%',
-    textAlign: 'center',
-    color: colors.textTertiary,
-    fontFamily: fonts.semiBold,
-    fontSize: 10,
-    paddingVertical: 2,
-  },
-  pickerCell: {
-    width: '14.2857%',
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.sm,
-  },
-  pickerCellSelected: {
-    backgroundColor: colors.primary,
-  },
-  pickerDay: {
-    color: colors.textSecondary,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-  },
-  pickerDayToday: {
-    color: colors.textPrimary,
-    fontFamily: fonts.bold,
-  },
-  pickerDaySelected: {
-    color: colors.textOnAccent,
-    fontFamily: fonts.bold,
   },
 }));

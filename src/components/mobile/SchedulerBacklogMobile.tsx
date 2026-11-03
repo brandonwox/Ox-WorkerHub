@@ -25,11 +25,16 @@ export function SchedulerBacklogMobile() {
   const assignments = useAppStore((s) => s.assignments);
 
   // Same rule as the desktop board: no assignment row anywhere = backlog.
-  // (Archived jobs' cards are excluded, like everywhere active.)
+  // (Archived jobs' cards are excluded, like everywhere active; so are cards
+  // the Scheduler resolved.)
   const unassigned = useMemo(
     () =>
       activeWorkRequests(workRequests, jobs)
-        .filter((c) => assignments.every((a) => a.workRequestId !== c.id))
+        .filter(
+          (c) =>
+            c.resolvedAt == null &&
+            assignments.every((a) => a.workRequestId !== c.id)
+        )
         .sort(comparePriority),
     [workRequests, jobs, assignments]
   );

@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useRef, useState } from 'react';
+import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -20,6 +20,69 @@ function matches(option: ComboOption, query: string): boolean {
     option.label.toLowerCase().includes(q) ||
     (option.keywords ?? []).some((k) => k.toLowerCase().includes(q))
   );
+}
+
+/**
+ * How long a menu stays mounted after its input blurs — long enough for a
+ * press that is already in flight inside it to land (see useMenuPress).
+ */
+const BLUR_CLOSE_DELAY_MS = 120;
+
+/**
+ * Keeps a dropdown menu alive while an option inside it is being pressed.
+ *
+ * On web the input blurs the moment the mouse goes DOWN on an option (the
+ * option takes focus), but react-native-web fires the option's onPress on the
+ * browser's click, i.e. on mouse-UP. Closing on a timer after the blur raced
+ * that click: a press held longer than the timer unmounted the option before
+ * the click landed, so nothing was picked and the menu just closed — every
+ * time, for anyone who clicks deliberately. Here onPressIn (mouse-down, which
+ * runs BEFORE the blur) flags the press, the blur skips its close while the
+ * flag is up, and onPressOut schedules the close instead — only when the
+ * input really lost focus, so a touch scroll over the menu doesn't close it.
+ * A completed press cancels that close itself (choose/add call cancelClose).
+ */
+function useMenuPress(
+  inputRef: RefObject<TextInput | null>,
+  close: () => void
+) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressing = useRef(false);
+
+  const cancelClose = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      close();
+    }, BLUR_CLOSE_DELAY_MS);
+  };
+  /** The input blurred — close unless a press in the menu is in flight. */
+  const onInputBlur = () => {
+    if (!pressing.current) scheduleClose();
+  };
+  /** Spread onto every pressable inside the menu. */
+  const menuPressProps = {
+    onPressIn: () => {
+      pressing.current = true;
+      cancelClose();
+    },
+    onPressOut: () => {
+      pressing.current = false;
+      // The press is over; if it never lands (the pointer slid off the
+      // option) the blurred input would otherwise leave the menu stranded.
+      if (!inputRef.current?.isFocused()) scheduleClose();
+    },
+  };
+  // A pending close must not fire into an unmounted component.
+  useEffect(() => cancelClose, []);
+
+  return { cancelClose, onInputBlur, menuPressProps };
 }
 
 interface ComboboxProps {
@@ -54,6 +117,14 @@ export function Combobox({
 }: ComboboxProps) {
   const [open, setOpen] = useState(!!autoFocus);
   const [query, setQuery] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const { cancelClose, onInputBlur, menuPressProps } = useMenuPress(
+    inputRef,
+    () => {
+      setOpen(false);
+      onDismiss?.();
+    }
+  );
 
   const selected = options.find((o) => o.value === value);
   // Closed: show the option label, or the raw value for a custom entry.
@@ -63,32 +134,47 @@ export function Combobox({
     () => (query.trim() ? options.filter((o) => matches(o, query)) : options),
     [options, query]
   );
-  const exact = options.some(
+  // The option whose label is exactly what was typed (ignoring case).
+  const exactOption = options.find(
     (o) => o.label.toLowerCase() === query.trim().toLowerCase()
   );
-  const customAvailable = !!allowCustom && !!query.trim() && !exact;
+  const customAvailable = !!allowCustom && !!query.trim() && !exactOption;
 
   const choose = (opt: ComboOption) => {
+    cancelClose();
     onChange(opt.value);
     setQuery('');
     setOpen(false);
   };
 
   const commitCustom = () => {
-    if (customAvailable) {
-      onChange(query.trim());
-      setQuery('');
-      setOpen(false);
-    }
+    if (!customAvailable) return;
+    cancelClose();
+    onChange(query.trim());
+    setQuery('');
+    setOpen(false);
+  };
+
+  // Enter: typed text that IS an option picks it ("yes" ⏎ → Yes) — before,
+  // an exact match disabled the custom commit and Enter did nothing at all.
+  const submit = () => {
+    if (exactOption) choose(exactOption);
+    else commitCustom();
   };
 
   return (
     <View>
       <Pressable
         style={styles.inputRow}
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          setOpen(true);
+          // A click on the frame or chevron took focus off the input (which
+          // would close the menu) — hand it straight back.
+          inputRef.current?.focus();
+        }}
       >
         <TextInput
+          ref={inputRef}
           style={styles.input}
           value={open ? query : closedText}
           onChangeText={(t) => {
@@ -96,17 +182,14 @@ export function Combobox({
             setOpen(true);
           }}
           onFocus={() => {
-            setQuery('');
+            cancelClose();
+            // Opening afresh starts from the full list; a refocus mid-edit
+            // (the frame click above) keeps what was typed.
+            if (!open) setQuery('');
             setOpen(true);
           }}
-          // Delay so a press on an option lands before the menu unmounts.
-          onBlur={() =>
-            setTimeout(() => {
-              setOpen(false);
-              onDismiss?.();
-            }, 120)
-          }
-          onSubmitEditing={commitCustom}
+          onBlur={onInputBlur}
+          onSubmitEditing={submit}
           placeholder={placeholder}
           placeholderTextColor={colors.textTertiary}
           autoFocus={autoFocus}
@@ -125,6 +208,7 @@ export function Combobox({
               key={opt.value}
               style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
               onPress={() => choose(opt)}
+              {...menuPressProps}
             >
               <Text
                 style={[
@@ -143,6 +227,7 @@ export function Combobox({
             <Pressable
               style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
               onPress={commitCustom}
+              {...menuPressProps}
             >
               <Feather name="plus" size={14} color={colors.primary} />
               <Text style={styles.customText}>Use “{query.trim()}”</Text>
@@ -205,9 +290,14 @@ export function MultiCombobox({
   // collapseOnSelect: whether the "+ add" affordance re-opened the input.
   const [adding, setAdding] = useState(false);
   const inputRef = useRef<TextInput>(null);
-  // The blur-close is delayed so a press on an option lands first; refocusing
-  // (picking an option, clicking back in) cancels the pending close.
-  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { cancelClose, onInputBlur, menuPressProps } = useMenuPress(
+    inputRef,
+    () => {
+      setOpen(false);
+      setAdding(false);
+      onDismiss?.();
+    }
+  );
 
   const selectedOptions = options.filter((o) => values.includes(o.value));
   const available = useMemo(
@@ -221,6 +311,7 @@ export function MultiCombobox({
   const collapsed = !!collapseOnSelect && values.length > 0 && !adding;
 
   const add = (opt: ComboOption) => {
+    cancelClose();
     onChange([...values, opt.value]);
     setQuery('');
     // A collapsing picker folds back to chips after each pick.
@@ -229,13 +320,14 @@ export function MultiCombobox({
       setOpen(false);
     } else {
       // Keep the menu open for the next pick — the press blurred the input,
-      // so refocus (which also cancels the pending blur-close/dismiss).
+      // so refocus it.
       inputRef.current?.focus();
     }
   };
   const remove = (val: string) => onChange(values.filter((v) => v !== val));
 
   const pickFooter = () => {
+    cancelClose();
     setQuery('');
     setAdding(false);
     setOpen(false);
@@ -286,21 +378,10 @@ export function MultiCombobox({
               setOpen(true);
             }}
             onFocus={() => {
-              if (blurTimer.current) {
-                clearTimeout(blurTimer.current);
-                blurTimer.current = null;
-              }
+              cancelClose();
               setOpen(true);
             }}
-            // Delay so a press on an option lands before the menu unmounts.
-            onBlur={() => {
-              blurTimer.current = setTimeout(() => {
-                blurTimer.current = null;
-                setOpen(false);
-                setAdding(false);
-                onDismiss?.();
-              }, 120);
-            }}
+            onBlur={onInputBlur}
             placeholder={selectedOptions.length === 0 ? placeholder : ''}
             placeholderTextColor={colors.textTertiary}
             autoFocus={autoFocus || adding}
@@ -315,6 +396,7 @@ export function MultiCombobox({
               key={opt.value}
               style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
               onPress={() => add(opt)}
+              {...menuPressProps}
             >
               <Text style={styles.itemText}>{opt.label}</Text>
               <Feather name="plus" size={14} color={colors.textSecondary} />
@@ -328,6 +410,7 @@ export function MultiCombobox({
                 pressed && styles.itemPressed,
               ]}
               onPress={pickFooter}
+              {...menuPressProps}
             >
               <Text style={styles.footerText}>{footer.label}</Text>
             </Pressable>

@@ -70,6 +70,14 @@ export function WorkRequestRow({
         </Text>
       </View>
 
+      {/* The Scheduler's close-out — only visible under the Resolved filter. */}
+      {workRequest.resolvedAt ? (
+        <View style={styles.resolvedPill}>
+          <Feather name="check-circle" size={12} color={colors.success} />
+          <Text style={styles.resolvedText}>Resolved</Text>
+        </View>
+      ) : null}
+
       <Pressable
         disabled={!linkable}
         onPress={onViewCalendar}
@@ -150,6 +158,20 @@ const styles = themed(() => StyleSheet.create({
     paddingVertical: 4,
   },
   priorityText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
+  resolvedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.successDim,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+  },
+  resolvedText: {
+    color: colors.success,
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },

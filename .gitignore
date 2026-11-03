@@ -41,3 +41,7 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase Cloud Messaging config for Android push — supplied to EAS builds as
+# the GOOGLE_SERVICES_JSON file environment variable (see app.config.js).
+google-services.json

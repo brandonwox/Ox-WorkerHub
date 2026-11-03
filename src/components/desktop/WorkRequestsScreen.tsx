@@ -19,6 +19,7 @@ import { useAppStore,
 import { colors, fonts, radii, spacing, themed } from '@/theme';
 import { Job, PRIORITY_PRESETS } from '@/types';
 import { jobDisplayName } from '@/utils/jobName';
+import { scheduledDateByCard } from '@/utils/scheduledDates';
 import { newWorkRequestPayload } from '@/utils/workRequestCreate';
 import {
   workRequestJobIds,
@@ -118,18 +119,32 @@ export function WorkRequestsScreen({
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<ScheduleFilter>('all');
   const [groupByJob, setGroupByJob] = useState(false);
+  const [showResolved, setShowResolved] = useState(false);
 
   const myJobIds = useMemo(() => new Set(jobs.map((j) => j.id)), [jobs]);
   // In scope: cards linked to any of the viewer's jobs, plus STANDALONE cards
   // (no parent job at all — they belong to no one's job list, so every
   // work-requests page shows them; RLS matches).
-  const workRequests = useMemo(
+  const inScope = useMemo(
     () =>
       allWorkRequests.filter((c) => {
         const linked = workRequestJobIds(c);
         return linked.length === 0 || linked.some((id) => myJobIds.has(id));
       }),
     [allWorkRequests, myJobIds]
+  );
+  // Resolved cards (the Scheduler's close-out) stay out of the way: hidden
+  // unless the "Resolved" filter is on, which then shows ONLY them.
+  const resolvedCount = useMemo(
+    () => inScope.filter((c) => c.resolvedAt != null).length,
+    [inScope]
+  );
+  const workRequests = useMemo(
+    () =>
+      inScope.filter((c) =>
+        showResolved ? c.resolvedAt != null : c.resolvedAt == null
+      ),
+    [inScope, showResolved]
   );
 
   // "On the calendar" = the work request has a row in `assignments` (Scheduler placed it).
@@ -144,21 +159,10 @@ export function WorkRequestsScreen({
 
   // The day each scheduled card shows in its status pill: its next upcoming
   // assignment date, or the most recent one when they're all in the past.
-  const scheduledDateById = useMemo(() => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const map = new Map<string, string>();
-    const byCard = new Map<string, string[]>();
-    for (const a of assignments) {
-      const dates = byCard.get(a.workRequestId) ?? [];
-      dates.push(a.date);
-      byCard.set(a.workRequestId, dates);
-    }
-    for (const [cardId, dates] of byCard) {
-      dates.sort();
-      map.set(cardId, dates.find((d) => d >= today) ?? dates[dates.length - 1]);
-    }
-    return map;
-  }, [assignments]);
+  const scheduledDateById = useMemo(
+    () => scheduledDateByCard(assignments),
+    [assignments]
+  );
 
   // False starts this week: cards installers set to 'False Start' whose
   // scheduled day (assignment date, else target date) falls in the current
@@ -280,7 +284,9 @@ export function WorkRequestsScreen({
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.subtitleRow}>
           <Text style={styles.subtitle}>
-            {workRequests.length} {workRequests.length === 1 ? 'work request' : 'work requests'} ·{' '}
+            {workRequests.length}
+            {showResolved ? ' resolved' : ''}{' '}
+            {workRequests.length === 1 ? 'work request' : 'work requests'} ·{' '}
             {unscheduledCount} not on calendar
           </Text>
           {showFalseStarts && (
@@ -312,7 +318,7 @@ export function WorkRequestsScreen({
 
         {/* Single-row toolbar: filters (when there are cards) + Create button. */}
         <View style={styles.toolbar}>
-          {workRequests.length > 0 ? (
+          {inScope.length > 0 ? (
             <WorkRequestFilters
               search={search}
               onSearch={setSearch}
@@ -323,6 +329,9 @@ export function WorkRequestsScreen({
               onSchedule={setSchedule}
               groupByJob={groupByJob}
               onToggleGroup={() => setGroupByJob((v) => !v)}
+              showResolved={showResolved}
+              resolvedCount={resolvedCount}
+              onToggleResolved={() => setShowResolved((v) => !v)}
             />
           ) : (
             <View style={styles.toolbarSpacer} />
@@ -341,8 +350,14 @@ export function WorkRequestsScreen({
           </Pressable>
         </View>
 
-        {workRequests.length === 0 ? (
+        {inScope.length === 0 ? (
           <Text style={styles.emptyText}>No work requests yet.</Text>
+        ) : workRequests.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {showResolved
+              ? 'No resolved work requests yet.'
+              : 'Every work request here is resolved — turn on the Resolved filter to see them.'}
+          </Text>
         ) : filtered.length === 0 ? (
           <Text style={styles.emptyText}>No work requests match these filters.</Text>
         ) : groups ? (

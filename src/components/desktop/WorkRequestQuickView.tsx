@@ -4,7 +4,6 @@ import {
   differenceInCalendarDays,
   eachDayOfInterval,
   format,
-  isValid,
   parse,
   parseISO,
 } from 'date-fns';
@@ -25,6 +24,7 @@ import {
 } from 'react-native';
 
 import { Combobox, MultiCombobox } from '@/components/desktop/Combobox';
+import { DayPickerPopover } from '@/components/desktop/DayPicker';
 import { DropdownPortal } from '@/components/desktop/DropdownPortal';
 import {
   PrioritySelect,
@@ -32,6 +32,10 @@ import {
   priorityValueComplete,
 } from '@/components/desktop/PrioritySelect';
 import { CollapsibleIssueList } from '@/components/issues/CollapsibleIssueList';
+import {
+  CountEditModal,
+  EditableCount,
+} from '@/components/jobsite/CountEditModal';
 import { IssueCard } from '@/components/issues/IssueCard';
 import { FlashingPhotoField } from '@/components/photos/FlashingPhotoField';
 import { JobPhotoGrid } from '@/components/photos/JobPhotoGrid';
@@ -42,6 +46,7 @@ import {
   statusNeedsNote,
 } from '@/components/StatusChangeModal';
 import { workRequestStatusColors } from '@/components/StatusPill';
+import { pickJobPhotos } from '@/lib/photoCapture';
 import { useAppStore, useCurrentRole, uuid } from '@/store/useAppStore';
 import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import {
@@ -55,7 +60,13 @@ import {
   READINESS_PRESETS,
 } from '@/types';
 import { buildCrewColorMap, crewColorFrom, withAlpha } from '@/utils/crewColors';
-import { formatCount, jobCounts } from '@/utils/jobCounts';
+import {
+  DELIVERY_ON_SITE_LABEL,
+  formatCount,
+  formatDelivered,
+  isCountComplete,
+  jobCounts,
+} from '@/utils/jobCounts';
 import { jobDisplayName } from '@/utils/jobName';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import {
@@ -235,6 +246,9 @@ export function WorkRequestQuickView({
   );
   const jobIssues = useAppStore((s) => s.jobIssues);
   const updateWorkRequest = useAppStore((s) => s.updateWorkRequest);
+  const resolveWorkRequest = useAppStore((s) => s.resolveWorkRequest);
+  const updateJob = useAppStore((s) => s.updateJob);
+  const addJobPhotos = useAppStore((s) => s.addJobPhotos);
   const setWorkRequestStatus = useAppStore((s) => s.setWorkRequestStatus);
   const flash = useAppStore((s) => s.flash);
   const crews = useAppStore((s) => s.crews);
@@ -279,6 +293,14 @@ export function WorkRequestQuickView({
   // Create button is actually clicked (then clears itself once satisfied).
   const [flashingWarned, setFlashingWarned] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The count whose number is being edited in the popup (a job count's
+  // installed/delivered number, or the card's own delivery count).
+  const [editingCount, setEditingCount] = useState<EditableCount | null>(null);
+  // The pickup location editor grows with its text (multi-line, Enter adds
+  // a line); this is the measured content height while it's open.
+  const [pickupHeight, setPickupHeight] = useState(0);
+  // Office-side "Upload images" (web file picker) is in flight.
+  const [pickingPhotos, setPickingPhotos] = useState(false);
   const [crewMenuOpen, setCrewMenuOpen] = useState(false);
   // "Assign Multiple": while on, the crew menu stays open and each click
   // toggles that crew on/off the card instead of swapping the whole card over.
@@ -299,6 +321,9 @@ export function WorkRequestQuickView({
   // (Its dropdown + date pickers render in portals, which the hook treats as
   // "inside".)
   const priorityWrapRef = useRef<View>(null);
+  // Anchors for the date row's two calendar popovers.
+  const dateWrapRef = useRef<View>(null);
+  const endDateWrapRef = useRef<View>(null);
   useDismissOnOutsideClick(editing === 'priority', [priorityWrapRef], () => {
     setEditing(null);
     setPriorityDraft(null);
@@ -387,8 +412,8 @@ export function WorkRequestQuickView({
   // Job options for the create draft (links are fixed once a card exists).
   // A card links either one job or several jobs of ONE family (sibling
   // sub-jobs ± their parent) — once something is selected, the picker offers
-  // only the rest of that family. Options are labeled by PO (the office's
-  // handle for a job); typing a job name still finds it via keywords.
+  // only the rest of that family. Options read "Job name · PO" so both the
+  // name and the office's PO handle are visible — and typing either finds it.
   const selectedJobIds = workRequestJobIds(workRequest);
   const selectedJobs = selectedJobIds
     .map((id) => jobs.find((j) => j.id === id))
@@ -404,9 +429,10 @@ export function WorkRequestQuickView({
         );
   const jobOptions = pickableJobs.map((j) => ({
     value: j.id,
-    // The bare PO — its shape already says "PO" without the label.
-    label: j.po ? j.po : jobDisplayName(j, jobs),
-    keywords: [jobDisplayName(j, jobs)],
+    // Name first, then the PO (its shape already says "PO" without a label).
+    label: j.po
+      ? `${jobDisplayName(j, jobs)} · ${j.po}`
+      : jobDisplayName(j, jobs),
   }));
   // A card can't be created until the parent job has a jobsite address — and
   // flashing material, when the job covers windows. Typing a flashing material
@@ -472,6 +498,16 @@ export function WorkRequestQuickView({
     (id && workers.find((w) => w.id === id)?.name) || 'Unknown';
   // The parent JOB's scope counts, shown on every one of its work requests.
   const cardCounts = jobCounts(parentJob);
+  // The Scheduler's close-out line ("By Tim Baird · Nov 2, 2026").
+  const resolverName = workers.find(
+    (w) => w.id === workRequest.resolvedById
+  )?.name;
+  const resolvedLine = workRequest.resolvedAt
+    ? `${resolverName ? `By ${resolverName}` : 'By the scheduler'} · ${format(
+        parseISO(workRequest.resolvedAt),
+        'MMM d, yyyy'
+      )}`
+    : '';
   // Crew assignment drives the title square: permanent crews first so colors
   // match the scheduler calendar (same ordering as CalendarBoard).
   const cardAssignments = assignments.filter((a) => a.workRequestId === workRequest.id);
@@ -627,26 +663,13 @@ export function WorkRequestQuickView({
     if (iso !== workRequest.startTime) applyChange({ startTime: iso });
   };
 
-  /** yyyy-MM-dd text → that day, or null when it isn't a real date. */
-  const parseYmd = (text: string): string | null => {
-    const t = text.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || !isValid(parseISO(t))) return null;
-    return t;
-  };
-
-  // The date field. A scheduled card's whole stretch moves to START on the
-  // typed day (length kept — the store rewrites its assignment rows on every
-  // crew); an unscheduled card's target date moves on the Work Requests
-  // calendar (its end day follows, keeping the span's length).
-  const commitDate = () => {
+  // The date field — picked from the calendar popover. A scheduled card's
+  // whole stretch moves to START on that day (length kept — the store
+  // rewrites its assignment rows on every crew); an unscheduled card's target
+  // date moves on the Work Requests calendar (its end day follows, keeping
+  // the span's length).
+  const commitDate = (day: string) => {
     setEditing(null);
-    const day = parseYmd(draft);
-    if (!day) {
-      if (draft.trim()) {
-        flash('Could not read that date — type it as YYYY-MM-DD.', 'warning');
-      }
-      return;
-    }
     if (day === dateRange.start) return;
     if (creating) {
       const length = differenceInCalendarDays(
@@ -669,23 +692,11 @@ export function WorkRequestQuickView({
     );
   };
 
-  // The end-day field: blank = a single day; otherwise the run stretches or
-  // shrinks to end on the typed day (never before the start).
-  const commitEndDate = () => {
+  // The end-day field: the run stretches or shrinks to end on the picked day
+  // (the popover greys out days before the start; picking the start day
+  // itself makes it a single day again).
+  const commitEndDate = (day: string) => {
     setEditing(null);
-    const t = draft.trim();
-    const single = dateRange.end === dateRange.start;
-    if (!t) {
-      if (single) return;
-      if (creating) applyChange({ endDate: undefined });
-      else setWorkRequestDates(workRequest.id, dateRange.start, dateRange.start);
-      return;
-    }
-    const day = parseYmd(t);
-    if (!day) {
-      flash('Could not read that date — type it as YYYY-MM-DD.', 'warning');
-      return;
-    }
     if (day < dateRange.start) {
       flash("The end day can't be before the start day.", 'warning');
       return;
@@ -703,6 +714,9 @@ export function WorkRequestQuickView({
       'success'
     );
   };
+
+  // The end popover's "Single day" action: drop the end day.
+  const clearEndDate = () => commitEndDate(dateRange.start);
 
   const changeScopes = (vals: string[]) => {
     if (vals.length === 0) {
@@ -1129,6 +1143,39 @@ export function WorkRequestQuickView({
       {/* Header action icons, Google-Calendar style. A draft has nothing to
           delete — create mode shows only the X. */}
       <View style={styles.headerActions}>
+        {/* Scheduler: close the card out ("Resolved") or reopen it. Resolved
+            cards leave the Work Requests pool and hide from the work
+            requests pages unless the Resolved filter is on. */}
+        {!creating && role === 'scheduler' && (
+          <Pressable
+            onPress={() =>
+              resolveWorkRequest(workRequest.id, workRequest.resolvedAt == null)
+            }
+            style={({ pressed, hovered }: PressState) => [
+              styles.iconButton,
+              workRequest.resolvedAt != null && styles.resolveButtonOn,
+              (hovered || pressed) && styles.iconButtonHover,
+            ]}
+          >
+            <Feather
+              name="check-circle"
+              size={16}
+              color={
+                workRequest.resolvedAt != null
+                  ? colors.success
+                  : colors.textSecondary
+              }
+            />
+            <Text
+              style={[
+                styles.showCalendarText,
+                workRequest.resolvedAt != null && styles.resolveTextOn,
+              ]}
+            >
+              {workRequest.resolvedAt != null ? 'Resolved' : 'Mark resolved'}
+            </Text>
+          </Pressable>
+        )}
         {/* Scheduler: reveal this card on the calendar page (jumps to its
             month — the pool calendar for an unscheduled card — and blinks
             its chip). Closes this popup; it would cover the reveal. */}
@@ -1218,7 +1265,7 @@ export function WorkRequestQuickView({
                   values={selectedJobIds}
                   options={jobOptions}
                   onChange={changeJobs}
-                  placeholder="Search jobs by PO or name…"
+                  placeholder="Search jobs by name or PO…"
                   collapseOnSelect
                   addLabel="Add related job"
                   footer={{
@@ -1469,7 +1516,8 @@ export function WorkRequestQuickView({
         {/* Date(s). Scheduled: the run on the crew calendar — editing the
             start moves the whole stretch (length kept), editing the end
             stretches / shrinks it. Unscheduled: the target date (+ optional
-            end day) on the Work Requests calendar. Typed as YYYY-MM-DD. */}
+            end day) on the Work Requests calendar. Each day is picked on a
+            month calendar that floats under its text. */}
         <Row
           icon="calendar"
           label={
@@ -1481,64 +1529,61 @@ export function WorkRequestQuickView({
           }
         >
           <View style={styles.dateRow}>
-            {editing === 'date' ? (
-              <TextInput
-                style={[styles.textEditor, styles.dateInput]}
-                value={draft}
-                onChangeText={setDraft}
-                onBlur={commitDate}
-                onSubmitEditing={commitDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textTertiary}
-                autoFocus
-              />
-            ) : canEditDates ? (
-              <Editable onPress={() => startEdit('date', dateRange.start)}>
-                <Text style={styles.valueText}>{formatDay(dateRange.start)}</Text>
-              </Editable>
-            ) : (
-              <Text style={styles.mutedText}>{formatDay(dateRange.start)}</Text>
-            )}
+            <View ref={dateWrapRef}>
+              {canEditDates ? (
+                <Editable onPress={() => setEditing('date')}>
+                  <Text style={styles.valueText}>{formatDay(dateRange.start)}</Text>
+                </Editable>
+              ) : (
+                <Text style={styles.mutedText}>{formatDay(dateRange.start)}</Text>
+              )}
+            </View>
+            <DayPickerPopover
+              anchorRef={dateWrapRef}
+              open={editing === 'date'}
+              onClose={() => setEditing(null)}
+              value={dateRange.start}
+              onPick={commitDate}
+            />
             <Text style={styles.dateTo}>to</Text>
-            {editing === 'end-date' ? (
-              <TextInput
-                style={[styles.textEditor, styles.dateInput]}
-                value={draft}
-                onChangeText={setDraft}
-                onBlur={commitEndDate}
-                onSubmitEditing={commitEndDate}
-                placeholder="YYYY-MM-DD · blank = one day"
-                placeholderTextColor={colors.textTertiary}
-                autoFocus
-              />
-            ) : canEditDates ? (
-              <Editable
-                onPress={() =>
-                  startEdit(
-                    'end-date',
-                    dateRange.end !== dateRange.start ? dateRange.end : ''
-                  )
-                }
-              >
-                <Text
-                  style={
-                    dateRange.end !== dateRange.start
-                      ? styles.valueText
-                      : styles.placeholderText
-                  }
-                >
+            <View ref={endDateWrapRef}>
+              {canEditDates ? (
+                <Editable onPress={() => setEditing('end-date')}>
+                  <Text
+                    style={
+                      dateRange.end !== dateRange.start
+                        ? styles.valueText
+                        : styles.placeholderText
+                    }
+                  >
+                    {dateRange.end !== dateRange.start
+                      ? formatDay(dateRange.end)
+                      : 'Add an end day…'}
+                  </Text>
+                </Editable>
+              ) : (
+                <Text style={styles.mutedText}>
                   {dateRange.end !== dateRange.start
                     ? formatDay(dateRange.end)
-                    : 'Add an end day…'}
+                    : 'same day'}
                 </Text>
-              </Editable>
-            ) : (
-              <Text style={styles.mutedText}>
-                {dateRange.end !== dateRange.start
-                  ? formatDay(dateRange.end)
-                  : 'same day'}
-              </Text>
-            )}
+              )}
+            </View>
+            {/* Days before the start are greyed out; "Single day" drops the
+                end day again. */}
+            <DayPickerPopover
+              anchorRef={endDateWrapRef}
+              open={editing === 'end-date'}
+              onClose={() => setEditing(null)}
+              value={dateRange.end !== dateRange.start ? dateRange.end : ''}
+              minDate={dateRange.start}
+              onPick={commitEndDate}
+              footer={
+                dateRange.end !== dateRange.start
+                  ? { label: 'Single day', onPress: clearEndDate }
+                  : undefined
+              }
+            />
           </View>
         </Row>
 
@@ -1628,15 +1673,70 @@ export function WorkRequestQuickView({
           )}
         </Row>
 
-        {/* Parent job's scope counts, "done/total" (installers update the
-            done numbers from their work request view). */}
+        {/* The Scheduler's close-out, when set. */}
+        {!creating && workRequest.resolvedAt ? (
+          <Row icon="check-circle" label="Resolved">
+            <Text style={styles.resolvedText}>{resolvedLine}</Text>
+          </Row>
+        ) : null}
+
+        {/* Parent job's scope counts — installed and delivered against the
+            total. Office roles click a number to update it (installers do
+            the same from their phone); a fully delivered count reads "All
+            Windows are On Site". */}
         {cardCounts.length > 0 && (
-          <Row icon="hash">
-            <Text style={styles.mutedText}>
-              {cardCounts
-                .map((c) => `${c.label} ${formatCount(c)}`)
-                .join('  ·  ')}
-            </Text>
+          <Row icon="hash" label="Counts">
+            <View style={styles.countList}>
+              {cardCounts.map((count) => {
+                const canEditCount = officeRole && parentJob != null;
+                const installedText = `${formatCount(count)} installed`;
+                const deliveredText = `${formatDelivered(count)} delivered`;
+                return (
+                  <View key={count.doneField} style={styles.countLine}>
+                    <Text style={styles.countLabel}>{count.label}</Text>
+                    <View style={styles.countNumbers}>
+                      {canEditCount ? (
+                        <Editable
+                          onPress={() =>
+                            setEditingCount({
+                              doneField: count.doneField,
+                              label: `${count.label} — installed`,
+                              done: count.done,
+                              total: count.total,
+                              hint: 'How many are installed?',
+                            })
+                          }
+                        >
+                          <Text style={styles.valueText}>{installedText}</Text>
+                        </Editable>
+                      ) : (
+                        <Text style={styles.valueText}>{installedText}</Text>
+                      )}
+                      {canEditCount ? (
+                        <Editable
+                          onPress={() =>
+                            setEditingCount({
+                              doneField: count.deliveredField,
+                              label: `${count.label} — delivered`,
+                              done: count.delivered,
+                              total: count.total,
+                              hint: 'How many have been delivered to the site?',
+                            })
+                          }
+                        >
+                          <Text style={styles.valueText}>{deliveredText}</Text>
+                        </Editable>
+                      ) : (
+                        <Text style={styles.valueText}>{deliveredText}</Text>
+                      )}
+                    </View>
+                    {count.onSite ? (
+                      <Text style={styles.onSiteText}>✓ {count.onSiteLabel}</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
           </Row>
         )}
 
@@ -2172,6 +2272,30 @@ export function WorkRequestQuickView({
                 </Text>
               </Editable>
             )}
+            {/* The delivered number (installers update it from the phone;
+                the office can too) — and the completion line once every
+                piece has arrived. */}
+            {!creating && workRequest.deliveryCountTotal != null && (
+              <Editable
+                onPress={() =>
+                  setEditingCount({
+                    doneField: 'deliveryCountDone',
+                    label: 'Delivery Count — delivered',
+                    done: workRequest.deliveryCountDone ?? 0,
+                    total: workRequest.deliveryCountTotal ?? 0,
+                    hint: 'How many pieces have been delivered?',
+                  })
+                }
+              >
+                <Text style={styles.mutedText}>Update delivered…</Text>
+              </Editable>
+            )}
+            {isCountComplete(
+              workRequest.deliveryCountDone,
+              workRequest.deliveryCountTotal
+            ) ? (
+              <Text style={styles.onSiteText}>✓ {DELIVERY_ON_SITE_LABEL}</Text>
+            ) : null}
           </Row>
         )}
 
@@ -2229,13 +2353,26 @@ export function WorkRequestQuickView({
           {workRequest.pickupRequired === true &&
             (editing === 'pickup-location' ? (
               <TextInput
-                style={styles.textEditor}
+                style={[
+                  styles.textEditor,
+                  styles.multiline,
+                  // Grow to fit every line typed (never shrink below the
+                  // multi-line minimum); the padding allowance keeps the last
+                  // line from being clipped on web.
+                  pickupHeight > 0 && {
+                    height: Math.max(56, pickupHeight + spacing.sm * 2 + 2),
+                  },
+                ]}
                 value={draft}
                 onChangeText={setDraft}
                 onBlur={commitPickupLocation}
-                placeholder="Where does the crew pick up?"
+                onContentSizeChange={(e) =>
+                  setPickupHeight(e.nativeEvent.contentSize.height)
+                }
+                placeholder="Where does the crew pick up? (Enter for a new line)"
                 placeholderTextColor={colors.textTertiary}
                 autoFocus
+                multiline
               />
             ) : (
               <Editable
@@ -2284,7 +2421,9 @@ export function WorkRequestQuickView({
         </Row>
 
         {/* Photos — from every role with access to the card, not just
-            installers. */}
+            installers. Office roles (Field Supers, Schedulers, the Operator)
+            can upload images from here too; they land on the parent job's
+            photo wall linked to this card, like the phone's upload button. */}
         <Row
           icon="image"
           label={`Photos${photos.length > 0 ? ` (${photos.length})` : ''}`}
@@ -2303,6 +2442,37 @@ export function WorkRequestQuickView({
                 })
               }
             />
+          )}
+          {!creating && officeRole && parentJob && (
+            <Pressable
+              style={({ pressed, hovered }: PressState) => [
+                styles.statusActionBtn,
+                styles.uploadPhotosBtn,
+                (hovered || pressed) && styles.iconButtonHover,
+              ]}
+              disabled={pickingPhotos}
+              onPress={async () => {
+                if (pickingPhotos) return;
+                setPickingPhotos(true);
+                try {
+                  const items = await pickJobPhotos();
+                  if (items.length) {
+                    await addJobPhotos({
+                      jobId: parentJob.id,
+                      workRequestId: workRequest.id,
+                      items,
+                    });
+                  }
+                } finally {
+                  setPickingPhotos(false);
+                }
+              }}
+            >
+              <Feather name="upload" size={13} color={colors.textSecondary} />
+              <Text style={styles.statusActionText}>
+                {pickingPhotos ? 'Opening…' : 'Upload images'}
+              </Text>
+            </Pressable>
           )}
         </Row>
 
@@ -2368,11 +2538,28 @@ export function WorkRequestQuickView({
     />
   );
 
+  // The number popup for a count. The card's own delivery count lives on the
+  // work request; every other count writes back to the parent job.
+  const countEditor = (
+    <CountEditModal
+      count={editingCount}
+      onClose={() => setEditingCount(null)}
+      onSave={(doneField, done) => {
+        if (doneField === 'deliveryCountDone') {
+          applyChange({ deliveryCountDone: done });
+        } else if (parentJob) {
+          updateJob(parentJob.id, { [doneField]: done } as Partial<Job>);
+        }
+      }}
+    />
+  );
+
   if (variant === 'sidebar') {
     return (
       <>
         {panel}
         {photoViewer}
+        {countEditor}
       </>
     );
   }
@@ -2384,6 +2571,7 @@ export function WorkRequestQuickView({
         {panel}
       </View>
       {photoViewer}
+      {countEditor}
     </Modal>
   );
 }
@@ -2553,6 +2741,39 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 12,
   },
+  resolveButtonOn: {
+    backgroundColor: colors.successDim,
+  },
+  resolveTextOn: {
+    color: colors.success,
+  },
+  resolvedText: {
+    color: colors.success,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  countList: {
+    gap: spacing.sm,
+  },
+  countLine: {
+    gap: 2,
+  },
+  countLabel: {
+    color: colors.textSecondary,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+  },
+  countNumbers: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  onSiteText: {
+    color: colors.success,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+  },
   scroll: {
     flexShrink: 1,
   },
@@ -2693,9 +2914,6 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  dateInput: {
-    minWidth: 150,
   },
   dateTo: {
     color: colors.textTertiary,
@@ -2871,6 +3089,10 @@ const styles = themed(() => StyleSheet.create({
   },
   statusActionBtnOn: {
     backgroundColor: colors.surfaceLight,
+  },
+  uploadPhotosBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
   },
   statusActionText: {
     color: colors.textSecondary,

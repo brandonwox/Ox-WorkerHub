@@ -515,6 +515,7 @@ function JobRow({
     const init: Record<string, string> = {};
     for (const def of JOB_COUNT_DEFS) {
       init[def.doneField] = numToText(job[def.doneField]);
+      init[def.deliveredField] = numToText(job[def.deliveredField]);
       init[def.totalField] = numToText(job[def.totalField]);
     }
     return init;
@@ -578,6 +579,7 @@ function JobRow({
     countDefs.some(
       (def) =>
         parseCount(countText[def.doneField]) !== job[def.doneField] ||
+        parseCount(countText[def.deliveredField]) !== job[def.deliveredField] ||
         parseCount(countText[def.totalField]) !== job[def.totalField]
     );
 
@@ -589,6 +591,9 @@ function JobRow({
     const countChanges: Partial<Job> = {};
     for (const def of countDefs) {
       countChanges[def.doneField] = parseCount(countText[def.doneField]);
+      countChanges[def.deliveredField] = parseCount(
+        countText[def.deliveredField]
+      );
       countChanges[def.totalField] = parseCount(countText[def.totalField]);
     }
     // Dropping a scope also clears its now-hidden done/total counts (and the
@@ -599,9 +604,12 @@ function JobRow({
       for (const def of JOB_COUNT_DEFS) {
         if (
           !countDefs.includes(def) &&
-          (job[def.doneField] != null || job[def.totalField] != null)
+          (job[def.doneField] != null ||
+            job[def.totalField] != null ||
+            job[def.deliveredField] != null)
         ) {
           clears[def.doneField] = undefined;
+          clears[def.deliveredField] = undefined;
           clears[def.totalField] = undefined;
         }
       }
@@ -630,6 +638,7 @@ function JobRow({
         for (const def of JOB_COUNT_DEFS) {
           if (!countDefs.includes(def) && scopesChanged) {
             next[def.doneField] = '';
+            next[def.deliveredField] = '';
             next[def.totalField] = '';
           }
         }
@@ -878,14 +887,24 @@ function JobRow({
               <FlashingPhotoField job={job} editable />
             </>
           )}
-          {/* One done/total row per count pair the draft scopes cover. */}
+          {/* One installed / delivered / total row per count the draft
+              scopes cover. */}
           {countDefs.map((def) => (
             <View key={def.doneField} style={styles.countRow}>
               <View style={styles.countCol}>
                 <FormInput
-                  label={`${def.label} (done)`}
+                  label={`${def.label} (installed)`}
                   value={countText[def.doneField]}
                   onChangeText={(t) => setCount(def.doneField, t)}
+                  placeholder="0"
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={styles.countCol}>
+                <FormInput
+                  label="(delivered)"
+                  value={countText[def.deliveredField]}
+                  onChangeText={(t) => setCount(def.deliveredField, t)}
                   placeholder="0"
                   keyboardType="number-pad"
                 />

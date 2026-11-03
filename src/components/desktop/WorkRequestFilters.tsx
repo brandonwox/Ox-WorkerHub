@@ -25,6 +25,13 @@ interface Props {
   onSchedule: (value: ScheduleFilter) => void;
   groupByJob: boolean;
   onToggleGroup: () => void;
+  /**
+   * "Resolved" filter: off (default) hides every card the Scheduler resolved;
+   * on shows ONLY those. `resolvedCount` labels the toggle.
+   */
+  showResolved: boolean;
+  resolvedCount: number;
+  onToggleResolved: () => void;
 }
 
 /** Single-row filter/sort toolbar for the Field Super Work Requests view (desktop). */
@@ -38,6 +45,9 @@ export function WorkRequestFilters({
   onSchedule,
   groupByJob,
   onToggleGroup,
+  showResolved,
+  resolvedCount,
+  onToggleResolved,
 }: Props) {
   return (
     <View style={styles.row}>
@@ -85,6 +95,23 @@ export function WorkRequestFilters({
         />
         <Text style={[styles.toggleText, groupByJob && styles.toggleTextOn]}>
           Group by job
+        </Text>
+      </Pressable>
+
+      {/* Resolved filter: show only the Scheduler's closed-out cards */}
+      <Pressable
+        style={[styles.toggle, showResolved && styles.toggleResolvedOn]}
+        onPress={onToggleResolved}
+      >
+        <Feather
+          name="check-circle"
+          size={15}
+          color={showResolved ? colors.success : colors.textSecondary}
+        />
+        <Text
+          style={[styles.toggleText, showResolved && styles.toggleTextResolvedOn]}
+        >
+          {resolvedCount > 0 ? `Resolved · ${resolvedCount}` : 'Resolved'}
         </Text>
       </Pressable>
     </View>
@@ -204,6 +231,14 @@ const styles = themed(() => StyleSheet.create({
   },
   toggleTextOn: {
     color: colors.primary,
+    fontFamily: fonts.semiBold,
+  },
+  toggleResolvedOn: {
+    backgroundColor: colors.successDim,
+    borderColor: colors.success,
+  },
+  toggleTextResolvedOn: {
+    color: colors.success,
     fontFamily: fonts.semiBold,
   },
   // Priority dropdown

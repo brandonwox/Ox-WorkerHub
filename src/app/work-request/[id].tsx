@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { format, parse, parseISO } from 'date-fns';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import {
   Animated,
@@ -53,7 +53,13 @@ import {
   WorkRequestStatus,
   WorkRequestStatusLogEntry,
 } from '@/types';
-import { formatCount, jobCounts } from '@/utils/jobCounts';
+import {
+  DELIVERY_ON_SITE_LABEL,
+  formatCount,
+  formatDelivered,
+  isCountComplete,
+  jobCounts,
+} from '@/utils/jobCounts';
 import { jobAllowsWindows } from '@/utils/jobScopes';
 import { effectivePriority } from '@/utils/priorityRange';
 import { formatJobWindow } from '@/utils/time';
@@ -132,8 +138,17 @@ export default function JobDetailsScreen() {
           label: 'Delivery Count',
           done: job.deliveryCountDone ?? 0,
           total: job.deliveryCountTotal,
+          hint: 'How many pieces have been delivered?',
         }
       : null;
+  // The Scheduler's close-out, when set ("By Tim Baird · Nov 2, 2026").
+  const resolverName = workers.find((w) => w.id === job?.resolvedById)?.name;
+  const resolvedLine = job?.resolvedAt
+    ? `${resolverName ? `By ${resolverName}` : 'By the scheduler'} · ${format(
+        parseISO(job.resolvedAt),
+        'MMM d, yyyy'
+      )}`
+    : '';
   const canEditCounts =
     role === 'installer' || role === 'field_super' || role === 'operator';
   const [viewer, setViewer] = useState<{
@@ -700,6 +715,9 @@ export default function JobDetailsScreen() {
             </Pressable>
           )}
           <InfoRow icon="flag" label="Priority" value={priorityDisplay} />
+          {job.resolvedAt ? (
+            <InfoRow icon="check-circle" label="Resolved" value={resolvedLine} />
+          ) : null}
           <InfoRow
             icon="calendar"
             label="Date"
@@ -746,51 +764,62 @@ export default function JobDetailsScreen() {
               value={job.pickupLocation || 'Yes'}
             />
           ) : null}
-          {/* Parent job's scope counts — installers tap to update the done
-              number (office roles too); others see them read-only. */}
-          {counts.map((count) =>
-            canEditCounts ? (
-              <Pressable
-                key={count.doneField}
-                style={({ pressed }) => [pressed && styles.countPressed]}
-                onPress={() => setEditingCount(count)}
-              >
-                <InfoRow
-                  icon="hash"
-                  label={count.label}
-                  value={formatCount(count)}
-                />
-              </Pressable>
-            ) : (
-              <InfoRow
-                key={count.doneField}
+          {/* Parent job's scope counts — installed and delivered, each
+              tappable to update (installers and office roles); once every
+              unit is delivered the count reads "All Windows are On Site".
+              Others see them read-only. */}
+          {counts.map((count) => (
+            <Fragment key={count.doneField}>
+              <CountInfoRow
                 icon="hash"
-                label={count.label}
+                label={`${count.label} · installed`}
                 value={formatCount(count)}
+                editable={canEditCounts}
+                onPress={() =>
+                  setEditingCount({
+                    doneField: count.doneField,
+                    label: `${count.label} — installed`,
+                    done: count.done,
+                    total: count.total,
+                    hint: 'How many are installed?',
+                  })
+                }
               />
-            )
-          )}
+              <CountInfoRow
+                icon="truck"
+                label={`${count.label} · delivered`}
+                value={formatDelivered(count)}
+                note={count.onSite ? count.onSiteLabel : undefined}
+                editable={canEditCounts}
+                onPress={() =>
+                  setEditingCount({
+                    doneField: count.deliveredField,
+                    label: `${count.label} — delivered`,
+                    done: count.delivered,
+                    total: count.total,
+                    hint: 'How many have been delivered to the site?',
+                  })
+                }
+              />
+            </Fragment>
+          ))}
           {/* The card's OWN delivery count (Delivery scope) — same tap-to-
-              update as the job counts, saved onto the work request. */}
-          {deliveryCount &&
-            (canEditCounts ? (
-              <Pressable
-                style={({ pressed }) => [pressed && styles.countPressed]}
-                onPress={() => setEditingCount(deliveryCount)}
-              >
-                <InfoRow
-                  icon="box"
-                  label={deliveryCount.label}
-                  value={`${deliveryCount.done}/${deliveryCount.total}`}
-                />
-              </Pressable>
-            ) : (
-              <InfoRow
-                icon="box"
-                label={deliveryCount.label}
-                value={`${deliveryCount.done}/${deliveryCount.total}`}
-              />
-            ))}
+              update as the job counts, saved onto the work request. Reads
+              "Delivery complete" once everything has arrived. */}
+          {deliveryCount && (
+            <CountInfoRow
+              icon="box"
+              label={deliveryCount.label}
+              value={`${deliveryCount.done}/${deliveryCount.total}`}
+              note={
+                isCountComplete(deliveryCount.done, deliveryCount.total)
+                  ? DELIVERY_ON_SITE_LABEL
+                  : undefined
+              }
+              editable={canEditCounts}
+              onPress={() => setEditingCount(deliveryCount)}
+            />
+          )}
         </View>
 
         <View style={styles.section}>
@@ -1228,10 +1257,13 @@ function InfoRow({
   icon,
   label,
   value,
+  note,
 }: {
   icon: keyof typeof Feather.glyphMap;
   label: string;
   value: string;
+  /** Green confirmation line under the value ("All Windows are On Site"). */
+  note?: string;
 }) {
   return (
     <View style={styles.infoRow}>
@@ -1241,8 +1273,36 @@ function InfoRow({
       <View style={styles.infoText}>
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={styles.infoValue}>{value}</Text>
+        {note ? <Text style={styles.infoNote}>✓ {note}</Text> : null}
       </View>
     </View>
+  );
+}
+
+/**
+ * A count row — tappable (opens the number popup) for the roles that update
+ * progress, plain for everyone else.
+ */
+function CountInfoRow({
+  editable,
+  onPress,
+  ...row
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  value: string;
+  note?: string;
+  editable: boolean;
+  onPress: () => void;
+}) {
+  if (!editable) return <InfoRow {...row} />;
+  return (
+    <Pressable
+      style={({ pressed }) => [pressed && styles.countPressed]}
+      onPress={onPress}
+    >
+      <InfoRow {...row} />
+    </Pressable>
   );
 }
 
@@ -1560,6 +1620,12 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  infoNote: {
+    color: colors.success,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    marginTop: 2,
   },
   infoValue: {
     color: colors.textPrimary,

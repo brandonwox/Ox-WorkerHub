@@ -60,7 +60,12 @@ import {
   Worker,
 } from '@/types';
 import { dailyCrewAutoName } from '@/utils/dailyCrewName';
-import { CountTotalField } from '@/utils/jobCounts';
+import {
+  countBecameComplete,
+  CountTotalField,
+  DELIVERY_ON_SITE_LABEL,
+  JOB_COUNT_DEFS,
+} from '@/utils/jobCounts';
 import { jobDisplayNameById } from '@/utils/jobName';
 import { hoursBetween } from '@/utils/time';
 
@@ -1004,6 +1009,12 @@ interface AppState {
   /** Delete a Work Request and any schedule assignments pointing at it. */
   deleteWorkRequest: (id: string) => void;
   /**
+   * The Scheduler's close-out: mark a work request resolved (stamps who/when)
+   * or reopen it. Resolved cards leave the Work Requests pool and the work
+   * requests pages' default list; installers see no change.
+   */
+  resolveWorkRequest: (id: string, resolved: boolean) => void;
+  /**
    * Inline notes edit from the phone detail screen (any role): replaces the
    * card's single shared notes text. Silent write — no "Saved" pill.
    */
@@ -1876,12 +1887,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateJob: (id, changes) => {
+    const before = get().jobs.find((j) => j.id === id);
     // Pre-edit assignment list — the "who was newly added" ping below diffs
     // against it. Only captured when the edit actually touches assignments.
     const beforeSuperIds =
-      'fieldSuperIds' in changes
-        ? (get().jobs.find((j) => j.id === id)?.fieldSuperIds ?? [])
-        : undefined;
+      'fieldSuperIds' in changes ? (before?.fieldSuperIds ?? []) : undefined;
     let updated: Job | undefined;
     set((state) => ({
       jobs: state.jobs.map((job) => {
@@ -1902,6 +1912,39 @@ export const useAppStore = create<AppState>((set, get) => ({
         return job;
       }),
     }));
+    // Delivery complete: a count's delivered number just reached its total →
+    // ping the office (schedulers + the job's Field Supers, minus whoever
+    // entered it). Only on the transition — re-saving a complete count is
+    // silent. The matching email is sent by the DB trigger, not here.
+    if (before && updated) {
+      const actor = currentWorkerOf(get());
+      for (const def of JOB_COUNT_DEFS) {
+        if (
+          !countBecameComplete(
+            before[def.deliveredField],
+            before[def.totalField],
+            updated[def.deliveredField],
+            updated[def.totalField]
+          )
+        ) {
+          continue;
+        }
+        const state = get();
+        const recipients = new Set([
+          ...idsWithRole(state.workers, 'scheduler'),
+          ...jobFieldSuperIds(state, id),
+        ]);
+        if (actor) recipients.delete(actor.id);
+        if (recipients.size === 0) continue;
+        get().pushNotification({
+          recipientIds: [...recipients],
+          type: 'delivery_complete',
+          title: jobNotificationTitle(state, id),
+          body: def.onSiteLabel,
+          data: { jobId: id },
+        });
+      }
+    }
     if (backendActive(get()) && updated) {
       // Job-column edits go to the jobs table. Field-Super assignments live in
       // the separate job_field_supers join table (operator, scheduler, and
@@ -2091,6 +2134,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (updated && updated.priority === 'Now' && !wasNow) {
       notifyNowWorkRequest(get, updated);
     }
+    // The card's OWN delivery count (Delivery scope) just completed → same
+    // office ping as a job count (the DB trigger sends the email).
+    if (
+      before &&
+      updated &&
+      countBecameComplete(
+        before.deliveryCountDone,
+        before.deliveryCountTotal,
+        updated.deliveryCountDone,
+        updated.deliveryCountTotal
+      )
+    ) {
+      const state = get();
+      const recipients = officeAudienceForCard(
+        state,
+        updated,
+        currentWorkerOf(state)?.id
+      );
+      if (recipients.length > 0) {
+        get().pushNotification({
+          recipientIds: recipients,
+          type: 'delivery_complete',
+          title: workRequestNotificationTitle(state, updated.jobId, updated.title),
+          body: DELIVERY_ON_SITE_LABEL,
+          data: { workRequestId: id },
+        });
+      }
+    }
     // Ping installers who have this card on TODAY's board about the edit. A
     // priority change takes precedence over a generic content edit so we send
     // one clear message, not two. (Nothing fires if it's on nobody's board today.)
@@ -2127,6 +2198,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     // The DB cascades assignments server-side; we only fire the card delete.
     if (backendActive(get())) write('deleteWorkRequest', id);
+  },
+
+  resolveWorkRequest: (id, resolved) => {
+    const me = currentWorkerOf(get());
+    let updated: WorkRequest | undefined;
+    set((state) => ({
+      workRequests: state.workRequests.map((card) => {
+        if (card.id !== id) return card;
+        updated = resolved
+          ? {
+              ...card,
+              resolvedAt: new Date().toISOString(),
+              resolvedById: me?.id,
+            }
+          : { ...card, resolvedAt: undefined, resolvedById: undefined };
+        return updated;
+      }),
+    }));
+    // A deliberate click — the "Changes Saved" pill confirms it.
+    if (backendActive(get()) && updated) write('updateWorkRequest', updated);
   },
 
   updateWorkRequestNotes: (id, notes) => {

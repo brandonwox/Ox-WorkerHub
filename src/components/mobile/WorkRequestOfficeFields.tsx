@@ -511,7 +511,8 @@ export function WorkRequestOfficeFields({
               const v = text.trim() || undefined;
               if (v !== card.pickupLocation) onChange({ pickupLocation: v });
             }}
-            placeholder="Where the pickup is"
+            placeholder="Where the pickup is (Return for a new line)"
+            multiline
           />
         )}
       </View>
@@ -595,6 +596,9 @@ function CommitField({
 } & Omit<TextInputProps, 'value' | 'onChangeText' | 'onBlur'>) {
   const [text, setText] = useState(value);
   const [focused, setFocused] = useState(false);
+  // Multi-line fields grow to fit their text (measured content height) so
+  // every line stays visible, on the way in and once committed.
+  const [contentHeight, setContentHeight] = useState(0);
   useEffect(() => {
     if (!focused) setText(value);
   }, [value, focused]);
@@ -611,9 +615,18 @@ function CommitField({
           styles.input,
           compact && styles.inputCompact,
           inputProps.multiline && styles.inputMultiline,
+          inputProps.multiline &&
+            contentHeight > 0 && {
+              height: Math.max(72, contentHeight + spacing.md * 2 + 4),
+            },
         ]}
         value={text}
         onChangeText={setText}
+        onContentSizeChange={
+          inputProps.multiline
+            ? (e) => setContentHeight(e.nativeEvent.contentSize.height)
+            : undefined
+        }
         onFocus={() => setFocused(true)}
         onBlur={commit}
         onSubmitEditing={inputProps.multiline ? undefined : commit}

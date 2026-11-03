@@ -45,7 +45,7 @@ import { colors, fonts, modalShadow, radii, spacing, themed } from '@/theme';
 import { Job, JOB_SCOPES, JobScope, JobStatus } from '@/types';
 import {
   editableCountDefs,
-  formatCount,
+  formatCountLine,
   JOB_COUNT_DEFS,
   jobCounts,
 } from '@/utils/jobCounts';
@@ -348,10 +348,13 @@ export function JobDashboardSidebar({
     for (const def of JOB_COUNT_DEFS) {
       if (
         !allows(def.scope) &&
-        (job[def.doneField] != null || job[def.totalField] != null)
+        (job[def.doneField] != null ||
+          job[def.totalField] != null ||
+          job[def.deliveredField] != null)
       ) {
         clears[def.doneField] = undefined;
         clears[def.totalField] = undefined;
+        clears[def.deliveredField] = undefined;
       }
     }
     if (!allows('Windows') && job.flashingMaterial) {
@@ -612,15 +615,19 @@ export function JobDashboardSidebar({
                 </Text>
               </Pressable>
             )}
-          {/* Scope counts, "done/total" — shown once a total is set. */}
+          {/* Scope counts — installed and delivered against the total, one
+              line each, shown once a total is set. A fully delivered count
+              reads "All Windows are On Site". */}
           {counts.length > 0 && (
             <View style={styles.infoRow}>
               <Feather name="hash" size={14} color={colors.textSecondary} />
-              <Text style={styles.infoValue} numberOfLines={2}>
-                {counts
-                  .map((c) => `${c.label} ${formatCount(c)}`)
-                  .join('  ·  ')}
-              </Text>
+              <View style={styles.countLines}>
+                {counts.map((c) => (
+                  <Text key={c.doneField} style={styles.infoValue}>
+                    {formatCountLine(c)}
+                  </Text>
+                ))}
+              </View>
             </View>
           )}
           {/* Field-Super-only layout-plan warnings (component gates itself). */}
@@ -741,14 +748,16 @@ export function JobDashboardSidebar({
               editCounts.map((def) => (
               <View key={`${def.doneField}-${job.id}`} style={styles.countPair}>
                 <Text style={styles.fieldLabel}>
-                  {def.label} (done / total)
+                  {def.label} (installed / delivered / total)
                 </Text>
                 <CountPairEditor
                   done={job[def.doneField]}
+                  delivered={job[def.deliveredField]}
                   total={job[def.totalField]}
-                  onCommit={(done, total) =>
+                  onCommit={(done, delivered, total) =>
                     updateJob(job.id, {
                       [def.doneField]: done,
+                      [def.deliveredField]: delivered,
                       [def.totalField]: total,
                     })
                   }
@@ -1578,16 +1587,26 @@ function PoInput({
  * Done / total inputs for one scope count; commits on blur. Empty total
  * clears the pair from display (a count shows once its total is set).
  */
+/** Installed / delivered / total inputs for one count; commits on blur. */
 function CountPairEditor({
   done,
+  delivered,
   total,
   onCommit,
 }: {
   done: number | undefined;
+  delivered: number | undefined;
   total: number | undefined;
-  onCommit: (done: number | undefined, total: number | undefined) => void;
+  onCommit: (
+    done: number | undefined,
+    delivered: number | undefined,
+    total: number | undefined
+  ) => void;
 }) {
   const [doneText, setDoneText] = useState(done != null ? String(done) : '');
+  const [deliveredText, setDeliveredText] = useState(
+    delivered != null ? String(delivered) : ''
+  );
   const [totalText, setTotalText] = useState(
     total != null ? String(total) : ''
   );
@@ -1597,7 +1616,8 @@ function CountPairEditor({
     const n = Number(trimmed);
     return Number.isInteger(n) && n >= 0 ? n : undefined;
   };
-  const commit = () => onCommit(parse(doneText), parse(totalText));
+  const commit = () =>
+    onCommit(parse(doneText), parse(deliveredText), parse(totalText));
   return (
     <View style={styles.countRow}>
       <TextInput
@@ -1606,7 +1626,18 @@ function CountPairEditor({
         onChangeText={setDoneText}
         onBlur={commit}
         onEndEditing={commit}
-        placeholder="0"
+        placeholder="installed"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="number-pad"
+      />
+      <Text style={styles.countSlash}>/</Text>
+      <TextInput
+        style={[styles.addressInput, styles.countInput]}
+        value={deliveredText}
+        onChangeText={setDeliveredText}
+        onBlur={commit}
+        onEndEditing={commit}
+        placeholder="delivered"
         placeholderTextColor={colors.textTertiary}
         keyboardType="number-pad"
       />
@@ -1858,6 +1889,10 @@ const styles = themed(() =>
       fontFamily: fonts.semiBold,
       fontSize: 13,
     },
+    countLines: {
+      flex: 1,
+      gap: 2,
+    },
     infoValue: {
       flexShrink: 1,
       color: colors.textPrimary,
@@ -1968,7 +2003,7 @@ const styles = themed(() =>
     },
     countInput: {
       flex: 0,
-      width: 110,
+      width: 96,
     },
     countSlash: {
       color: colors.textSecondary,

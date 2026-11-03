@@ -46,7 +46,7 @@ import {
   themed,
 } from '@/theme';
 import { Job } from '@/types';
-import { formatCount, jobCounts } from '@/utils/jobCounts';
+import { formatCountLine, jobCounts } from '@/utils/jobCounts';
 import { isTodoPhoto } from '@/utils/jobTodos';
 
 type SectionKey = 'issues' | 'documents' | 'work requests' | 'subjobs' | 'todos';
@@ -497,16 +497,20 @@ export default function JobSiteScreen() {
               </Text>
             </Pressable>
           )}
-          {/* Scope counts, "done/total" — shown once a total is set (totals
-              are edited from the office surfaces; done from work requests). */}
+          {/* Scope counts — installed and delivered against the total, one
+              line each, shown once a total is set (totals are edited from the
+              office surfaces; installed/delivered from work requests). A
+              fully delivered count reads "All Windows are On Site". */}
           {counts.length > 0 && (
             <View style={styles.infoRow}>
               <Feather name="hash" size={14} color={colors.textSecondary} />
-              <Text style={styles.infoValue} numberOfLines={2}>
-                {counts
-                  .map((c) => `${c.label} ${formatCount(c)}`)
-                  .join('  ·  ')}
-              </Text>
+              <View style={styles.countLines}>
+                {counts.map((c) => (
+                  <Text key={c.doneField} style={styles.infoValue}>
+                    {formatCountLine(c)}
+                  </Text>
+                ))}
+              </View>
             </View>
           )}
           {/* Field-Super-only layout-plan warnings (component gates itself). */}
@@ -1148,6 +1152,10 @@ const styles = themed(() => StyleSheet.create({
   },
   statusToggleArmedText: {
     color: colors.textOnAccent,
+  },
+  countLines: {
+    flex: 1,
+    gap: 2,
   },
   infoValue: {
     flexShrink: 1,

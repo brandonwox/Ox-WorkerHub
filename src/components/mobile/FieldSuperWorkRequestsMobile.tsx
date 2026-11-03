@@ -22,6 +22,7 @@ import { PRIORITY_CHOICES, PRIORITY_PRESETS, WorkRequest } from '@/types';
 import { activeJobs } from '@/utils/jobArchive';
 import { jobDisplayName } from '@/utils/jobName';
 import { comparePriority } from '@/utils/priorityRange';
+import { scheduledDateByCard } from '@/utils/scheduledDates';
 import {
   workRequestJobIds,
   workRequestJobsLabel,
@@ -80,12 +81,19 @@ export function FieldSuperWorkRequestsMobile() {
     () => new Set(assignments.map((a) => a.workRequestId)),
     [assignments]
   );
+  // The day each scheduled card shows on its row (next upcoming assignment).
+  const scheduledDateById = useMemo(
+    () => scheduledDateByCard(assignments),
+    [assignments]
+  );
 
   // In scope: cards linked to any of my jobs, plus standalone cards (no
-  // parent job at all — they belong to no one's job list).
+  // parent job at all — they belong to no one's job list). Cards the
+  // Scheduler resolved are closed out and stay hidden here.
   const inScope = useMemo(
     () =>
       allWorkRequests.filter((card) => {
+        if (card.resolvedAt != null) return false;
         const linked = workRequestJobIds(card);
         return linked.length === 0 || linked.some((id) => jobNameById.has(id));
       }),
@@ -308,6 +316,7 @@ export function FieldSuperWorkRequestsMobile() {
               workRequest={item.card}
               jobName={workRequestPoLabel(item.card, jobs) || 'No parent job'}
               scheduled={scheduledIds.has(item.card.id)}
+              scheduledDate={scheduledDateById.get(item.card.id)}
               onPress={() => router.push(`/work-request/${item.card.id}`)}
             />
           )

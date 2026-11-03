@@ -27,6 +27,8 @@ export interface EditableCount {
   label: string;
   done: number;
   total: number;
+  /** The question under the title; defaults to "How many are done?". */
+  hint?: string;
 }
 
 interface Props {
@@ -109,7 +111,7 @@ export function CountEditModal({ count, onClose, onSave }: Props) {
             </Pressable>
           </View>
 
-          <Text style={styles.hint}>How many are done?</Text>
+          <Text style={styles.hint}>{count.hint ?? 'How many are done?'}</Text>
 
           {useWheel ? (
             <View style={styles.wheelRow}>

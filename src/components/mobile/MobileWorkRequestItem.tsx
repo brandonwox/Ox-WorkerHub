@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityMeta } from '@/lib/priority';
@@ -11,7 +12,21 @@ interface Props {
   jobName: string;
   /** Omit to hide the on/off-calendar chip (e.g. in an all-unscheduled list). */
   scheduled?: boolean;
+  /**
+   * The day the card is scheduled for (yyyy-MM-dd; next upcoming assignment)
+   * — shown on the chip ("Today", "Tomorrow", "Wed, Nov 5") instead of the
+   * bare "On calendar".
+   */
+  scheduledDate?: string;
   onPress?: () => void;
+}
+
+/** "Today", "Tomorrow", else "Wed, Nov 5". */
+function scheduledDayLabel(ymd: string): string {
+  const day = parseISO(ymd);
+  if (isToday(day)) return 'Today';
+  if (isTomorrow(day)) return 'Tomorrow';
+  return format(day, 'EEE, MMM d');
 }
 
 /**
@@ -19,10 +34,21 @@ interface Props {
  * job name below, optional calendar-status chip. The mobile counterpart of the
  * desktop WorkRequestRow, which lays the same info out in fixed-width columns.
  */
-export function MobileWorkRequestItem({ workRequest, jobName, scheduled, onPress }: Props) {
+export function MobileWorkRequestItem({
+  workRequest,
+  jobName,
+  scheduled,
+  scheduledDate,
+  onPress,
+}: Props) {
   // "Now" (incl. escalated windows) or the priority window's start date.
   const priority = effectivePriority(workRequest);
   const meta = priorityMeta(priority.label);
+  const statusLabel = !scheduled
+    ? 'Not on calendar'
+    : scheduledDate
+      ? scheduledDayLabel(scheduledDate)
+      : 'On calendar';
 
   const content = (
     <>
@@ -42,20 +68,22 @@ export function MobileWorkRequestItem({ workRequest, jobName, scheduled, onPress
           ? `  ·  ${workRequest.scopes.join(', ')}`
           : ''}
       </Text>
+      {/* Scheduled reads quietly in grey (it's the normal state); only
+          "Not on calendar" draws attention in the warning color. */}
       {scheduled !== undefined && (
         <View style={styles.statusRow}>
           <Feather
             name={scheduled ? 'calendar' : 'clock'}
             size={12}
-            color={scheduled ? colors.success : colors.warning}
+            color={scheduled ? colors.textSecondary : colors.warning}
           />
           <Text
             style={[
               styles.statusText,
-              { color: scheduled ? colors.success : colors.warning },
+              { color: scheduled ? colors.textSecondary : colors.warning },
             ]}
           >
-            {scheduled ? 'On calendar' : 'Not on calendar'}
+            {statusLabel}
           </Text>
         </View>
       )}

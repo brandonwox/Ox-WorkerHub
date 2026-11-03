@@ -149,13 +149,13 @@ export interface Job {
    */
   laborBudget?: number;
   /**
-   * Scope-driven done/total counts, displayed as "0/100" on the job details
-   * page and every work request of the job. Window + SGD pairs belong to the
-   * Windows scope; every other pair belongs to its same-named scope (see
-   * JOB_COUNT_DEFS in utils/jobCounts.ts). Totals are office-set (the
-   * Operator / Field Supers); installers update only the done numbers (from
-   * the work request count popup; RLS matches). A count shows once its total is
-   * set.
+   * Scope-driven counts, displayed as "12/100 installed · 40/100 delivered"
+   * on the job details page and every work request of the job. Window + SGD
+   * pairs belong to the Windows scope; every other pair belongs to its
+   * same-named scope (see JOB_COUNT_DEFS in utils/jobCounts.ts). Totals are
+   * office-set (the Operator / Field Supers / Schedulers); installers update
+   * the done (installed) and delivered numbers (from the work request count
+   * popups; RLS matches). A count shows once its total is set.
    */
   windowCountDone?: number;
   windowCountTotal?: number;
@@ -171,6 +171,20 @@ export interface Job {
   screenCountTotal?: number;
   iguCountDone?: number;
   iguCountTotal?: number;
+  /**
+   * DELIVERED (on-site) number per count — how many of the total have been
+   * delivered to the jobsite, alongside the installed (`…Done`) number. When
+   * it reaches the total the count reads "All Windows are On Site" (etc.),
+   * the office gets a `delivery_complete` ping, and the delivery-complete
+   * email goes out (a DB trigger — see the work-event-email function).
+   */
+  windowCountDelivered?: number;
+  sgdCountDelivered?: number;
+  mirrorCountDelivered?: number;
+  showerCountDelivered?: number;
+  swingDoorCountDelivered?: number;
+  screenCountDelivered?: number;
+  iguCountDelivered?: number;
   /**
    * The Field Super marked layout plans as not needed for this job ("Window
    * layout plans not necessary"). Suppresses the layout-plan warning on the
@@ -293,9 +307,10 @@ export type PriorityChoice = (typeof PRIORITY_CHOICES)[number];
 /**
  * Trade scope a Job / Work Request covers. At least one is chosen at creation
  * time. Every trade scope is selectable on jobs, sub-jobs, AND work requests
- * alike; 'Other' is the one request-only scope (a catch-all for niche work
- * that fits no trade — meaningless at the job level). Legacy 'Showerglass
- * Door' values are mapped to 'Showers' on read and by migration.
+ * alike; 'Delivery', 'Specialty', and 'Other' are request-only (specialty
+ * work and the catch-all for niche one-offs are meaningless at the job
+ * level). Legacy 'Showerglass Door' values are mapped to 'Showers' on read
+ * and by migration.
  */
 export type JobScope =
   | 'Windows'
@@ -308,6 +323,8 @@ export type JobScope =
   // Work-request-only: checking a hardware delivery (auto-adds its two check
   // tasks and requires a delivery count on the card).
   | 'Delivery'
+  // Work-request-only: specialty work outside the standard trades.
+  | 'Specialty'
   // Work-request-only catch-all for niche one-off work.
   | 'Other'
   // Retired as a scope (2026-08): no longer selectable anywhere, but kept in
@@ -325,8 +342,17 @@ export const JOB_SCOPES: JobScope[] = [
   'Storefront',
 ];
 
-/** Scopes selectable on a WORK REQUEST: every job scope plus 'Delivery' and 'Other'. */
-export const WORK_REQUEST_SCOPES: JobScope[] = [...JOB_SCOPES, 'Delivery', 'Other'];
+/**
+ * Scopes selectable on a WORK REQUEST: every job scope plus the request-only
+ * 'Delivery', 'Specialty', and 'Other'. (The DB column is plain text[], so
+ * adding one here needs no migration.)
+ */
+export const WORK_REQUEST_SCOPES: JobScope[] = [
+  ...JOB_SCOPES,
+  'Delivery',
+  'Specialty',
+  'Other',
+];
 
 /**
  * What a job photo/video shows — picked by the taker in the camera (a session
@@ -360,7 +386,7 @@ export const PHOTO_TYPES_BY_SCOPE: Partial<Record<JobScope, JobPhotoType[]>> = {
 /**
  * The photo types selectable for a camera session covering `scopes` (the work
  * request's, falling back to the job's). Unset/empty scopes (legacy "not
- * narrowed", or 'Other'-only requests) offer every type. 'Completion Photos'
+ * narrowed", or 'Specialty'/'Other'-only requests) offer every type. 'Completion Photos'
  * closes every list regardless of scope.
  */
 export function photoTypesForScopes(
@@ -522,7 +548,12 @@ export interface WorkRequest {
    * scope is removed. Only meaningful with the 'Delivery' scope.
    */
   deliveryCountTotal?: number;
-  /** Delivery count done number — installers update it from their phone. */
+  /**
+   * Delivery count done (delivered) number — installers update it from their
+   * phone. Reaching the total marks the delivery complete ("Delivery complete
+   * — everything is on site"), pings the office, and sends the
+   * delivery-complete email (DB trigger).
+   */
   deliveryCountDone?: number;
   /**
    * "Are any of the Windows Casements?" — asked while the 'Windows' scope is
@@ -561,6 +592,16 @@ export interface WorkRequest {
    * `created_at`; absent on legacy local cards that predate the field.
    */
   createdAt?: string;
+  /**
+   * ISO datetime the Scheduler marked this card RESOLVED — their close-out
+   * once nothing is left to schedule or follow up. Resolved cards leave the
+   * Work Requests pool on the calendar page and are hidden from the work
+   * requests pages by default (the "Resolved" filter shows them); nothing
+   * changes for installers. Unset = open. Scheduler-only (installer guard).
+   */
+  resolvedAt?: string;
+  /** The Scheduler who resolved it. */
+  resolvedById?: string;
   details: {
     generalContractor: string;
     managerName: string;
@@ -931,6 +972,10 @@ export interface QbtConfig {
  *  - `work_request_scheduled`: a scheduler put a work request on the calendar
  *    (or moved it) → the job's Field Supers.
  *  - `job_assigned`: someone else assigned this Field Super to a job → them.
+ *  - `delivery_complete`: a count's delivered number reached its total (a
+ *    job's scope count, or a Delivery-scope card's own count) → schedulers +
+ *    the job's Field Supers (minus whoever entered it). The matching EMAIL is
+ *    sent by the DB trigger, not the app.
  *  - `job_needs_qbt`: a job was created without a QBT jobcode → finance managers.
  *  - `qbt_push_result`: the weekly timesheet push to QuickBooks Time ran →
  *    operator + finance managers.
@@ -977,7 +1022,9 @@ export type NotificationType =
   | 'job_needs_qbt'
   | 'qbt_push_result'
   /** A Field Super's calendar task reminder came due (server sweep). */
-  | 'task_reminder';
+  | 'task_reminder'
+  /** Every unit of a count has been delivered to the site. */
+  | 'delivery_complete';
 
 /**
  * A targeted ping for a single worker. Created by whatever action warrants it

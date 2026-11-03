@@ -46,6 +46,7 @@ export const NOTIFICATION_TYPE_ICON: Record<
   job_needs_qbt: 'link',
   qbt_push_result: 'upload-cloud',
   task_reminder: 'bell',
+  delivery_complete: 'package',
 };
 
 /** Human labels — the Settings mute toggles. */
@@ -63,6 +64,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   job_needs_qbt: 'Jobs needing a QBT jobcode',
   qbt_push_result: 'QuickBooks Time pushes',
   task_reminder: 'Calendar task reminders',
+  delivery_complete: 'Deliveries complete',
 };
 
 /**
@@ -77,6 +79,7 @@ export const ROLE_NOTIFICATION_TYPES: Record<AppRole, NotificationType[]> = {
     'work_request_created',
     'status_reported',
     'issue_raised',
+    'delivery_complete',
   ],
   field_super: [
     'status_reported',
@@ -85,6 +88,7 @@ export const ROLE_NOTIFICATION_TYPES: Record<AppRole, NotificationType[]> = {
     'work_request_scheduled',
     'job_assigned',
     'task_reminder',
+    'delivery_complete',
   ],
   operator: ['qbt_push_result'],
   finance_manager: ['job_needs_qbt', 'qbt_push_result'],
@@ -101,6 +105,7 @@ export const ROLE_NOTIFICATION_TYPES: Record<AppRole, NotificationType[]> = {
     'job_needs_qbt',
     'qbt_push_result',
     'task_reminder',
+    'delivery_complete',
   ],
 };
 
