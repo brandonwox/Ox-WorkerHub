@@ -14,7 +14,7 @@ const VISIBLE_MS = 2600;
 
 // Per-tone icon + accent color. Every system message routes through here, so a
 // single mapping keeps "Changes Saved", assignment confirmations, and validation
-// nudges visually consistent in the sidebar footer.
+// nudges visually consistent in the top bar.
 const TONE: Record<
   FlashTone,
   { icon: keyof typeof Feather.glyphMap; color: string; dim: string }
@@ -29,11 +29,12 @@ const TONE: Record<
 }));
 
 /**
- * The single system-message pill for the desktop consoles. It sits pinned to the
- * bottom of the left sidebar and watches the store's `flashTick` (bumped by every
- * `flash()` / successful save). On each new tick it fades in the current message,
- * holds briefly, then fades out — so all transient toasts land in one consistent
- * spot instead of rendering behind the calendar or other content.
+ * The single transient system-message pill for the desktop consoles. The shell
+ * floats it in the top bar, just left of the bell / profile cluster. It
+ * watches the store's `flashTick` (bumped by every `flash()` / successful
+ * save): on each new tick it fades in the current message, holds briefly, then
+ * fades out — so all transient toasts land in one consistent spot instead of
+ * rendering behind the calendar or other content.
  */
 export function SystemFlash() {
   const flashTick = useAppStore((s) => s.flashTick);
@@ -84,10 +85,12 @@ export function SystemFlash() {
 }
 
 const styles = StyleSheet.create({
+  // Sized to its text, within whatever slot the shell gives it.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    maxWidth: '100%',
     borderWidth: 1,
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,

@@ -55,6 +55,14 @@ import { workRequestJobsLabel } from '@/utils/workRequestJobs';
 /** Width of a Field Super's shrunken crew calendar (the arrow strip). */
 const STRIP_W = 48;
 
+/**
+ * Single-day chips a month cell shows before folding the rest behind
+ * "+N more" (the crew calendar opens the day's sidebar for them; the pool
+ * calendar unfolds the cell). Keeps one busy day from stretching its whole
+ * week row and pushing the month off a laptop screen.
+ */
+const MAX_CHIPS_PER_DAY = 3;
+
 interface Props {
   /**
    * Whether the viewer may place work onto crews. Schedulers can; Field Supers
@@ -119,23 +127,37 @@ export function CalendarBoard({
   const updateCalendarTask = useAppStore((s) => s.updateCalendarTask);
   const reorderDaySchedule = useAppStore((s) => s.reorderDaySchedule);
   const flash = useAppStore((s) => s.flash);
+  // Mon–Fri only on both calendars — a device preference, so it comes back
+  // the same way on reload.
+  const hideWeekends = useAppStore((s) => s.hideWeekends);
+  const setHideWeekends = useAppStore((s) => s.setHideWeekends);
   const role = useCurrentRole();
   const me = useCurrentWorker();
 
+  // The crew / panel setup as last left on this device (store `calendarView`,
+  // restored at launch) seeds the four states below; a mirror effect further
+  // down writes every change back, so a reload brings the board back as it
+  // was. Read once, un-subscribed — nothing but this board ever changes it.
+  const saved = useAppStore.getState().calendarView;
+  const setCalendarView = useAppStore((s) => s.setCalendarView);
   // Crews toggled OFF in the calendar view. Empty = every crew is visible, so
   // crews added later show up automatically until the scheduler hides them.
-  const [hiddenCrewIds, setHiddenCrewIds] = useState<Set<string>>(new Set());
+  const [hiddenCrewIds, setHiddenCrewIds] = useState<Set<string>>(
+    () => new Set(saved.hiddenCrewIds)
+  );
   // The crews a placed card is assigned to (the assign targets). Normally holds
   // exactly one; in "Assign Multiple" mode it can hold several.
-  const [activeCrewIds, setActiveCrewIds] = useState<Set<string>>(new Set());
+  const [activeCrewIds, setActiveCrewIds] = useState<Set<string>>(
+    () => new Set(saved.activeCrewIds)
+  );
   // When on, tapping crews toggles them in/out of the assign-target set so a
   // placed card lands on every active crew at once.
-  const [multiAssign, setMultiAssign] = useState(false);
+  const [multiAssign, setMultiAssign] = useState(saved.multiAssign);
   const [placingCardId, setPlacingCardId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   // The Work Requests column expanded in place into its large month-calendar
   // view (the crew calendar squeezes down to make room).
-  const [backlogExpanded, setBacklogExpanded] = useState(false);
+  const [backlogExpanded, setBacklogExpanded] = useState(saved.backlogExpanded);
   // The day whose schedule shows in the sidebar, or null when closed.
   const [dayFocus, setDayFocus] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -245,7 +267,7 @@ export function CalendarBoard({
 
   // 0 = collapsed layout, 1 = expanded. Animates the two columns' flex so the
   // Work Requests container visibly grows leftward across the board.
-  const expandAnim = useRef(new Animated.Value(0)).current;
+  const expandAnim = useRef(new Animated.Value(backlogExpanded ? 1 : 0)).current;
   // Expanded, the Scheduler's two calendars split the board 50/50 (equal
   // flex) — they drag requests across. Field Supers don't, so THEIR expanded
   // Work Requests calendar takes (almost) the whole board: the crew calendar
@@ -289,6 +311,18 @@ export function CalendarBoard({
     if (backlogExpanded) toggleBacklogExpanded(false);
   };
 
+  // Mirror the crew / panel setup to the store, which saves it on this device
+  // for the next load. The first run just writes back what was seeded (the
+  // store skips an unchanged record).
+  useEffect(() => {
+    setCalendarView({
+      hiddenCrewIds: [...hiddenCrewIds],
+      activeCrewIds: [...activeCrewIds],
+      multiAssign,
+      backlogExpanded,
+    });
+  }, [hiddenCrewIds, activeCrewIds, multiAssign, backlogExpanded, setCalendarView]);
+
   // Permanent crews plus every Daily Crew (one-day overrides), so daily crews
   // sit in the chip row and can be shown, hidden, and assigned to like any other
   // crew. Permanent crews stay first so their colors never shift.
@@ -325,7 +359,10 @@ export function CalendarBoard({
 
   // Seed / repair the assign targets: drop stale ids (crew removed) and, when
   // the set empties, seed the first visible crew so there's always a target.
+  // With no crews at all (not loaded yet on a cold start, or none exist) the
+  // restored ids are left alone rather than wiped and re-seeded on arrival.
   useEffect(() => {
+    if (allCrews.length === 0) return;
     setActiveCrewIds((prev) => {
       const valid = [...prev].filter((id) => allCrews.some((c) => c.id === id));
       if (valid.length === 0) {
@@ -791,89 +828,116 @@ export function CalendarBoard({
     applyDayOrder(target.date, item.id, target.index);
   };
 
+  // The calendar settings row — Assign Multiple, the crew chips, Mon–Fri,
+  // Manage crews — sits under the top bar, above the calendars. The old
+  // hint line under it is folded into the (i) tooltip at the end of the
+  // chips, which gives the calendars that line's height back.
+  const hint =
+    allCrews.length === 0
+      ? null
+      : !canAssign
+        ? 'Click a crew to show or hide it on the calendar.'
+        : multiAssign
+          ? 'Click crews to add or remove them as assign targets — a placed card lands on all of them.'
+          : 'Click a crew to show it · click again to make it the assign target · once more to hide it.';
+  const toolbar = (
+    <View style={styles.toolbar}>
+      <View style={styles.toolbarLeft}>
+        {allCrews.length === 0 ? (
+          <Text style={styles.noCrews}>
+            {canAssign
+              ? 'No crews yet — create one to start scheduling.'
+              : 'No crews yet.'}
+          </Text>
+        ) : (
+          <>
+            {canAssign && (
+              <Pressable
+                onPress={toggleMultiAssign}
+                style={({ pressed }) => [
+                  styles.multiBtn,
+                  multiAssign && styles.multiBtnActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Feather
+                  name="layers"
+                  size={14}
+                  color={multiAssign ? colors.textPrimary : colors.textSecondary}
+                />
+                <Text
+                  style={[styles.multiText, multiAssign && styles.multiTextActive]}
+                >
+                  Assign Multiple
+                </Text>
+              </Pressable>
+            )}
+            {allCrews.map((crew) => (
+              <CrewChip
+                key={crew.id}
+                crew={crew}
+                color={colorForCrew(crew.id)}
+                visible={!hiddenCrewIds.has(crew.id)}
+                active={canAssign && activeCrewIds.has(crew.id)}
+                daily={dailyCrews.some((dc) => dc.id === crew.id)}
+                calendar={'isCalendar' in crew && !!crew.isCalendar}
+                onPress={() => cycleCrew(crew.id)}
+              />
+            ))}
+            {hint && <HintTip text={hint} />}
+          </>
+        )}
+      </View>
+      <View style={styles.toolbarRight}>
+        {/* Mon–Fri: hides Saturday and Sunday on both calendars so the five
+            working days get the width. Same pill look as Assign Multiple;
+            lit while on. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            hideWeekends
+              ? 'Show weekends on the calendars'
+              : 'Hide weekends on the calendars'
+          }
+          onPress={() => setHideWeekends(!hideWeekends)}
+          style={({ pressed }) => [
+            styles.multiBtn,
+            hideWeekends && styles.multiBtnActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Feather
+            name="calendar"
+            size={14}
+            color={hideWeekends ? colors.textPrimary : colors.textSecondary}
+          />
+          <Text style={[styles.multiText, hideWeekends && styles.multiTextActive]}>
+            Mon–Fri
+          </Text>
+        </Pressable>
+        {canAssign && (
+          <Pressable
+            style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
+            onPress={() => setManageOpen(true)}
+          >
+            <Feather name="users" size={15} color={colors.textPrimary} />
+            <Text style={styles.manageText}>Manage crews</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <DragBoardProvider enabled={dragEnabled} allow={allowDrag} onDrop={handleDrop}>
     <View style={styles.screen}>
-      <View style={styles.toolbar}>
-        <View style={styles.toolbarLeft}>
-          {allCrews.length === 0 ? (
-            <Text style={styles.noCrews}>
-              {canAssign
-                ? 'No crews yet — create one to start scheduling.'
-                : 'No crews yet.'}
-            </Text>
-          ) : (
-            <>
-              {canAssign && (
-                <Pressable
-                  onPress={toggleMultiAssign}
-                  style={({ pressed }) => [
-                    styles.multiBtn,
-                    multiAssign && styles.multiBtnActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Feather
-                    name="layers"
-                    size={14}
-                    color={
-                      multiAssign ? colors.textPrimary : colors.textSecondary
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.multiText,
-                      multiAssign && styles.multiTextActive,
-                    ]}
-                  >
-                    Assign Multiple
-                  </Text>
-                </Pressable>
-              )}
-              {allCrews.map((crew) => (
-                <CrewChip
-                  key={crew.id}
-                  crew={crew}
-                  color={colorForCrew(crew.id)}
-                  visible={!hiddenCrewIds.has(crew.id)}
-                  active={canAssign && activeCrewIds.has(crew.id)}
-                  daily={dailyCrews.some((dc) => dc.id === crew.id)}
-                  calendar={'isCalendar' in crew && !!crew.isCalendar}
-                  onPress={() => cycleCrew(crew.id)}
-                />
-              ))}
-            </>
-          )}
-        </View>
-        {canAssign && (
-          <View style={styles.toolbarRight}>
-            <Pressable
-              style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
-              onPress={() => setManageOpen(true)}
-            >
-              <Feather name="users" size={15} color={colors.textPrimary} />
-              <Text style={styles.manageText}>Manage crews</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-      {allCrews.length > 0 && (
-        <Text style={styles.filterHint}>
-          {!canAssign
-            ? 'Tap a crew to show or hide it on the calendar.'
-            : multiAssign
-              ? 'Tap crews to add or remove them as assign targets — a placed card lands on all of them.'
-              : 'Tap a crew to show it · tap again to make it the assign target · tap once more to hide it.'}
-        </Text>
-      )}
-
+      {toolbar}
       <View style={styles.board}>
         <Animated.View
           style={[styles.calCol, { flex: calFlex, minWidth: calMinWidth }]}
         >
           {stripMode && backlogExpanded ? (
             <CollapsedCalendarStrip
-              month={month}
               onExpand={() => toggleBacklogExpanded(false)}
             />
           ) : (
@@ -899,6 +963,9 @@ export function CalendarBoard({
             }}
             canUnassign={canAssign}
             canAssign={canAssign}
+            hideWeekends={hideWeekends}
+            onShowWeekends={() => setHideWeekends(false)}
+            maxChipsPerDay={MAX_CHIPS_PER_DAY}
             crewNameFor={crewHoverTagFor}
             jobNameFor={jobNameFor}
             // The main calendar's hover-＋: the Scheduler creates a work
@@ -958,6 +1025,9 @@ export function CalendarBoard({
               colorForCrew={colorForCrew}
               crewNameFor={crewHoverTagFor}
               plannedCrewIdsFor={plannedCrewIdsFor}
+              hideWeekends={hideWeekends}
+              onShowWeekends={() => setHideWeekends(false)}
+              maxChipsPerDay={MAX_CHIPS_PER_DAY}
             />
           ) : (
             <Backlog
@@ -1082,30 +1152,26 @@ function BacklogDropColumn({ children }: { children: ReactNode }) {
 
 /**
  * A Field Super's crew calendar while their Work Requests calendar is
- * expanded: a slim strip holding the month and ONE arrow that brings the
- * full calendar back (collapsing the Work Requests calendar again).
+ * expanded: a slim strip labelled "Main Calendar" (sideways) with ONE arrow
+ * that brings the full calendar back (collapsing the Work Requests calendar
+ * again). The month isn't shown — the expanded calendar beside it has its own
+ * month nav, and the strip is too narrow for a month name.
  */
-function CollapsedCalendarStrip({
-  month,
-  onExpand,
-}: {
-  month: Date;
-  onExpand: () => void;
-}) {
+function CollapsedCalendarStrip({ onExpand }: { onExpand: () => void }) {
   return (
     <View style={styles.strip}>
       <Pressable
         onPress={onExpand}
         style={({ pressed }) => [styles.stripBtn, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel="Show the full calendar"
+        accessibilityLabel="Show the main calendar"
       >
         <Feather name="chevron-right" size={18} color={colors.textPrimary} />
       </Pressable>
       <View style={styles.stripLabelWrap}>
-        <Text style={styles.stripLabel} numberOfLines={1}>
-          {format(month, 'MMMM yyyy')}
-        </Text>
+        {/* No numberOfLines: on web that clamps the text to the strip's
+            width BEFORE the rotation, so it ellipsised ("Nove…"). */}
+        <Text style={styles.stripLabel}>Main Calendar</Text>
       </View>
     </View>
   );
@@ -1179,6 +1245,35 @@ function CrewChip({
   );
 }
 
+/**
+ * The crew-chip usage hint, folded into an (i) at the end of the chips: hover
+ * it and the hint drops down under the top bar (it used to be a line of its
+ * own under the toolbar).
+ */
+function HintTip({ text }: { text: string }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Pressable
+      accessibilityLabel={text}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={() => setHovered((h) => !h)}
+      style={styles.hintBtn}
+    >
+      <Feather
+        name="info"
+        size={15}
+        color={hovered ? colors.textSecondary : colors.textTertiary}
+      />
+      {hovered && (
+        <View style={styles.hintTip} pointerEvents="none">
+          <Text style={styles.hintTipText}>{text}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 const styles = themed(() => StyleSheet.create({
   screen: {
     flex: 1,
@@ -1189,6 +1284,10 @@ const styles = themed(() => StyleSheet.create({
     // text stays selectable/copyable.
     userSelect: 'none',
   },
+  // The settings row under the top bar: Assign Multiple + the crew chips
+  // (+ the (i) hint) on the left, wrapping when the window is narrow; Mon–Fri
+  // and Manage crews on the right. zIndex lifts the (i) tooltip over the
+  // board below.
   toolbar: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1196,7 +1295,7 @@ const styles = themed(() => StyleSheet.create({
     gap: spacing.lg,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
     zIndex: 20,
   },
   toolbarLeft: {
@@ -1206,13 +1305,38 @@ const styles = themed(() => StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  filterHint: {
-    color: colors.textTertiary,
+  toolbarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  hintBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Drops down from the (i), left-aligned under it, over the page content.
+  hintTip: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: spacing.xs,
+    width: 340,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+    zIndex: 30,
+  },
+  hintTipText: {
+    color: colors.textSecondary,
     fontFamily: fonts.regular,
-    fontSize: 11,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
+    fontSize: 12,
+    lineHeight: 17,
   },
   crewChip: {
     flexDirection: 'row',
@@ -1271,11 +1395,6 @@ const styles = themed(() => StyleSheet.create({
   },
   multiTextActive: {
     color: colors.textPrimary,
-  },
-  toolbarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   backlogDropWrap: {
     flex: 1,
@@ -1342,7 +1461,7 @@ const styles = themed(() => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The month name reads bottom-to-top down the strip. The text's layout box
+  // The label reads bottom-to-top down the strip. The text's layout box
   // stays 160 wide (transforms don't affect layout), centered in the strip
   // and clipped by it — so only the rotated glyphs show.
   stripLabelWrap: {
@@ -1357,7 +1476,8 @@ const styles = themed(() => StyleSheet.create({
     textAlign: 'center',
     color: colors.textSecondary,
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 13,
+    letterSpacing: 0.2,
     transform: [{ rotate: '-90deg' }],
   },
 }));

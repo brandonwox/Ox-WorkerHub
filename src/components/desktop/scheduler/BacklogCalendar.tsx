@@ -6,6 +6,7 @@ import {
   format,
   getDay,
   isToday,
+  isWeekend,
   parseISO,
   startOfMonth,
   subMonths,
@@ -44,7 +45,7 @@ import {
   lanesOver,
   packWeekSegments,
   useColRects,
-  weekBounds,
+  visibleWeekdayCols,
 } from '@/components/desktop/scheduler/spanLanes';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -84,6 +85,18 @@ interface Props {
   crewNameFor: (crewId: string) => string;
   /** The crews pencilled in on a card ("fake assigned"), stale ids dropped. */
   plannedCrewIdsFor: (card: WorkRequest) => string[];
+  /**
+   * Show Monday–Friday only (the same switch as the crew calendar). Requests
+   * targeted only at hidden days are counted in a note under the header,
+   * with a link that calls `onShowWeekends`.
+   */
+  hideWeekends?: boolean;
+  onShowWeekends?: () => void;
+  /**
+   * At most this many single-day requests show in a day cell; the rest fold
+   * behind a "+N more" row that unfolds the cell in place. Unset = no cap.
+   */
+  maxChipsPerDay?: number;
 }
 
 /** A pool request stretched over more than one target day. */
@@ -118,6 +131,9 @@ export function BacklogCalendar({
   colorForCrew,
   crewNameFor,
   plannedCrewIdsFor,
+  hideWeekends = false,
+  onShowWeekends,
+  maxChipsPerDay,
 }: Props) {
   const [month, setMonth] = useState(() => new Date());
 
@@ -129,21 +145,32 @@ export function BacklogCalendar({
   // The weekday column under the pointer — widens across every week row.
   // Position-tracked (not element hover) so it follows the COLUMN no matter
   // which request chip the mouse is over. No horizontal grid padding here.
-  const { ref: hoverRef, hoveredCol } = useHoverColumn(HOVER_COL_MIN, 0);
+  // The weekday columns on show (0 Sun … 6 Sat): all seven, or Mon–Fri.
+  const visibleCols = visibleWeekdayCols(hideWeekends);
+  const { ref: hoverRef, hoveredCol } = useHoverColumn(
+    HOVER_COL_MIN,
+    0,
+    visibleCols.length
+  );
 
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart);
 
   // Week rows (nulls pad the month's edges) so columns can flex-resize —
-  // a flex-wrapped percentage grid can't widen one column.
+  // a flex-wrapped percentage grid can't widen one column. With weekends
+  // hidden each row keeps only its Mon–Fri cells, and a row that was nothing
+  // but a weekend is dropped.
   const cells: (Date | null)[] = [
     ...Array.from({ length: leadingBlanks }, () => null),
     ...days,
   ];
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks: (Date | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  for (let i = 0; i < cells.length; i += 7) {
+    const row = visibleCols.map((c) => cells[i + c]);
+    if (row.some((d) => d !== null)) weeks.push(row);
+  }
 
   const monthKey = format(month, 'yyyy-MM');
   const monthStartStr = format(monthStart, 'yyyy-MM-dd');
@@ -171,6 +198,26 @@ export function BacklogCalendar({
   const shownCount =
     [...singlesByDate.values()].reduce((n, list) => n + list.length, 0) +
     spans.length;
+  // With weekends hidden, requests targeted ONLY at this month's weekend
+  // days have no cell to sit in — count them for the note under the header
+  // (they still count as "in this month" above).
+  const hiddenCount = useMemo(() => {
+    if (!hideWeekends) return 0;
+    let n = 0;
+    for (const [date, list] of singlesByDate) {
+      if (isWeekend(parseISO(date))) n += list.length;
+    }
+    for (const s of spans) {
+      const from = s.start < monthStartStr ? monthStartStr : s.start;
+      const to = s.end > monthEndStr ? monthEndStr : s.end;
+      const inMonth = eachDayOfInterval({
+        start: parseISO(from),
+        end: parseISO(to),
+      });
+      if (inMonth.every((d) => isWeekend(d))) n++;
+    }
+    return n;
+  }, [hideWeekends, singlesByDate, spans, monthStartStr, monthEndStr]);
 
   return (
     <View style={styles.wrap}>
@@ -232,15 +279,29 @@ export function BacklogCalendar({
           {cards.length - shownCount === 1 ? '' : 's'} dated outside this month.
         </Text>
       )}
+      {hiddenCount > 0 && (
+        <Pressable
+          onPress={onShowWeekends}
+          disabled={!onShowWeekends}
+          accessibilityRole="button"
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Text style={styles.hiddenNote}>
+            {hiddenCount} targeted at hidden weekend day
+            {hiddenCount === 1 ? '' : 's'}
+            {onShowWeekends ? ' · Show weekends' : ''}
+          </Text>
+        </Pressable>
+      )}
 
       <View ref={hoverRef} collapsable={false} style={styles.gridArea}>
         <View style={styles.weekRow}>
-          {WEEKDAYS.map((d, col) => (
+          {visibleCols.map((c, col) => (
             <Text
-              key={d}
+              key={WEEKDAYS[c]}
               style={[styles.weekday, hoveredCol === col && styles.colHovered]}
             >
-              {d}
+              {WEEKDAYS[c]}
             </Text>
           ))}
         </View>
@@ -260,6 +321,7 @@ export function BacklogCalendar({
               colorForCrew={colorForCrew}
               crewNameFor={crewNameFor}
               plannedCrewIdsFor={plannedCrewIdsFor}
+              maxChipsPerDay={maxChipsPerDay}
             />
           ))}
         </ScrollView>
@@ -284,12 +346,14 @@ interface PoolWeekRowProps extends ChipHostProps {
   singlesByDate: Map<string, WorkRequest[]>;
   hoveredCol: number | null;
   onCreateRequest?: (date: string) => void;
+  maxChipsPerDay?: number;
 }
 
 /**
- * One calendar week: seven day cells plus the absolutely-positioned
- * multi-day bars overlapping their borders. Cells covered by bars reserve
- * matching vertical space so single-day chips start below them.
+ * One calendar week: its day cells (seven, or Mon–Fri with weekends hidden)
+ * plus the absolutely-positioned multi-day bars overlapping their borders.
+ * Cells covered by bars reserve matching vertical space so single-day chips
+ * start below them.
  */
 function PoolWeekRow({
   week,
@@ -297,17 +361,12 @@ function PoolWeekRow({
   singlesByDate,
   hoveredCol,
   onCreateRequest,
+  maxChipsPerDay,
   ...host
 }: PoolWeekRowProps) {
   const [colRects, setColRect] = useColRects();
   const dateStrs = week.map((d) => (d ? format(d, 'yyyy-MM-dd') : null));
-  const { weekStart, weekEnd } = weekBounds(dateStrs);
-  const segments = packWeekSegments(
-    spans,
-    weekStart,
-    weekEnd,
-    (s) => s.card.title
-  );
+  const segments = packWeekSegments(spans, dateStrs, (s) => s.card.title);
 
   return (
     <View style={styles.week}>
@@ -329,6 +388,7 @@ function PoolWeekRow({
                 cards={singlesByDate.get(dateStr) ?? []}
                 topPad={lanesOver(segments, col) * LANE_H}
                 onCreateRequest={onCreateRequest}
+                maxChipsPerDay={maxChipsPerDay}
                 {...host}
               />
             ) : null}
@@ -572,6 +632,7 @@ function BacklogDayCell({
   cards,
   topPad,
   onCreateRequest,
+  maxChipsPerDay,
   ...host
 }: ChipHostProps & {
   date: string;
@@ -581,6 +642,8 @@ function BacklogDayCell({
   /** Vertical space reserved for the week's bars covering this day. */
   topPad: number;
   onCreateRequest?: (date: string) => void;
+  /** Chip cap before "+N more" folds the rest (see BacklogCalendar's prop). */
+  maxChipsPerDay?: number;
 }) {
   const { ref, hovered } = useDropZone(`bcal:${date}`, {
     type: 'backlog-day',
@@ -589,6 +652,15 @@ function BacklogDayCell({
   });
   // Mouse-hover on the whole cell reveals the bottom create-＋ row.
   const [cellHovered, setCellHovered] = useState(false);
+  // The chip cap: up to maxChipsPerDay requests, the rest folded behind
+  // "+N more" (the pool has no day view, so the row unfolds the cell in
+  // place; "Show less" folds it back). Folded chips aren't registered with
+  // the drag layer, so drops still land among the shown ones.
+  const [unfolded, setUnfolded] = useState(false);
+  const overCap = maxChipsPerDay != null && cards.length > maxChipsPerDay;
+  const shown =
+    overCap && !unfolded ? cards.slice(0, maxChipsPerDay ?? cards.length) : cards;
+  const hiddenCount = cards.length - shown.length;
   return (
     <View
       ref={ref}
@@ -604,9 +676,35 @@ function BacklogDayCell({
         {format(parseISO(date), 'd')}
       </Text>
       <View style={[styles.cellCards, topPad > 0 && { marginTop: 3 + topPad }]}>
-        {cards.map((card) => (
+        {shown.map((card) => (
           <PoolRequestChip key={card.id} card={card} {...host} />
         ))}
+        {hiddenCount > 0 && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.moreRow,
+              pressed && styles.moreRowHover,
+            ]}
+            onPress={() => setUnfolded(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${hiddenCount} more on ${date}`}
+          >
+            <Text style={styles.moreText}>+{hiddenCount} more</Text>
+          </Pressable>
+        )}
+        {unfolded && overCap && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.moreRow,
+              pressed && styles.moreRowHover,
+            ]}
+            onPress={() => setUnfolded(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Show fewer"
+          >
+            <Text style={styles.moreText}>Show less</Text>
+          </Pressable>
+        )}
 
         {/* Hover-only ＋ row IN the chip stack — right below the last work
             request (top of the stack when the day is empty). Creates a work
@@ -643,14 +741,23 @@ const styles = themed(() => StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    // Expanded, this panel shares the board with the crew calendar, so on a
+    // laptop-width window it is too narrow for the title AND the controls on
+    // one line. Wrapping drops the controls under the title instead of
+    // squeezing the title column to a word per line.
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: spacing.lg,
+    columnGap: spacing.lg,
+    rowGap: spacing.sm,
     // The month label's pick-a-month list unfolds over the grid below.
     zIndex: 10,
   },
   headerLeft: {
     flex: 1,
+    // Room for the title + count on one line; narrower than this, the
+    // controls wrap to their own line rather than this column shrinking.
+    minWidth: 280,
     gap: 2,
   },
   titleRow: {
@@ -683,8 +790,16 @@ const styles = themed(() => StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
+    // On its own line the group stays at the right edge (space-between
+    // would park a lone wrapped item at the left), and if even that line is
+    // too narrow the Collapse pill drops under the month nav.
+    marginLeft: 'auto',
+    flexWrap: 'wrap',
+    flexShrink: 1,
     alignItems: 'center',
-    gap: spacing.lg,
+    justifyContent: 'flex-end',
+    columnGap: spacing.lg,
+    rowGap: spacing.sm,
   },
   navBtns: {
     flexDirection: 'row',
@@ -725,6 +840,12 @@ const styles = themed(() => StyleSheet.create({
   offMonthNote: {
     color: colors.textTertiary,
     fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  // "N targeted at hidden weekend days · Show weekends".
+  hiddenNote: {
+    color: colors.warning,
+    fontFamily: fonts.medium,
     fontSize: 12,
   },
   weekRow: {
@@ -784,6 +905,21 @@ const styles = themed(() => StyleSheet.create({
   cellCards: {
     gap: 3,
     marginTop: 3,
+  },
+  // "+N more" / "Show less" under a capped chip stack: a quiet text row.
+  moreRow: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  moreRowHover: {
+    backgroundColor: colors.surfaceLight,
+  },
+  moreText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
   },
   request: {
     flexDirection: 'row',

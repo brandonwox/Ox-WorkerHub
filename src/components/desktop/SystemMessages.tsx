@@ -5,15 +5,16 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStore, useCurrentRole } from '@/store/useAppStore';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
-import { detectDoubleBookings } from '@/utils/doubleBookings';
+import { detectDoubleBookings, DoubleBooking } from '@/utils/doubleBookings';
 
 /**
- * Persistent system messages pinned above the transient flash pill in the
- * sidebar. Unlike the flash (which fades), these stick around as long as the
- * underlying condition holds. Today that's schedule double-bookings; each row
- * expands to show the conflicting day, crews, and work requests.
+ * The persistent system issues for the current user. Unlike a notification
+ * (which is dismissed) or the flash pill (which fades), these stick around as
+ * long as the underlying condition holds. Today that's schedule
+ * double-bookings — a scheduling concern, so only the Scheduler gets them;
+ * every other role gets an empty list.
  */
-export function SystemMessages() {
+export function useSystemIssues(): DoubleBooking[] {
   const role = useCurrentRole();
   const crews = useAppStore((s) => s.crews);
   const dailyCrews = useAppStore((s) => s.dailyCrews);
@@ -21,16 +22,37 @@ export function SystemMessages() {
   const workRequests = useAppStore((s) => s.workRequests);
   const workers = useAppStore((s) => s.workers);
 
-  const bookings = useMemo(
+  return useMemo(
     () =>
-      detectDoubleBookings({ crews, dailyCrews, assignments, workRequests, workers }),
-    [crews, dailyCrews, assignments, workRequests, workers]
+      role === 'scheduler'
+        ? detectDoubleBookings({
+            crews,
+            dailyCrews,
+            assignments,
+            workRequests,
+            workers,
+          })
+        : [],
+    [role, crews, dailyCrews, assignments, workRequests, workers]
   );
+}
 
+interface Props {
+  issues: DoubleBooking[];
+}
+
+/**
+ * The "System" section at the top of the notification bell's dropdown: the
+ * persistent issues from {@link useSystemIssues}, each row expanding to show
+ * the conflicting day, crews, and work requests. Renders nothing when there
+ * are no issues, so the panel is just the notifications.
+ */
+export function SystemMessages({ issues }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Double-booking is a scheduling concern — only the Scheduler sees these.
-  if (role !== 'scheduler') return null;
+  const count = issues.length;
+  if (count === 0) return null;
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -39,92 +61,88 @@ export function SystemMessages() {
       return next;
     });
 
-  const count = bookings.length;
-
   return (
-    <View style={styles.wrap}>
+    <View style={styles.section}>
       <View style={styles.header}>
-        <Feather
-          name="activity"
-          size={12}
-          color={count > 0 ? colors.warning : colors.textTertiary}
-        />
+        <Feather name="activity" size={12} color={colors.warning} />
         <Text style={styles.headerLabel}>System</Text>
-        {count > 0 && (
-          <View style={styles.countPill}>
-            <Text style={styles.countText}>{count}</Text>
-          </View>
-        )}
+        <View style={styles.countPill}>
+          <Text style={styles.countText}>{count}</Text>
+        </View>
       </View>
 
-      {count === 0 ? (
-        <Text style={styles.empty}>All clear — no active issues.</Text>
-      ) : (
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-          {bookings.map((b) => {
-            const open = expanded.has(b.id);
-            return (
-              <View key={b.id} style={styles.msg}>
-                <Pressable
-                  onPress={() => toggle(b.id)}
-                  style={({ pressed }) => [
-                    styles.msgRow,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Feather
-                    name="alert-triangle"
-                    size={13}
-                    color={colors.warning}
-                  />
-                  <Text style={styles.msgText} numberOfLines={1}>
-                    {b.installerName} is double booked
-                  </Text>
-                  <Feather
-                    name={open ? 'chevron-down' : 'chevron-right'}
-                    size={14}
-                    color={colors.textTertiary}
-                  />
-                </Pressable>
+      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        {issues.map((b) => {
+          const open = expanded.has(b.id);
+          return (
+            <View key={b.id} style={styles.msg}>
+              <Pressable
+                onPress={() => toggle(b.id)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open }}
+                style={({ pressed }) => [
+                  styles.msgRow,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Feather
+                  name="alert-triangle"
+                  size={14}
+                  color={colors.warning}
+                />
+                <Text style={styles.msgText} numberOfLines={1}>
+                  {b.installerName} is double booked
+                </Text>
+                <Feather
+                  name={open ? 'chevron-down' : 'chevron-right'}
+                  size={15}
+                  color={colors.textTertiary}
+                />
+              </Pressable>
 
-                {open && (
-                  <View style={styles.details}>
-                    <Text style={styles.detailDate}>
-                      {format(parseISO(b.date), 'EEE, MMM d, yyyy')}
-                    </Text>
-                    {b.crews.map((crew) => (
-                      <View key={crew.crewId} style={styles.detailCrew}>
-                        <Text style={styles.crewName}>
-                          {crew.crewName}
-                          {crew.isDaily ? ' · Daily' : ''}
+              {open && (
+                <View style={styles.details}>
+                  <Text style={styles.detailDate}>
+                    {format(parseISO(b.date), 'EEE, MMM d, yyyy')}
+                  </Text>
+                  {b.crews.map((crew) => (
+                    <View key={crew.crewId} style={styles.detailCrew}>
+                      <Text style={styles.crewName}>
+                        {crew.crewName}
+                        {crew.isDaily ? ' · Daily' : ''}
+                      </Text>
+                      {crew.workRequests.map((jc) => (
+                        <Text key={jc.id} style={styles.workRequestLine}>
+                          • {jc.title}
                         </Text>
-                        {crew.workRequests.map((jc) => (
-                          <Text key={jc.id} style={styles.workRequestLine}>
-                            • {jc.title}
-                          </Text>
-                        ))}
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = themed(() => StyleSheet.create({
-  wrap: {
+  // Sits between the panel header and the notification controls; the divider
+  // under it separates it from the dismissable notifications below.
+  section: {
     gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
   },
   headerLabel: {
     flex: 1,
@@ -147,14 +165,10 @@ const styles = themed(() => StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 11,
   },
-  empty: {
-    color: colors.textTertiary,
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    paddingHorizontal: spacing.xs,
-  },
+  // Capped so a pile of conflicts leaves room for the notifications beneath.
   list: {
-    maxHeight: 260,
+    flexGrow: 0,
+    maxHeight: 240,
   },
   msg: {
     borderRadius: radii.md,
@@ -167,22 +181,22 @@ const styles = themed(() => StyleSheet.create({
   msgRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
   },
   msgText: {
     flex: 1,
     color: colors.textPrimary,
-    fontFamily: fonts.medium,
-    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
   pressed: {
     opacity: 0.7,
   },
   details: {
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -191,7 +205,7 @@ const styles = themed(() => StyleSheet.create({
   detailDate: {
     color: colors.textSecondary,
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: 12,
   },
   detailCrew: {
     gap: 1,
@@ -199,12 +213,12 @@ const styles = themed(() => StyleSheet.create({
   crewName: {
     color: colors.warning,
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: 12,
   },
   workRequestLine: {
     color: colors.textSecondary,
     fontFamily: fonts.regular,
-    fontSize: 11,
+    fontSize: 12,
     paddingLeft: spacing.xs,
   },
 }));

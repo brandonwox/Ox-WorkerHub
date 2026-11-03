@@ -2,8 +2,9 @@ import { RefObject, useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 /**
- * Which of the 7 weekday columns the mouse is over, tracked by pointer
- * POSITION over the grid container — NOT by element hover. Chips, their
+ * Which of the grid's `cols` weekday columns (seven, or five with weekends
+ * hidden) the mouse is over, tracked by pointer POSITION over the grid
+ * container — NOT by element hover. Chips, their
  * grips, and the multi-day bar overlay (a sibling of the columns, not a
  * child) would otherwise steal or drop an element-based hover, making the
  * column resize track work requests instead of the pointer.
@@ -11,14 +12,15 @@ import { Platform, View } from 'react-native';
  * Attach `ref` to a plain View (collapsable={false}) wrapping the weekday
  * header + week rows. `minWidth` must equal the hovered column's minWidth
  * style and `pad` the grid's horizontal padding — the boundary math mirrors
- * the flex layout (equal sevenths, except the hovered column which never
+ * the flex layout (equal shares, except the hovered column which never
  * shrinks below minWidth).
  *
  * Web-only by nature (mouse hover); returns null forever on native.
  */
 export function useHoverColumn(
   minWidth: number,
-  pad: number
+  pad: number,
+  cols = 7
 ): { ref: RefObject<View | null>; hoveredCol: number | null } {
   const ref = useRef<View>(null);
   const [hoveredCol, setHoveredCol] = useState<number | null>(null);
@@ -35,7 +37,7 @@ export function useHoverColumn(
       const inner = rect.width - pad * 2;
       if (inner <= 0) return;
       const relX = e.clientX - rect.left - pad;
-      const base = inner / 7;
+      const base = inner / cols;
       const cur = hoveredRef.current;
       let col: number;
       if (cur == null || base >= minWidth) {
@@ -45,10 +47,10 @@ export function useHoverColumn(
       } else {
         // One column is expanded — walk the actual boundary layout so the
         // hovered column stays stable while the pointer sits inside it.
-        const other = (inner - minWidth) / 6;
+        const other = (inner - minWidth) / (cols - 1);
         let x = 0;
-        col = 6;
-        for (let i = 0; i < 7; i++) {
+        col = cols - 1;
+        for (let i = 0; i < cols; i++) {
           const w = i === cur ? minWidth : other;
           if (relX < x + w) {
             col = i;
@@ -57,7 +59,7 @@ export function useHoverColumn(
           x += w;
         }
       }
-      col = Math.max(0, Math.min(6, col));
+      col = Math.max(0, Math.min(cols - 1, col));
       if (col !== hoveredRef.current) {
         hoveredRef.current = col;
         setHoveredCol(col);
@@ -73,7 +75,7 @@ export function useHoverColumn(
       node.removeEventListener('mousemove', move);
       node.removeEventListener('mouseleave', leave);
     };
-  }, [minWidth, pad]);
+  }, [minWidth, pad, cols]);
 
   return { ref, hoveredCol };
 }

@@ -8,9 +8,9 @@ import { colors, fonts, radii, spacing, themed } from '@/theme';
 interface Props {
   /**
    * 'floating' overlays the mobile tabs (top-right, under the status bar);
-   * 'sidebar' sits inline in the desktop sidebar's system area.
+   * 'bar' sits inline in the desktop top bar, beside the bell.
    */
-  variant: 'floating' | 'sidebar';
+  variant: 'floating' | 'bar';
 }
 
 /**

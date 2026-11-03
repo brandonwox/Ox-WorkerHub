@@ -5,6 +5,8 @@ import {
   format,
   getDay,
   isToday,
+  isWeekend,
+  parseISO,
   startOfMonth,
 } from 'date-fns';
 import { Fragment, useState } from 'react';
@@ -35,7 +37,7 @@ import {
   lanesOver,
   packWeekSegments,
   useColRects,
-  weekBounds,
+  visibleWeekdayCols,
 } from '@/components/desktop/scheduler/spanLanes';
 import { useHoverColumn } from '@/components/desktop/scheduler/useHoverColumn';
 import { colors, fonts, radii, spacing, themed } from '@/theme';
@@ -110,6 +112,21 @@ interface Props {
    * animation so repeating the same card replays it.
    */
   flashCard?: { id: string; nonce: string } | null;
+  /**
+   * Show Monday–Friday only. Weekend days leave the grid altogether (a
+   * stretch over a weekend reads as continuing past the row's edge). Work
+   * that sits only on hidden days is counted in the header, with a link
+   * that calls `onShowWeekends`.
+   */
+  hideWeekends?: boolean;
+  onShowWeekends?: () => void;
+  /**
+   * At most this many single-day chips (work requests first, then tasks)
+   * show in a day cell; the rest fold behind a "+N more" row that opens the
+   * day (`onOpenDay`) — or, with no day view to open, unfolds the cell in
+   * place. Unset = no cap (the phone calendar, the week ribbon).
+   */
+  maxChipsPerDay?: number;
 }
 
 /**
@@ -158,10 +175,15 @@ export function MonthCalendar({
   calendarTasks,
   onOpenTask,
   flashCard,
+  hideWeekends = false,
+  onShowWeekends,
+  maxChipsPerDay,
 }: Props) {
   const monthStart = startOfMonth(month);
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(month) });
   const leadingBlanks = getDay(monthStart); // 0 (Sun) … 6 (Sat)
+  // The weekday columns on show (0 Sun … 6 Sat): all seven, or Mon–Fri.
+  const visibleCols = visibleWeekdayCols(hideWeekends);
 
   // The weekday column under the pointer — it widens to HOVER_COL_MIN across
   // every week row (and the header) so its chips are readable. Tracked by
@@ -170,18 +192,24 @@ export function MonthCalendar({
   // layer re-measures its drop zones on an interval).
   const { ref: hoverRef, hoveredCol } = useHoverColumn(
     HOVER_COL_MIN,
-    spacing.xs
+    spacing.xs,
+    visibleCols.length
   );
 
   // Chunk the month into week rows (nulls pad the month's edges) so each row
-  // can host its own multi-day bar overlay.
+  // can host its own multi-day bar overlay. With weekends hidden each row
+  // keeps only its Mon–Fri cells, and a row that was nothing but a weekend
+  // (a month starting on a Saturday, say) is dropped.
   const cells: (Date | null)[] = [
     ...Array.from({ length: leadingBlanks }, () => null),
     ...days,
   ];
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks: (Date | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  for (let i = 0; i < cells.length; i += 7) {
+    const row = visibleCols.map((c) => cells[i + c]);
+    if (row.some((d) => d !== null)) weeks.push(row);
+  }
 
   // Group the visible assignments per request and derive each one's range.
   const spanByCard = new Map<string, SpanInfo>();
@@ -209,6 +237,23 @@ export function MonthCalendar({
     (s) => s.start !== s.end
   );
   const multiDayIds = new Set(multiDaySpans.map((s) => s.card.id));
+
+  // With weekends hidden, anything scheduled ONLY on this month's weekend
+  // days has no cell to show in — count it so the header can say so (a
+  // request that also touches a weekday still shows, as a chip or a bar).
+  let hiddenCount = 0;
+  if (hideWeekends) {
+    const monthKey = format(month, 'yyyy-MM');
+    const onWeekend = (date: string) =>
+      date.startsWith(monthKey) && isWeekend(parseISO(date));
+    for (const info of spanByCard.values()) {
+      const inMonth = info.group.filter((a) => a.date.startsWith(monthKey));
+      if (inMonth.length > 0 && inMonth.every((a) => onWeekend(a.date))) {
+        hiddenCount++;
+      }
+    }
+    hiddenCount += (calendarTasks ?? []).filter((t) => onWeekend(t.date)).length;
+  }
 
   // Placing cues take on the active crew's color when there's a single target;
   // with several (multi-assign) or none they stay neutral grey — the crew names
@@ -250,6 +295,19 @@ export function MonthCalendar({
               )}
             </Text>
           )}
+          {hiddenCount > 0 && (
+            <Pressable
+              onPress={onShowWeekends}
+              disabled={!onShowWeekends}
+              accessibilityRole="button"
+              style={({ pressed }) => pressed && styles.pressed}
+            >
+              <Text style={styles.hiddenNote}>
+                {hiddenCount} on hidden weekend day{hiddenCount === 1 ? '' : 's'}
+                {onShowWeekends ? ' · Show weekends' : ''}
+              </Text>
+            </Pressable>
+          )}
         </View>
         <View style={styles.navBtns}>
           <Pressable
@@ -281,12 +339,12 @@ export function MonthCalendar({
 
       <View ref={hoverRef} collapsable={false} style={styles.gridArea}>
         <View style={styles.weekRow}>
-          {WEEKDAYS.map((d, col) => (
+          {visibleCols.map((c, col) => (
             <Text
-              key={d}
+              key={WEEKDAYS[c]}
               style={[styles.weekday, hoveredCol === col && styles.colHovered]}
             >
-              {d}
+              {WEEKDAYS[c]}
             </Text>
           ))}
         </View>
@@ -316,6 +374,7 @@ export function MonthCalendar({
               calendarTasks={calendarTasks}
               onOpenTask={onOpenTask}
               flashCard={flashCard}
+              maxChipsPerDay={maxChipsPerDay}
             />
           ))}
         </ScrollView>
@@ -347,12 +406,14 @@ interface WeekRowProps {
   calendarTasks?: CalendarTask[];
   onOpenTask?: (taskId: string) => void;
   flashCard?: { id: string; nonce: string } | null;
+  maxChipsPerDay?: number;
 }
 
 /**
- * One calendar week: seven day cells plus the absolutely-positioned multi-day
- * bars overlapping their borders. Cells covered by bars reserve matching
- * vertical space so single-day chips start below them.
+ * One calendar week: its day cells (seven, or Mon–Fri with weekends hidden)
+ * plus the absolutely-positioned multi-day bars overlapping their borders.
+ * Cells covered by bars reserve matching vertical space so single-day chips
+ * start below them.
  */
 function WeekRow({
   week,
@@ -376,6 +437,7 @@ function WeekRow({
   calendarTasks,
   onOpenTask,
   flashCard,
+  maxChipsPerDay,
 }: WeekRowProps) {
   // Each column's measured x/width within the row. Columns are flex-sized
   // (the hovered one widens), so the bar overlay positions off these live
@@ -383,13 +445,11 @@ function WeekRow({
   const [colRects, setColRect] = useColRects();
 
   const dateStrs = week.map((d) => (d ? format(d, 'yyyy-MM-dd') : null));
-  const { weekStart, weekEnd } = weekBounds(dateStrs);
   // This week's slice of every intersecting span, lane-packed so overlapping
   // bars stack instead of colliding.
   const segments: SpanSegment[] = packWeekSegments(
     spans,
-    weekStart,
-    weekEnd,
+    dateStrs,
     (s) => s.card.title
   );
 
@@ -434,6 +494,7 @@ function WeekRow({
                 }
                 onOpenTask={onOpenTask}
                 flashCard={flashCard}
+                maxChipsPerDay={maxChipsPerDay}
               />
             ) : null}
           </View>
@@ -762,6 +823,8 @@ interface DayCellProps {
   calendarTasks?: CalendarTask[];
   onOpenTask?: (taskId: string) => void;
   flashCard?: { id: string; nonce: string } | null;
+  /** Chip cap before "+N more" folds the rest (see MonthCalendar's prop). */
+  maxChipsPerDay?: number;
 }
 
 /**
@@ -790,6 +853,7 @@ function DayCell({
   calendarTasks,
   onOpenTask,
   flashCard,
+  maxChipsPerDay,
 }: DayCellProps) {
   const board = useDragBoard();
   // Mouse-hover on the whole cell reveals the bottom create-＋ row.
@@ -810,13 +874,27 @@ function DayCell({
     false;
 
   const items = buildDayItems(assignments, workRequests);
+  const tasks = calendarTasks ?? [];
+  // The chip cap: work request chips first, then tasks, up to maxChipsPerDay;
+  // the rest fold behind a "+N more" row so one busy day can't stretch its
+  // whole week row. Unfolding is per cell and only used where there's no
+  // day view to open instead (or while placing, when clicks assign).
+  const [unfolded, setUnfolded] = useState(false);
+  const overCap =
+    maxChipsPerDay != null && items.length + tasks.length > maxChipsPerDay;
+  const cap = maxChipsPerDay != null && !unfolded ? maxChipsPerDay : Infinity;
+  const shownItems = items.slice(0, cap);
+  const shownTasks = tasks.slice(0, Math.max(0, cap - shownItems.length));
+  const hiddenCount =
+    items.length - shownItems.length + (tasks.length - shownTasks.length);
   // hoverIndex counts the day's chips EXCLUDING the dragged one (the drag
   // layer skips it, matching the drop's remove-then-insert renumbering). The
   // dragged chip still renders here (dimmed, in its old slot), so a raw
   // `i + 1` slot count drew every line below it one chip too high — count
-  // line slots over the same filtered list instead.
+  // line slots over the same filtered list instead. Folded chips aren't
+  // registered with the drag layer, so the index runs over the shown ones.
   let slot = 0;
-  const lineAfter = items.map((item) =>
+  const lineAfter = shownItems.map((item) =>
     board.draggingKey === `request:${item.card.id}` ? null : ++slot
   );
 
@@ -857,7 +935,7 @@ function DayCell({
         pointerEvents="box-none"
       >
         {hoverIndex === 0 && !resizing && <DropLine />}
-        {items.map((item, i) => (
+        {shownItems.map((item, i) => (
           <Fragment key={item.key}>
             <DayChip
               item={item}
@@ -879,13 +957,45 @@ function DayCell({
 
         {/* The viewer's own calendar tasks on this day (Field Super) — under
             the work request chips; click opens the task's edit sheet. */}
-        {calendarTasks?.map((task) => (
+        {shownTasks.map((task) => (
           <TaskChip
             key={task.id}
             task={task}
             onOpen={() => onOpenTask?.(task.id)}
           />
         ))}
+
+        {/* Folded chips: "+N more" opens the day (its sidebar lists and
+            reorders everything on it); with no day view, or while placing,
+            it unfolds the cell in place and "Show less" folds it back. */}
+        {hiddenCount > 0 && (
+          <Pressable
+            style={({ pressed, hovered: h }: PressState) => [
+              styles.moreRow,
+              (h || pressed) && styles.moreRowHover,
+            ]}
+            onPress={() =>
+              onOpenDay && !placing ? onOpenDay(date) : setUnfolded(true)
+            }
+            accessibilityRole="button"
+            accessibilityLabel={`${hiddenCount} more on ${date}`}
+          >
+            <Text style={styles.moreText}>+{hiddenCount} more</Text>
+          </Pressable>
+        )}
+        {unfolded && overCap && (
+          <Pressable
+            style={({ pressed, hovered: h }: PressState) => [
+              styles.moreRow,
+              (h || pressed) && styles.moreRowHover,
+            ]}
+            onPress={() => setUnfolded(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Show fewer"
+          >
+            <Text style={styles.moreText}>Show less</Text>
+          </Pressable>
+        )}
 
         {/* Hover-only ＋ row IN the chip stack — right below the last chip
             (top of the stack when the day is empty). Creates something on
@@ -1067,6 +1177,13 @@ const styles = themed(() => StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  // "N on hidden weekend days · Show weekends" under the month label.
+  hiddenNote: {
+    color: colors.warning,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    marginTop: 2,
+  },
   navBtns: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1173,6 +1290,22 @@ const styles = themed(() => StyleSheet.create({
   cellCards: {
     gap: 3,
     marginTop: 3,
+  },
+  // "+N more" / "Show less" under a capped chip stack: a quiet text row,
+  // lit on hover.
+  moreRow: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  moreRowHover: {
+    backgroundColor: colors.surfaceLight,
+  },
+  moreText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
   },
   placed: {
     flexDirection: 'row',

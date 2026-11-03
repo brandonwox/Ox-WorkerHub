@@ -1,4 +1,3 @@
-import { getDay, parseISO } from 'date-fns';
 import { useState } from 'react';
 
 /**
@@ -17,7 +16,10 @@ export interface DateSpan {
 /** One week-row slice of a multi-day span, with its allocated lane. */
 export interface LaneSegment<S extends DateSpan> {
   span: S;
-  /** Weekday columns (0 Sun … 6 Sat) the slice covers within its week. */
+  /**
+   * Columns the slice covers: indexes into the row's `dateStrs` (0 Sun … 6
+   * Sat on a full week, 0 Mon … 4 Fri with weekends hidden).
+   */
   startCol: number;
   endCol: number;
   /** The span continues past this week's edge(s). */
@@ -35,6 +37,11 @@ export const LANE_H = BAR_H + 3;
 /** Distance from the week row's top to lane 0: cell padding + day number line. */
 export const BAR_TOP = 25;
 
+/** The weekday columns (0 Sun … 6 Sat) a month grid shows: all, or Mon–Fri. */
+export function visibleWeekdayCols(hideWeekends: boolean): number[] {
+  return hideWeekends ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
+}
+
 /**
  * The first and last real day of a week row (nulls pad the month's edges).
  * Both null for a row with no days (never happens for a month grid).
@@ -45,31 +52,43 @@ export function weekBounds(dateStrs: (string | null)[]): {
 } {
   const firstCol = dateStrs.findIndex((d) => d !== null);
   if (firstCol === -1) return { weekStart: null, weekEnd: null };
-  const lastCol = 6 - [...dateStrs].reverse().findIndex((d) => d !== null);
+  const lastCol =
+    dateStrs.length - 1 - [...dateStrs].reverse().findIndex((d) => d !== null);
   return { weekStart: dateStrs[firstCol], weekEnd: dateStrs[lastCol] };
 }
 
 /**
- * This week's slice of every intersecting span, then greedy lane packing
+ * This week row's slice of every intersecting span, then greedy lane packing
  * (earlier starts first, longer spans first among equals, `titleOf` as the
  * stable tiebreak) so overlapping bars stack instead of colliding.
+ *
+ * `dateStrs` is the row's columns in order (nulls pad the month's edges; a
+ * Mon–Fri row simply has five). Segment columns index into it, so bars line
+ * up with whatever days the row shows: a span's weekend days, with weekends
+ * hidden, are clipped off and the bar reads as continuing past the row's
+ * edge — and a span sitting entirely on hidden days yields no segment.
  */
 export function packWeekSegments<S extends DateSpan>(
   spans: S[],
-  weekStart: string | null,
-  weekEnd: string | null,
+  dateStrs: (string | null)[],
   titleOf: (span: S) => string
 ): LaneSegment<S>[] {
   const segments: LaneSegment<S>[] = [];
+  const { weekStart, weekEnd } = weekBounds(dateStrs);
   if (!weekStart || !weekEnd) return segments;
   for (const span of spans) {
     if (span.end < weekStart || span.start > weekEnd) continue;
     const segStart = span.start < weekStart ? weekStart : span.start;
     const segEnd = span.end > weekEnd ? weekEnd : span.end;
+    // The row's shown days are consecutive calendar days (hidden weekends
+    // sit at its edges, never inside), so both clipped ends are columns.
+    const startCol = dateStrs.indexOf(segStart);
+    const endCol = dateStrs.indexOf(segEnd);
+    if (startCol === -1 || endCol === -1) continue;
     segments.push({
       span,
-      startCol: getDay(parseISO(segStart)),
-      endCol: getDay(parseISO(segEnd)),
+      startCol,
+      endCol,
       continuesBefore: span.start < segStart,
       continuesAfter: span.end > segEnd,
       lane: 0,

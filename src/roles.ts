@@ -23,8 +23,8 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 
 /**
  * The app splits by FORM FACTOR, not by role: native (iOS/Android) renders the
- * mobile tab layout in `(mobile)`, web renders the desktop sidebar console in
- * `(desktop)`. Every role has a home in both.
+ * mobile tab layout in `(mobile)`, web renders the desktop console (a top bar
+ * with a page menu, no sidebar) in `(desktop)`. Every role has a home in both.
  */
 
 /**
@@ -57,14 +57,14 @@ export type DesktopHref =
 export interface DesktopNavItem {
   href: DesktopHref;
   label: string;
-  /** Lucide icon component (the sidebar renders lucide, not Feather). */
+  /** Lucide icon component (the page menu renders lucide, not Feather). */
   icon: LucideIcon;
 }
 
 /**
- * Sidebar sections each role sees on the desktop (web) console. Settings is
- * deliberately absent — it's reached via the top-right profile chip
- * (AuthControl), not the sidebar.
+ * Pages each role sees in the desktop (web) console's page menu (the top-bar
+ * dropdown that replaced the sidebar). Settings is deliberately absent — it's
+ * reached via the top-right profile chip (AuthControl), not the menu.
  */
 export const DESKTOP_NAV: Record<AppRole, DesktopNavItem[]> = {
   installer: [
@@ -225,7 +225,7 @@ export function roleHomeHref(role: AppRole): '/' | DesktopHref {
 
 /**
  * Every desktop route a role is allowed to open. Settings is accessible to
- * every role even though no sidebar lists it (it's reached via the top-right
+ * every role even though the page menu doesn't list it (it's reached via the top-right
  * profile chip) — without this the layout's route gate would bounce the
  * chip's navigation straight back home.
  */

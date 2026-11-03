@@ -515,7 +515,7 @@ function notifySaveFailed(workerId: string, what: string): void {
 /**
  * Queue a Supabase mutation, device-first. The op lands in the persistent
  * outbox and the flusher pushes it (and everything queued before it) in order.
- * On success the store's `savedTick` bumps so the desktop sidebar can pop a
+ * On success the store's `savedTick` bumps so the desktop top bar can pop a
  * "Changes Saved" pill — backendActive gates every caller, so local dev mode
  * and the Developer never queue anything.
  *
@@ -783,7 +783,20 @@ interface QbtState {
   approvedThrough?: string;
 }
 
-/** Visual tone of a sidebar flash message. */
+/**
+ * The desktop calendar board as last left on this device: which crews are
+ * hidden, which are the assign target(s), whether Assign Multiple is on, and
+ * whether the Work Requests column is expanded into its calendar. Restored
+ * on reload so a scheduler's usual setup comes back without re-clicking it.
+ */
+export interface CalendarViewPrefs {
+  hiddenCrewIds: string[];
+  activeCrewIds: string[];
+  multiAssign: boolean;
+  backlogExpanded: boolean;
+}
+
+/** Visual tone of a top-bar flash message. */
 export type FlashTone = 'success' | 'info' | 'warning';
 
 interface AppState {
@@ -869,13 +882,13 @@ interface AppState {
   notifications: AppNotification[];
   /**
    * Monotonic counter bumped once every time a backend write succeeds. The
-   * desktop sidebar watches it to flash a "Changes Saved" pill. It never fires
+   * desktop top bar watches it to flash a "Changes Saved" pill. It never fires
    * in local dev mode or for the Developer (neither writes to Supabase).
    */
   savedTick: number;
 
   /**
-   * Transient system message shown in the desktop sidebar footer (bottom-left).
+   * Transient system message shown in the desktop top bar (beside the bell).
    * This is the single channel for every "system" toast — "Changes Saved",
    * "Assigned … to …", validation nudges, etc. — so they always land in one
    * consistent spot and never render behind the calendar or other content.
@@ -888,14 +901,22 @@ interface AppState {
 
   /** UI theme — a per-device preference, persisted locally, applied at launch. */
   theme: ThemeScheme;
+  /** The desktop calendars show Monday–Friday only — a per-device preference. */
+  hideWeekends: boolean;
+  /** The calendar board's crew / panel setup — a per-device preference. */
+  calendarView: CalendarViewPrefs;
 
   /** Switch the dark/light theme and persist the choice on this device. */
   setTheme: (scheme: ThemeScheme) => void;
+  /** Hide/show weekend columns on the calendars and persist the choice on this device. */
+  setHideWeekends: (hide: boolean) => void;
+  /** Save the calendar board's crew / panel setup on this device (no-op when unchanged). */
+  setCalendarView: (view: CalendarViewPrefs) => void;
   /** Developer-only "View as": impersonate a role for the UI (or null for none). */
   setViewAs: (userId: string | null) => void;
   /** Bump `savedTick` — called by the write helper after a successful DB write. */
   signalSaved: () => void;
-  /** Flash a transient system message in the desktop sidebar footer. */
+  /** Flash a transient system message in the desktop top bar. */
   flash: (message: string, tone?: FlashTone) => void;
   /** Set/clear the real signed-in worker (Supabase auth bootstrap). */
   setAuthWorker: (worker: Worker | null) => void;
@@ -1343,6 +1364,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   flashTone: 'success',
   flashTick: 0,
   theme: 'dark',
+  hideWeekends: false,
+  calendarView: {
+    hiddenCrewIds: [],
+    activeCrewIds: [],
+    multiAssign: false,
+    backlogExpanded: false,
+  },
   devMode: false,
   authResolved: false,
   isOnline: true,
@@ -1364,6 +1392,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     setThemeScheme(scheme);
     set({ theme: scheme });
     AsyncStorage.setItem(THEME_KEY, scheme).catch(() => {});
+  },
+
+  setHideWeekends: (hide) => {
+    if (get().hideWeekends === hide) return;
+    set({ hideWeekends: hide });
+    AsyncStorage.setItem(HIDE_WEEKENDS_KEY, hide ? '1' : '0').catch(() => {});
+  },
+
+  setCalendarView: (view) => {
+    const cur = get().calendarView;
+    if (
+      cur.multiAssign === view.multiAssign &&
+      cur.backlogExpanded === view.backlogExpanded &&
+      sameIds(cur.hiddenCrewIds, view.hiddenCrewIds) &&
+      sameIds(cur.activeCrewIds, view.activeCrewIds)
+    ) {
+      return;
+    }
+    set({ calendarView: view });
+    AsyncStorage.setItem(CALENDAR_VIEW_KEY, JSON.stringify(view)).catch(
+      () => {}
+    );
   },
 
   setViewAs: (userId) => set({ viewAsUserId: userId }),
@@ -3567,6 +3617,48 @@ void AsyncStorage.getItem(THEME_KEY)
     if (saved === 'light' || saved === 'dark') {
       useAppStore.getState().setTheme(saved);
     }
+  })
+  .catch(() => {});
+
+// --- Calendar weekends (device-local) -----------------------------------------
+
+const HIDE_WEEKENDS_KEY = 'oxwh.hideWeekends';
+
+// Restore the Mon–Fri calendar preference at launch (see setHideWeekends for
+// the write side). Defaults to all seven days.
+void AsyncStorage.getItem(HIDE_WEEKENDS_KEY)
+  .then((saved) => {
+    if (saved === '1') useAppStore.getState().setHideWeekends(true);
+  })
+  .catch(() => {});
+
+// --- Calendar board setup (device-local) --------------------------------------
+
+const CALENDAR_VIEW_KEY = 'oxwh.calendarView';
+
+/** Same ids in the same order. */
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+// Restore the board's crew / panel setup at launch (see setCalendarView for
+// the write side). A missing or malformed record leaves the defaults; ids of
+// crews that no longer exist are harmless (the board filters by its crews).
+void AsyncStorage.getItem(CALENDAR_VIEW_KEY)
+  .then((raw) => {
+    if (!raw) return;
+    const v = JSON.parse(raw) as Partial<CalendarViewPrefs> | null;
+    if (!v || typeof v !== 'object') return;
+    const ids = (x: unknown): string[] =>
+      Array.isArray(x)
+        ? x.filter((id): id is string => typeof id === 'string')
+        : [];
+    useAppStore.getState().setCalendarView({
+      hiddenCrewIds: ids(v.hiddenCrewIds),
+      activeCrewIds: ids(v.activeCrewIds),
+      multiAssign: v.multiAssign === true,
+      backlogExpanded: v.backlogExpanded === true,
+    });
   })
   .catch(() => {});
 

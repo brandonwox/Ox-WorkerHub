@@ -1,7 +1,7 @@
 import { Redirect, Slot, usePathname } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { SidebarShell } from '@/components/desktop/SidebarShell';
+import { ConsoleShell } from '@/components/desktop/ConsoleShell';
 import { NotificationToaster } from '@/components/NotificationToaster';
 import { UndefinedStatusCatchUp } from '@/components/UndefinedStatusCatchUp';
 import { DESKTOP_NAV, roleCanAccessPath, roleHomeHref } from '@/roles';
@@ -42,10 +42,10 @@ export default function DesktopLayout() {
   }
 
   return (
-    <SidebarShell navItems={DESKTOP_NAV[role]}>
+    <ConsoleShell navItems={DESKTOP_NAV[role]}>
       <Slot />
       <NotificationToaster />
       <UndefinedStatusCatchUp />
-    </SidebarShell>
+    </ConsoleShell>
   );
 }
