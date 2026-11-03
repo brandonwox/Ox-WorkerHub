@@ -1,6 +1,8 @@
 # Dev Tracker — DONE
 Completed edits, newest first — moved out of Dev-Tracker.md to keep the working file small. (Agents: when an Awaiting edit from Dev-Tracker.md is implemented, log it at the TOP of this file, same style as the entries below.)
 
+DEPLOYED 2026-11-03 ~2 PM Mountain (agent, at Brandon's request): Passes 54–61 pushed to Dev and to Live as commit 241ff40 — Cloudflare builds the web app from Live, so that is the web deploy. No migrations were involved (`supabase migration list --linked` shows all 56 local migrations applied). Nothing phone-side changed. Still Brandon's: the Resend secrets, the two app_settings rows and the iOS 1.1.0 build (see the BRANDON TO DO blocks in Dev-Tracker.md).
+
 Pass 61 — Field Super's collapsed main calendar is labelled "Main Calendar" (reported in-session 2026-11-03 with a screenshot: with the Work Requests calendar expanded, the slim strip showed only "Nove…"; no DB change):
 - CAUSE: the strip's sideways label was the month name with `numberOfLines={1}`, which on web clamps the text to the 48pt strip width BEFORE the -90° rotation, so it ellipsised to the first four letters.
 - FIX (scheduler/CalendarBoard CollapsedCalendarStrip): the strip now reads "Main Calendar" bottom-to-top (13pt, no truncation); the month is dropped from the strip (the expanded Work Requests calendar beside it has its own month nav). The arrow button's accessibility label reads "Show the main calendar".
